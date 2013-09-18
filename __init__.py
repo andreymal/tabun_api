@@ -114,15 +114,16 @@ class User:
     phpsessid = None
     username = None
     security_ls_key = None
+    key = None
     
-    def __init__(self, login=None, passwd=None, phpsessid=None, security_ls_key=None):
+    def __init__(self, login=None, passwd=None, phpsessid=None, security_ls_key=None, key=None):
         "Допустимые комбинации параметров:"
         "- login + passwd (не реализовано)"
-        "- phpsessid"
-        "- login + phpsessid + security_ls_key (без запроса к серверу)"
+        "- phpsessid [+ key] - без куки key разлогинивает через некоторое время"
+        "- login + phpsessid + security_ls_key [+ key] (без запроса к серверу)"
         "- без параметров (анонимус)"
         if login or passwd:
-            raise NotImplementedError("Please use PHPSESSID")
+            raise NotImplementedError("Please use PHPSESSID and key")
         
         self.jd = JSONDecoder()
         
@@ -134,13 +135,15 @@ class User:
             return
        
         self.phpsessid = str(phpsessid).split(";", 1)[0]
+        if key:
+            self.key = str(key).split(";", 1)[0]
         username = None
         
         if not security_ls_key:
             req = urllib2.Request(http_host+"/")
             for header, value in headers_example.items():
                 req.add_header(header, value)
-            req.add_header('cookie', "PHPSESSID=" + self.phpsessid)
+            req.add_header('cookie', "PHPSESSID=" + self.phpsessid + ((';key='+self.key) if self.key else ''))
             resp = self.opener.open(req, timeout=10)
             if resp.getcode() != 200: raise TabunError(code=resp.getcode())
             raw_data = resp.read()
@@ -171,7 +174,7 @@ class User:
             if url[0] == "/": url = http_host + url
             url = urllib2.Request(url, data)
         if self.phpsessid:
-            url.add_header('cookie', "PHPSESSID=" + self.phpsessid)
+            url.add_header('cookie', "PHPSESSID=" + self.phpsessid + ((';key='+self.key) if self.key else ''))
         
         for header, value in headers_example.items(): url.add_header(header, value)
         if headers:
@@ -191,7 +194,7 @@ class User:
             if url[0] == "/": url = http_host + url
             url = urllib2.Request(url)
         if self.phpsessid:
-            url.add_header('cookie', "PHPSESSID=" + self.phpsessid)
+            url.add_header('cookie', "PHPSESSID=" + self.phpsessid + ((';key='+self.key) if self.key else ''))
         
         for header, value in headers_example.items(): url.add_header(header, value)
         if headers:
