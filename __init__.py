@@ -299,7 +299,7 @@ class User:
             return posts
         
         else:
-            data = raw_data[raw_data.find('<article class="topic topic-type-topic js-topic">'):raw_data.rfind("</article> <!-- /.topic -->")+10]
+            data = raw_data[raw_data.find("<article class="):raw_data.rfind("</article> <!-- /.topic -->")+10]
             if not data: raise TabunError("No post")
             parser = HTML2XML()
             parser.feed(data)
