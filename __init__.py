@@ -7,6 +7,7 @@ from httputil import encode_multipart_formdata
 import urllib2
 import socket
 from json import JSONDecoder
+from Cookie import BaseCookie
 
 try:
     import simplexml
@@ -122,48 +123,76 @@ class User:
         "- phpsessid [+ key] - без куки key разлогинивает через некоторое время"
         "- login + phpsessid + security_ls_key [+ key] (без запроса к серверу)"
         "- без параметров (анонимус)"
-        if login or passwd:
-            raise NotImplementedError("Please use PHPSESSID and key")
         
         self.jd = JSONDecoder()
         
         # for thread safety
         self.opener = urllib2.build_opener()
         self.noredir = urllib2.build_opener(NoRedirect)
-
-        if (not login or not password) and not phpsessid: # anonymous
-            return
-       
-        self.phpsessid = str(phpsessid).split(";", 1)[0]
+        
+        if phpsessid:
+            self.phpsessid = str(phpsessid).split(";", 1)[0]
         if key:
-            self.key = str(key).split(";", 1)[0]
-        username = None
+            self.key = str(key)
+        if self.phpsessid and security_ls_key:
+            self.security_ls_key = str(security_ls_key)
+            return
         
-        if not security_ls_key:
-            req = urllib2.Request(http_host+"/")
-            for header, value in headers_example.items():
-                req.add_header(header, value)
-            req.add_header('cookie', "PHPSESSID=" + self.phpsessid + ((';key='+self.key) if self.key else ''))
-            resp = self.opener.open(req, timeout=10)
-            if resp.getcode() != 200: raise TabunError(code=resp.getcode())
-            raw_data = resp.read()
-            
-            userinfo = raw_data[raw_data.find('<div class="dropdown-user"'):]
-            del raw_data
-            userinfo = userinfo[:userinfo.find("<nav")]
-            parser = HTML2XML()
-            parser.feed(userinfo)
-            userinfo = parser.node.getTag("div")
-            if not userinfo: raise TabunError("userinfo not found")
-            
-            username = userinfo.getTag("a", {"class": "username"}).getData().encode("utf-8")
-            uls = userinfo.getTags("ul", {"class": "dropdown-user-menu"})
-            
-            security_ls_key = uls[0].getTag("li", {"class": "item-signout"}).getTag("a")['href'].\
-                encode("utf-8").split("security_ls_key=", 1)[-1].split("&",1)[0]
+        if not self.phpsessid or not security_ls_key:
+            resp = self.urlopen("/")
+            data = resp.read(1024*15)
+            resp.close()
+            cook = BaseCookie()
+            cook.load(resp.headers.get("set-cookie", ""))
+            if not self.phpsessid:
+                self.phpsessid = cook.get("PHPSESSID")
+                if self.phpsessid: self.phpsessid = self.phpsessid.value
+            if not self.key:
+                self.key = cook.get("key")
+                if self.key: self.key = self.key.value
+            pos = data.find("var LIVESTREET_SECURITY_KEY =")
+            if pos > 0:
+                ls_key = data[pos:]
+                ls_key = ls_key[ls_key.find("'")+1:]
+                self.security_ls_key = ls_key[:ls_key.find("'")]
+            self.username = self.parse_userinfo(data)
         
-        self.username = username if username else login
-        self.security_ls_key = security_ls_key
+        if login and passwd:
+            self.login(login, passwd)
+        elif login and self.phpsessid and not self.username:
+            self.username = str(login)
+
+    def parse_userinfo(self, raw_data):
+        userinfo = raw_data[raw_data.find('<div class="dropdown-user"'):]
+        userinfo = userinfo[:userinfo.find("<nav")]
+        parser = HTML2XML()
+        parser.feed(userinfo)
+        userinfo = parser.node.getTag("div")
+        if not userinfo: return
+        
+        username = userinfo.getTag("a", {"class": "username"}).getData().encode("utf-8")
+        
+        if username:
+            return username
+    
+    def login(self, login, password, return_path=None, remember=True):
+        query = "login=" + urllib2.quote(login) + "&password=" + urllib2.quote(password) + "&remember=" + ("on" if remember else "off")
+        query += "&return-path=" + urllib2.quote(return_path if return_path else http_host+"/")
+        if self.security_ls_key:
+            query += "&security_ls_key=" + urllib2.quote(self.security_ls_key)
+        
+        resp = self.urlopen("/login/ajax-login", query, {"X-Requested-With": "XMLHttpRequest"})
+        data = resp.read()
+        if data[0] != "{": raise TabunResultError(data)
+        data = self.jd.decode(data)
+        if data.get('bStateError') != False:
+            raise TabunResultError(data.get("sMsg", u"").encode("utf-8"))
+        self.username = str(login)
+        
+        cook = BaseCookie()
+        cook.load(resp.headers.get("set-cookie", ""))
+        self.key = cook.get("key")
+        if self.key: self.key = self.key.value
     
     def check_login(self):
         if not self.phpsessid or not self.security_ls_key:
