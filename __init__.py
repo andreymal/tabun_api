@@ -140,7 +140,7 @@ class User:
         
         if not self.phpsessid or not security_ls_key:
             resp = self.urlopen("/")
-            data = resp.read(1024*15)
+            data = resp.read(1024*25)
             resp.close()
             cook = BaseCookie()
             cook.load(resp.headers.get("set-cookie", ""))
@@ -751,7 +751,7 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False):
         else:
             if item.getName() in ("li", ):
                 data += u"• "
-            elif data and item.getName() in ("div", "p", "blockquote", "section", "ul") and not newlines:
+            elif data and item.getName() in ("div", "p", "blockquote", "section", "ul", "li", "h1", "h2", "h3", "h4", "h5", "h6") and not newlines:
                 data += u"\n"
                 newlines = 1
             tmp = htmlToString(item)
@@ -769,7 +769,7 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False):
             
             data += tmp1
             
-            if item.getName() in ("div", "p", "blockquote", "section", "ul", "li") and not newlines:
+            if item.getName() in ("div", "p", "blockquote", "section", "ul", "li", "h1", "h2", "h3", "h4", "h5", "h6") and not newlines:
                 data += u"\n"
                 newlines = 1
     
