@@ -11,7 +11,7 @@ from Cookie import BaseCookie
 
 try:
     import simplexml
-except:
+except ImportError:
     from xmpp import simplexml
 
 http_host = "http://tabun.everypony.ru"

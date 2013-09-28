@@ -3,7 +3,7 @@
 
 try:
     import simplexml
-except:
+except ImportError:
     from xmpp import simplexml
 
 from HTMLParser import HTMLParser
