@@ -2,17 +2,14 @@
 # -*- coding: utf-8 -*-
 
 import time
-from html2xml import HTML2XML, findTag, findTags
 from httputil import encode_multipart_formdata
 import urllib2
-import socket
+from socket import timeout as socket_timeout
 from json import JSONDecoder
 from Cookie import BaseCookie
-
-try:
-    import simplexml
-except ImportError:
-    from xmpp import simplexml
+import lxml
+import lxml.html
+#import html5lib
 
 http_host = "http://tabun.everypony.ru"
 halfclosed = ("borderline", "shipping", "erpg", "gak", "RPG", "roliplay")
@@ -46,7 +43,6 @@ class Post:
         self.post_id = int(post_id)
         self.author = str(author)
         self.title = unicode(title)
-        if not isinstance(body, simplexml.Node): raise ValueError
         self.body = body
         self.tags = tags
         self.short = bool(short)
@@ -66,7 +62,6 @@ class Comment:
         self.post_id = int(post_id)
         self.comment_id = int(comment_id)
         self.author = str(author)
-        if not isinstance(body, simplexml.Node): raise ValueError
         self.body = body
         if parent_id: self.parent_id = int(parent_id)
         else: self.parent_id = None
@@ -119,7 +114,7 @@ class User:
     
     def __init__(self, login=None, passwd=None, phpsessid=None, security_ls_key=None, key=None):
         "Допустимые комбинации параметров:"
-        "- login + passwd (не реализовано)"
+        "- login + passwd [ + phpsessid]"
         "- phpsessid [+ key] - без куки key разлогинивает через некоторое время"
         "- login + phpsessid + security_ls_key [+ key] (без запроса к серверу)"
         "- без параметров (анонимус)"
@@ -165,15 +160,10 @@ class User:
     def parse_userinfo(self, raw_data):
         userinfo = raw_data[raw_data.find('<div class="dropdown-user"'):]
         userinfo = userinfo[:userinfo.find("<nav")]
-        parser = HTML2XML()
-        parser.feed(userinfo)
-        userinfo = parser.node.getTag("div")
         if not userinfo: return
-        
-        username = userinfo.getTag("a", {"class": "username"}).getData().encode("utf-8")
-        
-        if username:
-            return username
+        node = parse_html_fragment(userinfo)[0]
+        username = node.xpath('//*[@id="dropdown-user"]/a[2]/text()[1]')
+        if username and username[0]: return str(username[0])
     
     def login(self, login, password, return_path=None, remember=True):
         query = "login=" + urllib2.quote(login) + "&password=" + urllib2.quote(password) + "&remember=" + ("on" if remember else "off")
@@ -205,7 +195,8 @@ class User:
         if self.phpsessid:
             url.add_header('cookie', "PHPSESSID=" + self.phpsessid + ((';key='+self.key) if self.key else ''))
         
-        for header, value in headers_example.items(): url.add_header(header, value)
+        for header, value in headers_example.items():
+            url.add_header(header, value)
         if headers:
             for header, value in headers.items(): url.add_header(header, value)
         
@@ -215,7 +206,7 @@ class User:
             raise TabunError(code=exc.getcode())
         except urllib2.URLError as exc:
             raise TabunError(exc.reason.strerror, -exc.reason.errno if exc.reason.errno else 0)
-        except socket.timeout:
+        except socket_timeout:
             raise TabunError("Timeout", -2)
      
     def send_form(self, url, fields=(), files=(), timeout=None, headers={}, redir=True):
@@ -225,7 +216,8 @@ class User:
         if self.phpsessid:
             url.add_header('cookie', "PHPSESSID=" + self.phpsessid + ((';key='+self.key) if self.key else ''))
         
-        for header, value in headers_example.items(): url.add_header(header, value)
+        for header, value in headers_example.items():
+            url.add_header(header, value)
         if headers:
             for header, value in headers.items(): url.add_header(header, value)
             
@@ -241,7 +233,7 @@ class User:
             raise TabunError(code=exc.getcode())
         except urllib2.URLError as exc:
             raise TabunError(exc.reason.strerror, -exc.reason.errno if exc.reason.errno else 0)
-        except socket.timeout:
+        except socket_timeout:
             raise TabunError("Timeout", -2)
        
     def add_post(self, blog_id, title, body, tags, draft=False):
@@ -266,14 +258,11 @@ class User:
         
     def delete_post(self, post_id, security_ls_key=None, cookie=None):
         self.check_login()
-        try:
-            return self.urlopen(\
-                url='/topic/delete/'+str(int(post_id))+'/?security_ls_key='+self.security_ls_key, \
-                headers={"referer": http_host+"/blog/"+str(post_id)+".html"}, \
-                redir=False\
-            ).getcode() / 100 == 3
-        except TabunError:
-            return False
+        return self.urlopen(\
+            url='/topic/delete/'+str(int(post_id))+'/?security_ls_key='+self.security_ls_key, \
+            headers={"referer": http_host+"/blog/"+str(post_id)+".html"}, \
+            redir=False\
+        ).getcode() / 100 == 3
             
     def toggle_blog_subscribe(self, blog_id):
         self.check_login()
@@ -315,10 +304,10 @@ class User:
 
         f = raw_data.find("<rss")
         if f < 250 and f >= 0:
-            node = simplexml.XML2Node(raw_data)
-            channel = node.getTag("channel")
-            if not channel:  raise TabunError("No RSS channel")
-            items = channel.getTags("item")
+            node = lxml.etree.fromstring(raw_data)
+            channel = node.find("channel")
+            if channel is None: raise TabunError("No RSS channel")
+            items = channel.findall("item")
             items.reverse()
             
             for item in items:
@@ -330,9 +319,7 @@ class User:
         else:
             data = raw_data[raw_data.find("<article class="):raw_data.rfind("</article> <!-- /.topic -->")+10]
             if not data: raise TabunError("No post")
-            parser = HTML2XML()
-            parser.feed(data)
-            items = parser.node.getTags("article")
+            items = filter(lambda x:not isinstance(x, (str, unicode)) and x.tag=="article", parse_html_fragment(data))
             items.reverse()
             
             for item in items:
@@ -360,21 +347,21 @@ class User:
         
         raw_data = raw_data = raw_data[raw_data.find('<div class="comments'):raw_data.rfind('<!-- /content -->')]
         
-        parser = HTML2XML()
-        parser.feed(raw_data)
+        print "parse"
+        div = parse_html_fragment(raw_data)
+        print "go"
+        if len(div) == 0: return []
+        div = div[0]
         
         raw_comms = []
-        
-        div = parser.node.getTag("div")
-        if not div: return []
-        
-        for node in div.getTags("div"):
-            if node['class'] == 'comment-wrapper':
+
+        for node in div.findall("div"):
+            if node.get('class') == 'comment-wrapper':
                 raw_comms.extend(parse_wrapper(node))
-                
-        for sect in div.getTags("section"):
-            if not sect['class']: continue
-            if "comment" in sect['class']:
+        
+        # for /comments/ page       
+        for sect in div.findall("section"):
+            if "comment" in sect.get('class', ''):
                 raw_comms.append(sect)
                 
         comms = []
@@ -383,8 +370,8 @@ class User:
             c = parse_comment(sect, post_id, blog)
             if c: comms.append(c)
             else:
-                if sect["id"] and sect["id"].find("comment_id_")==0:
-                    comms.append(int(sect["id"].rsplit("_",1)[-1]))
+                if sect.get("id", "").find("comment_id_")==0:
+                    comms.append(int(sect.get("id").rsplit("_",1)[-1]))
                 else:
                     print "wtf comment"
         
@@ -396,37 +383,35 @@ class User:
         
         data = self.urlopen(url).read()
         data = data[data.find('<table class="table table-blogs'):data.rfind('</table>')]
-        
-        parser = HTML2XML()
-        parser.feed(data)
-        
-        node = parser.node.getTag("table")
-        if node.getTag("tbody"): node = node.getTag("tbody")
+        node = parse_html_fragment(data)[0]
+        if node.find("tbody"): node = node.find("tbody")
         
         blogs = []
         
-        for tr in node.getTags("tr"):
-            p = tr.getTag("td", {"class":"cell-name"})
-            if not p: continue
-            p = p.getTag("p")
-            if not p: continue
-            a = p.getTag("a")
+        #for tr in node.findall("tr"):
+        #for p in node.xpath('tr/td[@class="cell-name"]/p'):
+        for tr in node.findall("tr"):
+            p = tr.xpath('td[@class="cell-name"]/p')
+            if len(p) == 0: continue
+            p=p[0]
+            a = p.find("a")
             
-            link = a['href']
+            link = a.get('href')
             if not link: continue
             
             blog = link[:link.rfind('/')].encode("utf-8")
             blog = blog[blog.rfind('/')+1:]
             
-            name = a.getData()
-            closed = bool(p.getTag("i", {"class":"icon-synio-topic-private"}))
+            name = unicode(a.text)
+            closed = bool(p.xpath('i[@class="icon-synio-topic-private"]'))
             
-            cell_readers = tr.getTag("td", {"class":"cell-readers"})
-            readers = int(cell_readers.getData())
-            blog_id = int(cell_readers['id'].rsplit("_",1)[-1])
-            rating = float(tr.getTags("td")[-1].getData())
+            cell_readers = tr.xpath('td[@class="cell-readers"]')[0]
+            readers = int(cell_readers.text)
+            blog_id = int(cell_readers.get('id').rsplit("_",1)[-1])
+            rating = float(tr.findall("td")[-1].text)
             
-            creator = tr.getTag("td", {"class":"cell-name"}).getTag("span", {"class":"user-avatar"}).getTags("a")[-1].getData().encode("utf-8")
+            #creator = tr.getTag("td", {"class":"cell-name"}).getTag("span", {"class":"user-avatar"}).getTags("a")[-1].getData().encode("utf-8")
+            creator = str( tr.xpath('td[@class="cell-name"]/span[@class="user-avatar"]/a')[-1].text )
             
             blogs.append( Blog(blog_id, blog, name, creator, readers, rating, closed) )
             
@@ -464,9 +449,8 @@ class User:
         if data['bStateError']: raise TabunResultError(data['sMsg'].encode("utf-8"))
         comms = []
         for comm in data['aComments']:
-            parser = HTML2XML()
-            parser.feed(comm['html'].encode("utf-8"))
-            pcomm = parse_comment(parser.node.kids[0], post_id, None, comm['idParent'])
+            node = parse_html_fragment(comm['html'])
+            pcomm = parse_comment(node[0], post_id, None, comm['idParent'])
             if pcomm: comms.append(pcomm)
         
         return comms
@@ -481,10 +465,7 @@ class User:
         data = self.jd.decode(data)
         if data['bStateError']: raise TabunResultError(data['sMsg'].encode("utf-8"))
         
-        parser = HTML2XML()
-        parser.feed(data['sText'].encode("utf-8"))
-        
-        node = parser.node.getTag("ul")
+        node = parse_html_fragment(data['sText'])
         if not node: return []
         
         items = []
@@ -514,180 +495,169 @@ class User:
         if f < 0: return []
         raw_data = raw_data[f:]
         raw_data = raw_data[:raw_data.find("</ul>")]
+        if not raw_data: return []
         
-        parser = HTML2XML()
-        parser.feed(raw_data)
-        node = parser.node.getTag("div")
-        if not node: return []
-        del parser, raw_data, f
-        node = node.getTag("ul")
+        node = parse_html_fragment(raw_data)[0]
+        del raw_data, f
+        node = node.find("ul")
         
         blogs = []
         
-        for item in node.getTags("li"):
-            blog_id = item.getTag("input")['onclick'].encode("utf-8")
+        for item in node.findall("li"):
+            blog_id = str(item.find("input").get('onclick'))
             blog_id = blog_id[blog_id.find("',")+2:]
             blog_id = int(blog_id[:blog_id.find(")")])
             
-            a = item.getTag("a")
+            a = item.find("a")
             
-            blog = a['href'].encode("utf-8")[:-1]
+            blog = str(a.get('href'))[:-1]
             blog = blog[blog.rfind("/")+1:]
             
-            name = a.getData()
+            name = unicode(a.text)
             
-            closed = bool(item.getTag("i", {"class": u"icon-synio-topic-private"}))
+            closed = bool(item.xpath('i[@class="icon-synio-topic-private"]'))
             
             blogs.append( Blog(blog_id, blog, name, "", closed=closed) )
         
         return blogs
 
 def parse_post(item, link=None):
-    header = findTag(item, "header", {"class": "topic-header"})
-    title = findTag(header, "h1", {"class":"topic-title word-wrap"})
-    if not title: return
+    header = item.find("header")
+    title = header.find("h1")
+    if title is None: return
     if not link:
-        link = findTag(title, "a")
-        if not link: return
-        link = link['href']
-        if not link: return
-    author = findTag(header, "a", {"rel": "author"})
-    if not author: return
-    else: author = author.getData().encode("utf-8")
-    post_id = int(link[link.rfind("/")+1:link.rfind(".h")])
+        link = title.find("a")
+        if link is None: return
+        link = link.get("href")
+        if link is None: return 
     
-    blog = link[:link.rfind('/')].encode("utf-8")
-    blog = blog[blog.rfind('/')+1:]
+    author = header.xpath('div/a[@rel="author"]/text()[1]')
+    if len(author) == 0: return
+    author = str(author[0])
     
-    title = title.getCDATA().strip()
-    private = not findTag(header, "a", {"class":"topic-blog private-blog"}) is None
+    blog, post_id = parse_post_url(link)
     
-    blog_name = findTag(header, "a", {"class": "topic-blog"})
-    if blog_name: blog_name = blog_name.getData().strip()
+    title = title.text_content().strip()
+    private = bool(header.xpath('div/a[@class="topic-blog private-blog"]'))
     
-    post_time = findTag(item, "time")
-    if post_time: post_time = time.strptime(post_time["datetime"], "%Y-%m-%dT%H:%M:%S+04:00")
+    blog_name = header.xpath('div/a[@class="topic-blog"]/text()[1]')
+    if len(blog_name) > 0: blog_name = unicode(blog_name[0])
+    else: blog_name = None
+    
+    post_time = item.xpath('footer/ul/li[1]/time')
+    if len(post_time) > 0: post_time = time.strptime(post_time[0].get("datetime"), "%Y-%m-%dT%H:%M:%S+04:00")
     else: post_time = time.localtime()
     
-    node = findTag(item, "div", {"class":"topic-content text"})
-    if not node:
+    node = item.xpath('div[@class="topic-content text"]')
+    if len(node) == 0:
         return
+    node = node[0]
     
-    nextbtn = node.getTag("a",{"title":u"Читать дальше"})
-    if nextbtn:
-        node.delChild(nextbtn)
+    nextbtn = node.xpath(u'a[@title="Читать дальше"][1]')
+    if len(nextbtn) > 0:
+        node.remove(nextbtn[0])
         
-    footer = findTag(item, "footer", {"class":"topic-footer"})
-    ntags = findTag(footer, "p")
-    if not ntags: return
+    footer = item.find("footer")
+    ntags = footer.find("p")
     tags = []
-    for ntag in ntags.getChildren():
-        if not ntag: continue
-        tags.append(ntag.getData())
+    for ntag in ntags.findall("a"):
+        if not ntag.text: continue
+        tags.append(unicode(ntag.text))
     
-    if node.data:
-        node.data[0] = node.data[0].lstrip()
-        node.data[-1] = node.data[-1].rstrip()
-    
-    return Post(post_time, blog, post_id, author, title, node, tags, short=not nextbtn is None, private=private, blog_name=blog_name)
+    return Post(post_time, blog, post_id, author, title, node, tags, short=len(nextbtn) > 0, private=private, blog_name=blog_name)
     
 def parse_rss_post(item):
-    link = item.getTag("link").getData().encode("utf-8")
+    link = str(item.find("link").text)
     
-    title = item.getTag("title").getCDATA().strip()
-    if not title: return
+    title = unicode(item.find("title").text)
+    if title is None:
+        return
     
-    author = item.getTag("creator")
-    if not author: author = item.getTag("dc:creator")
+    author = item.find("dc:creator", {"dc": "http://purl.org/dc/elements/1.1/"})
+    if author is None:
+        return
     
-    author = author.getData().encode("utf-8")
-    if not author: return
+    author = author.text
     
-    post_id = int(link[link.rfind("/")+1:link.rfind(".h")])
-    blog = link[:link.rfind('/')].encode("utf-8")
-    blog = blog[blog.rfind('/')+1:]
+    if not author:
+        return
+    
+    blog, post_id = parse_post_url(link)
     
     private = False # в RSS закрытые блоги пока не обнаружены
     
-    post_time = item.getTag("pubDate")
-    if post_time and post_time.getData(): post_time = time.strptime(post_time.getData().encode("utf-8").split(" ",1)[-1], "%d %b %Y %H:%M:%S +0400")
-    else: post_time = time.localtime()
+    post_time = item.find("pubDate")
+    if post_time is not None and post_time.text is not None:
+        post_time = time.strptime(str(post_time.text).split(" ",1)[-1], "%d %b %Y %H:%M:%S +0400")
+    else:
+        post_time = time.localtime()
     
-    node = item.getTag("description").getCDATA()
+    node = item.find("description").text
     if not node: return
-    parser = HTML2XML()
-    parser.feed(node.encode("utf-8"))
-    node = parser.node
-    node['class'] = "topic-content text"
-    del parser
+    node = parse_html_fragment(u"<div class='topic-content text'>" + node + '</div>')[0]
     
-    nextbtn = node.getTag("a",{"title":u"Читать дальше"})
-    if nextbtn:
-        node.delChild(nextbtn)
-
-    if node.data:
-        node.data[0] = node.data[0].lstrip()
-        node.data[-1] = node.data[-1].rstrip()
+    nextbtn = node.xpath(u'a[@title="Читать дальше"][1]')
+    if len(nextbtn) > 0:
+        node.remove(nextbtn[0])
       
-    ntags = item.getTags("category")
+    ntags = item.findall("category")
     if not ntags: return
     tags = []
     for ntag in ntags:
-        if not ntag: continue
-        tags.append(ntag.getData())
+        if ntag.text: continue
+        tags.append(unicode(ntag.text))
         
-    return Post(post_time, blog, post_id, author, title, node, tags, short=not nextbtn is None, private=private)     
+    return Post(post_time, blog, post_id, author, title, node, tags, short=len(nextbtn) > 0, private=private)
 
 def parse_wrapper(node):
     comms = []
     nodes = [node]
     i=0
-    while nodes:
+    while len(nodes) > 0:
         node = nodes.pop(0)
-        sect = node.getTag("section")
-        if not sect['class']: break
-        if not "comment" in sect['class']: break
+        sect = node.find("section")
+        if not sect.get('class'): break
+        if not "comment" in sect.get('class'): break
         comms.append(sect)
-        nodes.extend(node.getTags("div", {"class": "comment-wrapper"}))
+        nodes.extend(node.xpath('div[@class="comment-wrapper"]'))
     return comms
 
 def parse_comment(node, post_id, blog=None, parent_id=None):
+    body = None
     try:
-        body = node.getTag("div", {"class":"comment-content"}).getTag("div")
-        if body.data:
-            body.data[0] = body.data[0].lstrip()
-            body.data[-1] = body.data[-1].rstrip()
-        info = node.getTag("ul", {"class":"comment-info"})
-        if not info: info = node.getTag("div", {"class":"comment-path"}).getTag("ul", {"class":"comment-info"})
-        nick = info.getTags("li")[0].getTags("a")[-1].getData()
-        tm = info.getTags("li")[1].getTag("time")['datetime']
+        body = node.xpath('div[@class="comment-content"][1]/div')[0]
+        info = node.xpath('ul[@class="comment-info"]')
+        if len(info) == 0:
+            info = node.xpath('div[@class="comment-path"]/ul[@class="comment-info"]')[0]
+        else:
+            info = info[0]
+        
+        nick = info.findall("li")[0].findall("a")[-1].text
+        tm = info.findall("li")[1].find("time").get('datetime')
         tm = time.strptime(tm, "%Y-%m-%dT%H:%M:%S+04:00")
         
-        comment_id = int(info.getTag("li", {"class": "comment-link"}).getTag("a")['href'].rsplit("/",1)[-1])
+        comment_id = int(info.xpath('li[@class="comment-link"]/a')[0].get('href').rsplit("/",1)[-1])
         post_title = None
         try:
-            link = info.getTags("li")
-            if not link or link[-1]['id']: link = info
+            link = info.findall("li")
+            if not link or link[-1].get('id'): link = info
             else: link = link[-1]
-            link = link.getTag("a", {"class":"comment-path-topic"})
-            post_title = link.getData()
-            link = link['href']
-            post_id = int(link[link.rfind("/")+1:link.rfind(".h")])
-            blog = link[:link.rfind('/')].encode("utf-8")
-            blog = blog[blog.rfind('/')+1:]
+            link = link.xpath('a[@class="comment-path-topic"]')[0]
+            post_title = link.text
+            link = link.get('href')
+            blog, post_id = parse_post_url(link)
         except KeyboardInterrupt: raise
         except: pass
         
         if not parent_id:
-            parent_id = info.getTag("li", {"class": "goto goto-comment-parent"})
-            if parent_id:
-                parent_id = int(parent_id.getTag("a")['onclick'].rsplit(",",1)[-1].split(")",1)[0])
+            parent_id = info.xpath('li[@class="goto goto-comment-parent"]')
+            if len(parent_id) > 0:
+                parent_id = int(parent_id[0].find("a").get('onclick').rsplit(",",1)[-1].split(")",1)[0])
             else: parent_id = None
             
-    except AttributeError: return
+    except AttributeError: raise# return
     
-    if not body: return
-    return Comment(tm, blog, post_id, comment_id, nick, body, parent_id, post_title)
+    if body is not None: return Comment(tm, blog, post_id, comment_id, nick, body, parent_id, post_title)
 
 def parse_post_url(link):
     if not link or not "/blog/" in link: return None, None
@@ -695,7 +665,21 @@ def parse_post_url(link):
     blog = link[:link.rfind('/')].encode("utf-8")
     blog = blog[blog.rfind('/')+1:]
     return blog, post_id
-    
+
+def parse_html(data, encoding='utf-8'):
+    #if isinstance(data, unicode): encoding = None
+    #doc = html5lib.parse(data, treebuilder="lxml", namespaceHTMLElements=False, encoding=encoding)
+    if isinstance(data, str): data = data.decode(encoding, "replace")
+    doc = lxml.html.fromstring(data)
+    return doc
+
+def parse_html_fragment(data, encoding='utf-8'):
+    #if isinstance(data, unicode): encoding = None
+    #doc = html5lib.parseFragment(data, treebuilder="lxml", namespaceHTMLElements=False, encoding=encoding)
+    if isinstance(data, str): data = data.decode(encoding, "replace")
+    doc = lxml.html.fragments_fromstring(data)
+    return doc
+
 def htmlToString(node, with_cutted=True, fancy=True, vk_links=False):
     data = u""
     newlines = 0
@@ -775,37 +759,124 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False):
     
     return data.strip()
 
-def node2string(self,fancy=0, oncelist=('br', 'hr', 'img', 'source')):
-    # modified simplexml method
-    """ Method used to dump node into textual representation.
-        if "fancy" argument is set to True produces indented output for readability."""
-    s = (fancy-1) * 2 * ' ' + "<" + self.name
-    if self.namespace:
-        if not self.parent or self.parent.namespace!=self.namespace:
-            if 'xmlns' not in self.attrs:
-                s = s + ' xmlns="%s"'%self.namespace
-    for key in self.attrs.keys():
-        val = simplexml.ustr(self.attrs[key])
-        s = s + ' %s="%s"' % ( key, simplexml.XMLescape(val) )
-    s = s + ">"
-    cnt = 0
-    if self.kids:
-        if fancy: s = s + "\n"
-        for a in self.kids:
-            if not fancy and (len(self.data)-1)>=cnt: s=s+simplexml.XMLescape(self.data[cnt])
-            elif (len(self.data)-1)>=cnt: s=s+simplexml.XMLescape(self.data[cnt].strip())
-            if isinstance(a, simplexml.Node):
-                s = s + node2string(a, fancy and fancy+1, oncelist)
-            elif a:
-                s = s + a.__str__()
-            cnt=cnt+1
-    if not fancy and (len(self.data)-1) >= cnt: s = s + simplexml.XMLescape(self.data[cnt])
-    elif (len(self.data)-1) >= cnt: s = s + simplexml.XMLescape(self.data[cnt].strip())
-    if self.name in oncelist and not self.kids and s.endswith('>'):
-        s=s[:-1]+' />'
-        if fancy: s = s + "\n"
-    else:
-        if fancy and not self.data and self.kids: s = s + (fancy-1) * 2 * ' '
-        s = s + "</" + self.name + ">"
-        if fancy: s = s + "\n"
-    return s
+block_elems = ("div", "p", "blockquote", "section", "ul", "li", "h1", "h2", "h3", "h4", "h5", "h6")
+def htmlToString(node, with_cutted=True, fancy=True, vk_links=False):
+    data = u""
+    newlines = 0
+    
+    if node.text:
+        ndata = node.text.replace(u"\n", u" ")
+        if newlines: ndata = ndata.lstrip()
+        data += ndata
+        if ndata: newlines = 0
+    
+    prev_text = None
+    prev_after = None
+    for item in node.iterchildren():
+        if prev_text:
+            ndata = prev_text.replace(u"\n", u" ")
+            if newlines: ndata = ndata.lstrip()
+            data += ndata
+            if ndata: newlines = 0
+        if prev_after:
+            ndata = prev_after.replace(u"\n", u" ")
+            if newlines: ndata = ndata.lstrip()
+            data += ndata
+            if ndata: newlines = 0
+        
+        if item.tail:
+            prev_after = item.tail
+        else:
+            prev_after = None
+        prev_text = item.text
+        
+        if item.tag == "br":
+            if newlines < 2:
+                data += u"\n"
+                newlines += 1
+        elif item.tag == "hr":
+            data += u"\n=====\n"
+            newlines = 1
+        elif fancy and item.get('class') == 'spoiler-title':
+            prev_text = None
+            continue
+        elif fancy and item.tag == 'a' and item.get('title') == u"Читать дальше":
+            prev_text = None
+            continue
+        elif not with_cutted and item.tag == "a" and item.get("rel") == "nofollow" and not item.text_content() and not item.getchildren():
+            return data.strip()
+        elif item.tag in ("img",):
+            continue
+        
+        elif vk_links and item.tag == "a" and item.get('href', '').find("://vk.com/") > 0:
+            href = item.get('href')
+            addr = href[href.find("com/")+4:]
+            if addr[-1] in (".", ")"): addr = addr[:-1]
+            
+            stop=False
+            for c in (u"/", u"?", u"&", u"(", u",", u")", u"|"):
+                if c in addr:
+                    stop=True
+                    break
+            if stop:
+                data += item.text_content()
+                prev_text = None
+                continue
+            
+            for typ in (u"wall", u"photo", u"page", u"video", u"topic", u"app"):
+                if addr.find(typ) == 0:
+                    stop=True
+                    break
+            if stop:
+                data += item.text_content()
+                prev_text = None
+                continue
+            
+            ndata = item.text_content().replace("[", " ").replace("|", " ").replace("]", " ")
+            data += " [" + addr + "|" + ndata + "] "
+            prev_text = None
+        
+        else:
+            if item.tag in ("li", ):
+                data += u"• "
+            elif data and item.tag in block_elems and not newlines:
+                data += u"\n"
+                newlines = 1
+            
+            if prev_text:
+                prev_text = None
+                
+            tmp = htmlToString(item, fancy=fancy, vk_links=vk_links)
+            newlines = 0
+            
+            if item.tag == "s": # зачёркивание
+                tmp1=""
+                for x in tmp:
+                    tmp1 += x + u'\u0336'
+                tmp1 = "<s>" + tmp1 + "</s>"
+            elif item.tag == "blockquote": # цитата
+                tmp1 = u" «" + tmp + u"»\n"
+                newlines = 1
+            else: tmp1 = tmp
+            
+            data += tmp1
+            
+            if item.tag in block_elems and not newlines:
+                data += u"\n"
+                newlines = 1
+                
+    if prev_text:
+        ndata = prev_text.replace(u"\n", u" ")
+        if newlines: ndata = ndata.lstrip()
+        data += ndata
+        if ndata: newlines = 0
+    if prev_after:
+        ndata = prev_after.replace(u"\n", u" ")
+        if newlines: ndata = ndata.lstrip()
+        data += ndata
+        if ndata: newlines = 0
+
+    return data.strip()
+
+def node2string(node):
+    return lxml.etree.tostring(node, method="html", encoding="utf-8")
