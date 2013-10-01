@@ -417,7 +417,7 @@ class User:
             
         return blogs
         
-    def get_posts_and_comments(self, post_id, blog=None, raw_data=None):
+    def get_post_and_comments(self, post_id, blog=None, raw_data=None):
         post_id = int(post_id)
         if not raw_data:
             req = self.urlopen("/blog/" + (blog+"/" if blog else "") + str(post_id) + ".html")
@@ -428,7 +428,7 @@ class User:
         post = self.get_posts(url=url, raw_data=raw_data)
         comments = self.get_comments(url=url, raw_data=raw_data)
         
-        return post[0], comments
+        return post[0] if post else None, comments
         
     def get_comments_from(self, post_id, comment_id=0):
         self.check_login()
