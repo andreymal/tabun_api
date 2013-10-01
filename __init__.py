@@ -553,6 +553,9 @@ def parse_post(item, link=None):
         return
     node = node[0]
     
+    node.text = node.text.lstrip()
+    node.tail = ""
+    
     nextbtn = node.xpath(u'a[@title="Читать дальше"][1]')
     if len(nextbtn) > 0:
         node.remove(nextbtn[0])
@@ -679,83 +682,6 @@ def parse_html_fragment(data, encoding='utf-8'):
     if isinstance(data, str): data = data.decode(encoding, "replace")
     doc = lxml.html.fragments_fromstring(data)
     return doc
-
-def htmlToString(node, with_cutted=True, fancy=True, vk_links=False):
-    data = u""
-    newlines = 0
-    for item in node.getPayload():
-        if not item: continue
-        if isinstance(item, unicode):
-            ndata = item.replace(u"\n", u" ")
-            if newlines: ndata = ndata.lstrip()
-            data += ndata
-            if ndata: newlines = 0
-            continue
-        
-        if item.getName() == "br":
-            if newlines < 2:
-                data += u"\n"
-                newlines += 1
-        elif item.getName() == "hr":
-            data += "\n=====\n"
-            newlines = 1
-        
-        elif fancy and item['class'] == "spoiler-title":
-            continue
-        elif fancy and item.getName() == "a" and item['title'] == u"Читать дальше":
-            continue
-        elif not with_cutted and item.getName() == "a" and item['rel'] == 'nofollow' and not item.getCDATA() and not item.getTag("img"):
-            return data.strip()
-        elif item.getName() in ("img",):
-            continue
-        
-        elif vk_links and item.getName() == "a" and item['href'] and item['href'].find("://vk.com/") > 0:
-            href = item['href']
-            addr = href[href.find("com/")+4:]
-            if addr[-1] in (".", ")"): addr = addr[:-1]
-            
-            stop=False
-            for c in (u"/", u"?", u"&", u"(", u",", u")", u"|"):
-                if c in addr:
-                    data += item.getCDATA()
-                    stop=True
-                    break
-            if stop: continue
-            
-            for typ in (u"wall", u"photo", u"page", u"video", u"topic", u"app"):
-                if addr.find(typ) == 0:
-                    data += item.getCDATA()
-                    stop=True
-                    break
-            if stop: continue
-            
-            ndata = item.getData().replace("[", " ").replace("|", " ").replace("]", " ")
-            data += " [" + addr + "|" + ndata + "] "
-        
-        else:
-            if item.getName() in ("li", ):
-                data += u"• "
-            elif data and item.getName() in ("div", "p", "blockquote", "section", "ul", "li", "h1", "h2", "h3", "h4", "h5", "h6") and not newlines:
-                data += u"\n"
-                newlines = 1
-            tmp = htmlToString(item)
-            newlines = 0
-            
-            if item.getName() == "s": # зачёркивание
-                tmp1=""
-                for x in tmp:
-                    tmp1 += x + u'\u0336'
-                tmp1 = "<s>" + tmp1 + "</s>"
-            elif item.getName() == "blockquote": # цитата
-                tmp1 = u" «" + tmp + u"»\n"
-                newlines = 1
-            else: tmp1 = tmp
-            
-            data += tmp1
-            
-            if item.getName() in ("div", "p", "blockquote", "section", "ul", "li", "h1", "h2", "h3", "h4", "h5", "h6") and not newlines:
-                data += u"\n"
-                newlines = 1
     
     return data.strip()
 
