@@ -93,8 +93,10 @@ def exec_api(query):
             return {"error": 400, "data": "Invalid URL"}
         with user_lock:
             user.phpsessid = phpsessid
-            posts = user.get_posts(url)
-        posts = map(post2json, posts)
+            raw_posts = user.get_posts(url)
+        posts = []
+        for post in raw_posts:
+            posts.append( post2json(post, body_mode=str(query.get("body_mode", ""))) )
         return {"result": posts}
     
     elif method == "get_post":
@@ -126,8 +128,10 @@ def exec_api(query):
             return {"error": 400, "data": "Invalid URL"}
         with user_lock:
             user.phpsessid = phpsessid
-            comments = user.get_comments(url)
-        comments = map(comment2json, comments)
+            raw_comments = user.get_comments(url)
+        comments = []
+        for comment in raw_comments:
+            comments.append( comment2json(comment, body_mode=str(query.get("body_mode", ""))) )
         return {"result": comments}
     
     elif method == "methods":
@@ -140,21 +144,28 @@ def exec_api(query):
     else:
         return {"error": 405, "data": "Unknown Method"}
 
-def post2json(post):
+def post2json(post, body_mode='raw'):
+    if not body_mode: body_mode = 'raw'
     post_dict = {
-        'time': time.mktime(post.time),
+        'time': int(time.mktime(post.time)),
         'blog': post.blog,
         'post_id': post.post_id,
         'author': post.author,
         'title': post.title.encode("utf-8"),
-        'body': api.node2string(post.body) if not isinstance(post.body, str) else post.body,
+        'body': post.body,
         'tags': map(lambda x:x.encode("utf-8"), post.tags),
         'short': post.short,
-        'private': post.private
+        'private': post.private,
+        'blog_name': post.blog_name.encode("utf-8") if post.blog_name else None
     }
+    if body_mode == 'html2json':
+        post_dict['body'] = html2json(post.body)
+    else:
+        post_dict['body'] = api.node2string(post.body)
     return post_dict
 
-def comment2json(comment, with_title=False):
+def comment2json(comment, body_mode='raw'):
+    if not body_mode: body_mode = 'raw'
     if isinstance(comment, (int, long)):
         return {
             'time': 0,
@@ -163,22 +174,53 @@ def comment2json(comment, with_title=False):
             'comment_id': 0,
             'parent_id': 0,
             'author': "",
-            'body': u"",
+            'body': null,
             'del': 1
         }
     comment_dict = {
-        'time': time.mktime(comment.time),
+        'time': int(time.mktime(comment.time)),
         'blog': comment.blog,
         'post_id': comment.post_id,
         'comment_id': comment.comment_id,
         'parent_id': comment.parent_id,
         'author': comment.author,
-        'body': api.node2string(comment.body) if not isinstance(comment.body, str) else comment.body,
+        'body': comment.body,
         'del': 0
     }
-    if with_title:
-        comment_dict['post_title'] = comment.post_title
+
+    if body_mode == 'html2json':
+        comment_dict['body'] = html2json(comment.body)
+    else:
+        comment_dict['body'] = api.node2string(comment.body)
+
     return comment_dict
+
+def html2json(node):
+    jnode = []
+    last_is_text = False
+    if node.text:
+        jnode.append(node.text.encode("utf-8").replace("\r", "").replace("\n", ""))
+        last_is_text = True
+    for child in node.iterchildren():
+        #if child.tag == "br":
+        #    if last_is_text: jnode[-1] += "\n"
+        #    else: jnode.append("\n")
+        #    last_is_text = True
+        
+        #else:
+        attrib = {}
+        for key in child.attrib.keys():
+            attrib[key.encode("utf-8")] = child.attrib[key].encode("utf-8")
+        jchild = [child.tag.encode("utf-8"), attrib, html2json(child)]
+        jnode.append(jchild)
+        last_is_text = False
+        
+        if child.tail:
+            tail = child.tail.encode("utf-8").replace("\r", "").replace("\n", "")
+            if last_is_text: jnode[-1] += tail
+            else: jnode.append(tail)
+            last_is_text = True
+    return jnode
 
 def parse(conn, addr):
     try:
@@ -229,12 +271,17 @@ def parse(conn, addr):
                 result = {"error": 500, "data": "Internal Server Error"}
                 log("query:", str(query)[:2000])
             
+            qid = query.get("id")
+            if isinstance(qid, unicode): qid = qid.encode("utf-8")
+            if isinstance(qid, str): result["id"] = qid[:50]
+            
             if query.get("fancy"):
                 result = je_fancy.encode(result)
             else:
                 result = je.encode(result)
             send_packet(conn, result)
-            
+    
+    except socket.error: pass     
     finally:
         log(ip, "disconnected")
         try: conn.close()

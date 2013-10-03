@@ -347,9 +347,7 @@ class User:
         
         raw_data = raw_data = raw_data[raw_data.find('<div class="comments'):raw_data.rfind('<!-- /content -->')]
         
-        print "parse"
         div = parse_html_fragment(raw_data)
-        print "go"
         if len(div) == 0: return []
         div = div[0]
         
@@ -555,6 +553,10 @@ def parse_post(item, link=None):
     
     node.text = node.text.lstrip()
     node.tail = ""
+    if len(node) > 0 and node[-1].tail:
+        node[-1].tail = node[-1].tail.rstrip()
+    elif len(node) == 0 and node.text:
+        node.text = node.text.rstrip()
     
     nextbtn = node.xpath(u'a[@title="Читать дальше"][1]')
     if len(nextbtn) > 0:
@@ -634,6 +636,14 @@ def parse_comment(node, post_id, blog=None, parent_id=None):
             info = node.xpath('div[@class="comment-path"]/ul[@class="comment-info"]')[0]
         else:
             info = info[0]
+
+        if body is not None:
+            body.text = body.text.lstrip()
+            body.tail = ""
+            if len(body) > 0 and body[-1].tail:
+                body[-1].tail = body[-1].tail.rstrip()
+            elif len(body) == 0 and body.text:
+                body.text = body.text.rstrip()
         
         nick = info.findall("li")[0].findall("a")[-1].text
         tm = info.findall("li")[1].find("time").get('datetime')
