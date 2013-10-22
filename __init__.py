@@ -37,17 +37,21 @@ class TabunError(Exception):
 class TabunResultError(TabunError): pass
 
 class Post:
-    def __init__(self, time, blog, post_id, author, title, body, tags, short=False, private=False, blog_name=None):
+    def __init__(self, time, blog, post_id, author, title, draft, vote_count, vote_total, body, tags, short=False, private=False, blog_name=None, poll=None):
         self.time = time
         self.blog = str(blog)
         self.post_id = int(post_id)
         self.author = str(author)
         self.title = unicode(title)
+        self.draft = bool(draft)
+        self.vote_count = int(vote_count) if not vote_count is None else None
+        self.vote_total = int(vote_total) if not vote_total is None else None
         self.body = body
         self.tags = tags
         self.short = bool(short)
         self.private = bool(private)
         self.blog_name = unicode(blog_name) if blog_name else None
+        self.poll = poll
         
     def __repr__(self):
         return "<post " + self.blog + "/" + str(self.post_id) + ">"
@@ -56,13 +60,14 @@ class Post:
         return self.__repr__()
 
 class Comment:
-    def __init__(self, time, blog, post_id, comment_id, author, body, parent_id=None, post_title=None):
+    def __init__(self, time, blog, post_id, comment_id, author, body, vote, parent_id=None, post_title=None):
         self.time = time
         self.blog = str(blog) if blog else None
         self.post_id = int(post_id)
         self.comment_id = int(comment_id)
         self.author = str(author)
         self.body = body
+        self.vote = int(vote)
         if parent_id: self.parent_id = int(parent_id)
         else: self.parent_id = None
         if post_title: self.post_title = unicode(post_title)
@@ -105,6 +110,27 @@ class StreamItem:
     def __str__(self):
         return self.__repr__()
 
+class UserInfo:
+    def __init__(self, username, realname, skill, rating, userpic=None):
+        self.username = str(username)
+        self.realname = unicode(realname) if realname else None
+        self.skill = float(skill)
+        self.rating = float(rating)
+        self.userpic = str(userpic) if userpic else None
+    
+    def __repr__(self):
+        return "<userinfo " + self.username + ">"
+    
+    def __str__(self):
+        return self.__repr__()
+
+class Poll:
+    def __init__(self, total, notvoted, items):
+        self.total = int(total)
+        self.notvoted = int(notvoted)
+        self.items = []
+        for x in items:
+            self.items.append( (unicode(x[0]), float(x[1]), int(x[2])) )
  
 class User:
     phpsessid = None
@@ -198,7 +224,8 @@ class User:
         for header, value in headers_example.items():
             url.add_header(header, value)
         if headers:
-            for header, value in headers.items(): url.add_header(header, value)
+            for header, value in headers.items():
+                if header and value: url.add_header(header, value)
         
         try:
             return (self.opener.open if redir else self.noredir.open)(url, timeout=10)
@@ -381,8 +408,10 @@ class User:
         
         data = self.urlopen(url).read()
         data = data[data.find('<table class="table table-blogs'):data.rfind('</table>')]
-        node = parse_html_fragment(data)[0]
-        if node.find("tbody"): node = node.find("tbody")
+        node = parse_html_fragment(data)
+        if not node: return []
+        node = node[0]
+        if node.find("tbody") is not None: node = node.find("tbody")
         
         blogs = []
         
@@ -408,7 +437,6 @@ class User:
             blog_id = int(cell_readers.get('id').rsplit("_",1)[-1])
             rating = float(tr.findall("td")[-1].text)
             
-            #creator = tr.getTag("td", {"class":"cell-name"}).getTag("span", {"class":"user-avatar"}).getTags("a")[-1].getData().encode("utf-8")
             creator = str( tr.xpath('td[@class="cell-name"]/span[@class="user-avatar"]/a')[-1].text )
             
             blogs.append( Blog(blog_id, blog, name, creator, readers, rating, closed) )
@@ -518,6 +546,72 @@ class User:
             blogs.append( Blog(blog_id, blog, name, "", closed=closed) )
         
         return blogs
+        
+    def get_people_list(self, page=1, order_by="user_rating", order_way="desc", url=None):
+        if not url:
+            url = "/people/" + ("page"+str(page)+"/" if page>1 else "") + "?order=" + str(order_by) + "&order_way=" + str(order_way)
+
+        data = self.urlopen(url).read()
+        data = data[data.find('<table class="table table-users'):data.rfind('</table>')]
+        node = parse_html_fragment(data)
+        if not node: return []
+        node = node[0]
+        if node.find("tbody") is not None: node = node.find("tbody")
+        
+        peoples  = []
+        
+        for tr in node.findall("tr"):
+            username = tr.xpath('td[@class="cell-name"]/div/p[1]/a/text()[1]')
+            if not username: continue
+            
+            realname = tr.xpath('td[@class="cell-name"]/div/p[2]/text()[1]')
+            if not realname: realname = None
+            else: realname = unicode(realname[0])
+            
+            skill = tr.xpath('td[@class="cell-skill"]/text()[1]')
+            if not skill: continue
+            
+            rating = tr.xpath('td[@class="cell-rating "]/strong/text()[1]')
+            if not rating: continue
+            
+            userpic = tr.xpath('td[@class="cell-name"]/a/img/@src')
+            if not userpic: continue
+            
+            peoples.append(UserInfo(username[0], realname, skill[0], rating[0], userpic=userpic[0]))
+            
+        return peoples
+        
+    def poll_answer(self, post_id, answer=-1):
+        self.check_login()
+        if answer < -1: answer = -1
+        if post_id < 0: post_id = 0
+        
+        fields = {
+            "idTopic": str(post_id),
+            "idAnswer": str(answer),
+            "security_ls_key": self.security_ls_key
+        }
+        
+        data = self.send_form('/ajax/vote/question/', fields, (), headers={'x-requested-with': 'XMLHttpRequest'}).read()
+        result = self.jd.decode(data)
+        if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
+        poll = parse_html_fragment('<div id="topic_question_area_'+str(post_id)+'" class="poll">' + result['sText'] + '</div>')
+        return parse_poll(poll[0])
+    
+    def vote(self, post_id, value=0):
+        self.check_login()
+        
+        fields = {
+            "idTopic": str(post_id),
+            "value": str(value),
+            "security_ls_key": self.security_ls_key
+        }
+        
+        data = self.send_form('/ajax/vote/topic/', fields, (), headers={'x-requested-with': 'XMLHttpRequest'}).read()
+        result = self.jd.decode(data)
+        if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
+        return int(result['iRating'])
+        
 
 def parse_post(item, link=None):
     header = item.find("header")
@@ -569,8 +663,49 @@ def parse_post(item, link=None):
         if not ntag.text: continue
         tags.append(unicode(ntag.text))
     
-    return Post(post_time, blog, post_id, author, title, node, tags, short=len(nextbtn) > 0, private=private, blog_name=blog_name)
+    draft = bool(header.xpath('h1/i[@class="icon-synio-topic-draft"]'))
     
+    rateelem = header.xpath('div[@class="topic-info"]/div[@class="topic-info-vote"]/div/div[@class="vote-item vote-count"]')
+    if not rateelem: return
+    else: rateelem = rateelem[0]
+    
+    vote_count = int(rateelem.get("title").rsplit(" ",1)[-1])
+    vote_total = rateelem.getchildren()[0]
+    if not vote_total.getchildren():
+        vote_total = int(vote_total.text.replace("+", ""))
+    else:
+        vote_total = None
+    
+    poll = item.xpath('div[@class="poll"]')
+    if poll: poll = parse_poll(poll[0])
+    
+    return Post(post_time, blog, post_id, author, title, draft, vote_count, vote_total, node, tags, short=len(nextbtn) > 0, private=private, blog_name=blog_name, poll=poll)
+
+def parse_poll(poll):
+    ul = poll.find('ul[@class="poll-result"]')
+    if ul is not None:
+        items = []
+        for li in ul.findall('li'):
+            item = [None, 0.0, 0]
+            item[0] = li.xpath('dl/dd/text()[1]')[0].strip()
+            item[1] = float(li.xpath('dl/dt/strong/text()[1]')[0][:-1])
+            item[2] = int(li.xpath('dl/dt/span/text()[1]')[0][1:-1])
+            items.append(item)
+        poll_total = poll.xpath('div[@class="poll-total"]/text()')[-2:]
+        total = int(poll_total[-2].rsplit(" ",1)[-1])
+        notvoted = int(poll_total[-1].rsplit(" ",1)[-1])
+        return Poll(total, notvoted, items)
+    else:
+        ul = poll.find('ul[@class="poll-vote"]')
+        if ul is None: return
+        items = []
+        for li in ul.findall('li'):
+            item = [None, -1.0, -1]
+            item[0] = li.xpath('label/text()[1]')[0].strip()
+            items.append(item)
+        return Poll(-1, -1, items)
+        
+ 
 def parse_rss_post(item):
     link = str(item.find("link").text)
     
@@ -667,10 +802,13 @@ def parse_comment(node, post_id, blog=None, parent_id=None):
             if len(parent_id) > 0:
                 parent_id = int(parent_id[0].find("a").get('onclick').rsplit(",",1)[-1].split(")",1)[0])
             else: parent_id = None
+        
+        vote = int(info.xpath('li[starts-with(@id, "vote_area_comment")]/span[@class="vote-count"]/text()[1]')[0].replace("+", ""))
             
-    except AttributeError: raise# return
+    except AttributeError: return
+    except IndexError: return
     
-    if body is not None: return Comment(tm, blog, post_id, comment_id, nick, body, parent_id, post_title)
+    if body is not None: return Comment(tm, blog, post_id, comment_id, nick, body, vote, parent_id, post_title)
 
 def parse_post_url(link):
     if not link or not "/blog/" in link: return None, None
