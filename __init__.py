@@ -631,6 +631,20 @@ class User:
         if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
         return int(result['iRating'])
 
+    def edit_comment(self, comment_id, text):
+        self.check_login()
+        
+        fields = {
+            "commentId": str(int(comment_id)),
+            "text": text.encode("utf-8"),
+            "security_ls_key": self.security_ls_key
+        }
+        
+        data = self.send_form('/role_ajax/savecomment/', fields, (), headers={'x-requested-with': 'XMLHttpRequest'}).read()
+        result = self.jd.decode(data)
+        if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
+        return int(result['iRating'])
+
 def parse_post(item, link=None):
     header = item.find("header")
     title = header.find("h1")
