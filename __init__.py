@@ -282,7 +282,26 @@ class User:
         
         link = self.send_form('/topic/add/', fields, redir=False).headers.get('location')
         return parse_post_url(link)
+
+    def preview_post(self, blog_id, title, body, tags):
+        self.check_login()
         
+        fields = {
+            'topic_type': 'topic',
+            'security_ls_key': self.security_ls_key,
+            'blog_id': str(blog_id),
+            'topic_title': unicode(title).encode("utf-8"),
+            'topic_text': unicode(body).encode("utf-8"),
+            'topic_tags': unicode(tags).encode("utf-8")
+        }
+        
+        data = self.send_form('/ajax/preview/topic/', fields, (), headers={'x-requested-with': 'XMLHttpRequest'}).read()
+        node = parse_html_fragment(data)[0]
+        data = node.text
+        result = self.jd.decode(data)
+        if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
+        return result['sText']
+       
     def delete_post(self, post_id, security_ls_key=None, cookie=None):
         self.check_login()
         return self.urlopen(\
@@ -611,7 +630,6 @@ class User:
         result = self.jd.decode(data)
         if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
         return int(result['iRating'])
-        
 
 def parse_post(item, link=None):
     header = item.find("header")
@@ -747,7 +765,7 @@ def parse_rss_post(item):
         if ntag.text: continue
         tags.append(unicode(ntag.text))
         
-    return Post(post_time, blog, post_id, author, title, node, tags, short=len(nextbtn) > 0, private=private)
+    return Post(post_time, blog, post_id, author, title, False, 0, 0, node, tags, short=len(nextbtn) > 0, private=private)
 
 def parse_wrapper(node):
     comms = []
