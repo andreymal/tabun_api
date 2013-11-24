@@ -80,7 +80,7 @@ class Comment:
         return self.__repr__()
 
 class Blog:
-    def __init__(self, blog_id, blog, name, creator, readers=0, rating=0.0, closed=False):
+    def __init__(self, blog_id, blog, name, creator, readers=0, rating=0.0, closed=False, description=None, admins=None, moderators=None, vote_count=-1, posts_count=-1):
         self.blog_id = int(blog_id)
         self.blog = str(blog)
         self.name = unicode(name)
@@ -88,6 +88,11 @@ class Blog:
         self.readers = int(readers)
         self.rating = int(rating)
         self.closed = bool(closed)
+        self.description = description
+        self.admins = admins
+        self.moderators = moderators
+        self.vote_count = int(vote_count)
+        self.posts_count = int(posts_count)
 
     def __repr__(self):
         return "<blog " + self.blog + ">"
@@ -363,7 +368,7 @@ class User:
             return posts
         
         else:
-            data = raw_data[raw_data.find("<article class="):raw_data.rfind("</article> <!-- /.topic -->")+10]
+            data = raw_data[raw_data.find("<article "):raw_data.rfind("</article> <!-- /.topic -->")+10]
             if not data: raise TabunError("No post")
             items = filter(lambda x:not isinstance(x, (str, unicode)) and x.tag=="article", parse_html_fragment(data))
             items.reverse()
@@ -461,7 +466,53 @@ class User:
             blogs.append( Blog(blog_id, blog, name, creator, readers, rating, closed) )
             
         return blogs
+    
+    def get_blog(self, blog, raw_data=None):
+        if not raw_data:
+            req = self.urlopen("/blog/" + str(blog).replace("/", "") + "/")
+            url = req.url
+            raw_data = req.read()
+            del req
+        data = raw_data[raw_data.find('<div class="blog-top">'):raw_data.find('<div class="nav-menu-wrapper">')]
         
+        node = parse_html_fragment('<div>' + data + '</div>')
+        if not node: return
+        
+        blog_top = node[0].xpath('div[@class="blog-top"]')[0]
+        blog_inner = node[0].xpath('div[@id="blog"]/div[@class="blog-inner"]')[0]
+        blog_footer = node[0].xpath('div[@id="blog"]/footer[@class="blog-footer"]')[0]
+    
+        name = blog_top.xpath('h2/text()[1]')[0]
+        closed = len(blog_top.xpath('h2/i[@class="icon-synio-topic-private"]')) > 0
+    
+        vote_item = blog_top.xpath('div/div[@class="vote-item vote-count"]')[0]
+        vote_count = int(vote_item.get("title", u"0").rsplit(" ",1)[-1])
+        blog_id = int(vote_item.find("span").get("id").rsplit("_",1)[-1])
+        vote_total = vote_item.find("span").text
+        if vote_total[0] == "+": vote_total = float(vote_total[1:])
+        else: vote_total = float(vote_total)
+        
+        avatar = blog_inner.xpath("header/img")[0].get("src")
+        
+        content = blog_inner.find("div")
+        
+        #description = content.find("p") #TODO: <p>a<hr>b
+        #content.remove(description)
+        #content.remove(content.find("hr"))
+        #content.remove(content.find("br"))
+        
+        description = None
+        created = None
+        posts_count = -1
+        readers = -1
+        admins = []
+        moderators = []
+        
+        creator = blog_footer.xpath("div/a[2]/text()[1]")[0]
+        
+        return Blog(blog_id, blog, name, creator, readers, vote_total, closed, description, admins, moderators, vote_count, posts_count)
+        
+    
     def get_post_and_comments(self, post_id, blog=None, raw_data=None):
         post_id = int(post_id)
         if not raw_data:
