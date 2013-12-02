@@ -16,7 +16,7 @@ halfclosed = ("borderline", "shipping", "erpg", "gak", "RPG", "roliplay")
 
 headers_example = {
     "connection": "close",
-    "user-agent": "Mozilla/5.0 (X11; Linux i686) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/28.0.1500.52 Safari/537.36",
+    "user-agent": "tabun_api/0.3; Linux/2.6",
     
 }
 
@@ -233,7 +233,7 @@ class User:
                 if header and value: url.add_header(header, value)
         
         try:
-            return (self.opener.open if redir else self.noredir.open)(url, timeout=10)
+            return (self.opener.open if redir else self.noredir.open)(url, timeout=20)
         except urllib2.HTTPError as exc:
             raise TabunError(code=exc.getcode())
         except urllib2.URLError as exc:
@@ -267,6 +267,8 @@ class User:
             raise TabunError(exc.reason.strerror, -exc.reason.errno if exc.reason.errno else 0)
         except socket_timeout:
             raise TabunError("Timeout", -2)
+        except IOError as exc:
+            raise TabunError("IOError", -3)
        
     def add_post(self, blog_id, title, body, tags, draft=False):
         self.check_login()
@@ -396,7 +398,7 @@ class User:
             del req
         blog, post_id = parse_post_url(url)
         
-        raw_data = raw_data = raw_data[raw_data.find('<div class="comments'):raw_data.rfind('<!-- /content -->')]
+        raw_data = raw_data[raw_data.find('<div class="comments'):raw_data.rfind('<!-- /content -->')]
         
         div = parse_html_fragment(raw_data)
         if len(div) == 0: return []
@@ -694,7 +696,57 @@ class User:
         data = self.send_form('/role_ajax/savecomment/', fields, (), headers={'x-requested-with': 'XMLHttpRequest'}).read()
         result = self.jd.decode(data)
         if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
-        return int(result['iRating'])
+        #TODO: return
+        return None
+        
+        # int(result['iRating'])
+
+    def get_editable_post(self, post_id, raw_data=None):
+        if not raw_data:
+            req = self.urlopen("/topic/edit/" + str(int(post_id)) + "/")
+            raw_data = req.read()
+            del req
+        
+        raw_data = raw_data[raw_data.find('<form action="" method="POST" enctype="multipart/form-data" id="form-topic-add"'):raw_data.rfind('<div class="topic-preview"')]
+        
+        form = parse_html_fragment(raw_data)
+        if len(form) == 0: return None
+        form = form[0]
+        
+        blog_id = form.xpath('p/select[@id="blog_id"]')[0]
+        ok = False
+        for x in blog_id.findall("option"):
+            if x.get("selected") is not None:
+                ok = True
+                blog_id = int(x.get("value"))
+                break
+        if not ok: blog_id = 0
+        
+        title = form.xpath('p/input[@id="topic_title"]')[0].get("value", u"")
+        body = form.xpath("textarea")[0].text
+        tags = form.xpath('p/input[@id="topic_tags"]')[0].get("value", u"").split(",")
+        forbid_comment = bool(form.xpath('p/label/input[@id="topic_forbid_comment"]')[0].get("checked"))
+        return blog_id, title, body, tags, forbid_comment
+
+    def edit_post(self, post_id, blog_id, title, body, tags, draft=False):
+        self.check_login()
+        blog_id = int(blog_id if blog_id else 0)
+        
+        if isinstance(tags, (tuple, list)): tags = u", ".join(tags)
+        
+        fields = {
+            'topic_type': 'topic',
+            'security_ls_key': self.security_ls_key,
+            'blog_id': str(blog_id),
+            'topic_title': unicode(title).encode("utf-8"),
+            'topic_text': unicode(body).encode("utf-8"),
+            'topic_tags': unicode(tags).encode("utf-8")
+        }
+        if draft: fields['submit_topic_save'] = "Сохранить в черновиках"
+        else: fields['submit_topic_publish'] = "Опубликовать"
+        
+        link = self.send_form('/topic/edit/' + str(int(post_id)) + '/', fields, redir=False).headers.get('location')
+        return parse_post_url(link)
 
 def parse_post(item, link=None):
     header = item.find("header")
@@ -913,11 +965,9 @@ def parse_html_fragment(data, encoding='utf-8'):
     if isinstance(data, str): data = data.decode(encoding, "replace")
     doc = lxml.html.fragments_fromstring(data)
     return doc
-    
-    return data.strip()
 
 block_elems = ("div", "p", "blockquote", "section", "ul", "li", "h1", "h2", "h3", "h4", "h5", "h6")
-def htmlToString(node, with_cutted=True, fancy=True, vk_links=False):
+def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=True):
     data = u""
     newlines = 0
     
@@ -952,7 +1002,8 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False):
                 data += u"\n"
                 newlines += 1
         elif item.tag == "hr":
-            data += u"\n=====\n"
+            if hr_lines: data += u"\n=====\n"
+            else: data += u"\n"
             newlines = 1
         elif fancy and item.get('class') == 'spoiler-title':
             prev_text = None
