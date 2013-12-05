@@ -142,6 +142,7 @@ class User:
     username = None
     security_ls_key = None
     key = None
+    timeout = 20
     
     def __init__(self, login=None, passwd=None, phpsessid=None, security_ls_key=None, key=None):
         "Допустимые комбинации параметров:"
@@ -233,34 +234,7 @@ class User:
                 if header and value: url.add_header(header, value)
         
         try:
-            return (self.opener.open if redir else self.noredir.open)(url, timeout=20)
-        except urllib2.HTTPError as exc:
-            raise TabunError(code=exc.getcode())
-        except urllib2.URLError as exc:
-            raise TabunError(exc.reason.strerror, -exc.reason.errno if exc.reason.errno else 0)
-        except socket_timeout:
-            raise TabunError("Timeout", -2)
-     
-    def send_form(self, url, fields=(), files=(), timeout=None, headers={}, redir=True):
-        if not isinstance(url, urllib2.Request):
-            if url[0] == "/": url = http_host + url
-            url = urllib2.Request(url)
-        if self.phpsessid:
-            url.add_header('cookie', "PHPSESSID=" + self.phpsessid + ((';key='+self.key) if self.key else ''))
-        
-        for header, value in headers_example.items():
-            url.add_header(header, value)
-        if headers:
-            for header, value in headers.items(): url.add_header(header, value)
-            
-        content_type, data = encode_multipart_formdata(fields, files)
-        url.add_header('content-type', content_type)
-        
-        try:
-            if timeout is None:
-                return (self.opener.open if redir else self.noredir.open)(url, data, timeout=20)
-            else:
-                return (self.opener.open if redir else self.noredir.open)(url, data, timeout, timeout=20)
+            return (self.opener.open if redir else self.noredir.open)(url, timeout=self.timeout)
         except urllib2.HTTPError as exc:
             raise TabunError(code=exc.getcode())
         except urllib2.URLError as exc:
@@ -269,6 +243,14 @@ class User:
             raise TabunError("Timeout", -2)
         except IOError as exc:
             raise TabunError("IOError", -3)
+     
+    def send_form(self, url, fields=(), files=(), headers={}, redir=True):
+        content_type, data = encode_multipart_formdata(fields, files)
+        if not isinstance(url, urllib2.Request):
+            if url[0] == "/": url = http_host + url
+            url = urllib2.Request(url, data)
+        url.add_header('content-type', content_type)
+        return self.urlopen(url, None, headers, redir)
        
     def add_post(self, blog_id, title, body, tags, draft=False):
         self.check_login()
