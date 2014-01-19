@@ -272,6 +272,51 @@ class User:
         link = self.send_form('/topic/add/', fields, redir=False).headers.get('location')
         return parse_post_url(link)
 
+    def create_blog(self, title, url, description, rating_limit=0, closed=False):
+        self.check_login()
+        
+        fields = {
+            'security_ls_key': self.security_ls_key,
+            "blog_title": unicode(title).encode("utf-8"),
+            "blog_url": unicode(url).encode("utf-8"),
+            "blog_type": "close" if closed else "open",
+            "blog_description": unicode(description).encode("utf-8"),
+            "blog_limit_rating_topic": str(int(rating_limit)),
+            "submit_blog_add": "Сохранить"
+        }
+        
+        link = self.send_form('/blog/add/', fields, redir=False).headers.get('location')
+        if not link: return
+        if link[-1] == '/': link = link[:-1]
+        return link[link.rfind('/') + 1:]
+
+    def edit_blog(self, blog_id, title, description, rating_limit=0, closed=False):
+        self.check_login()
+        
+        fields = {
+            'security_ls_key': self.security_ls_key,
+            "blog_title": unicode(title).encode("utf-8"),
+            "blog_url": "",
+            "blog_type": "close" if closed else "open",
+            "blog_description": unicode(description).encode("utf-8"),
+            "blog_limit_rating_topic": str(int(rating_limit)),
+            "avatar_delete": "",
+            "submit_blog_add": "Сохранить"
+        }
+        
+        link = self.send_form('/blog/edit/' + str(int(blog_id)) + '/', fields, redir=False).headers.get('location')
+        if not link: return
+        if link[-1] == '/': link = link[:-1]
+        return link[link.rfind('/') + 1:]
+
+    def delete_blog(self, blog_id):
+        self.check_login()
+        return self.urlopen(\
+            url='/blog/delete/'+str(int(post_id))+'/?security_ls_key='+self.security_ls_key, \
+            headers={"referer": http_host+"/"}, \
+            redir=False\
+        ).getcode() / 100 == 3
+
     def preview_post(self, blog_id, title, body, tags):
         self.check_login()
         
@@ -291,7 +336,7 @@ class User:
         if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
         return result['sText']
        
-    def delete_post(self, post_id, security_ls_key=None, cookie=None):
+    def delete_post(self, post_id):
         self.check_login()
         return self.urlopen(\
             url='/topic/delete/'+str(int(post_id))+'/?security_ls_key='+self.security_ls_key, \
@@ -755,7 +800,8 @@ def parse_post(item, link=None):
     else: blog_name = None
     
     post_time = item.xpath('footer/ul/li[1]/time')
-    if len(post_time) > 0: post_time = time.strptime(post_time[0].get("datetime"), "%Y-%m-%dT%H:%M:%S+04:00")
+    if not post_time: post_time = item.xpath('header/div[@class="topic-info"]/time') # mylittlebrony.ru
+    if post_time: post_time = time.strptime(post_time[0].get("datetime"), "%Y-%m-%dT%H:%M:%S+04:00")
     else: post_time = time.localtime()
     
     node = item.xpath('div[@class="topic-content text"]')
@@ -777,22 +823,26 @@ def parse_post(item, link=None):
     footer = item.find("footer")
     ntags = footer.find("p")
     tags = []
-    for ntag in ntags.findall("a"):
-        if not ntag.text: continue
-        tags.append(unicode(ntag.text))
+    if ntags is not None:
+        for ntag in ntags.findall("a"):
+            if not ntag.text: continue
+            tags.append(unicode(ntag.text))
     
     draft = bool(header.xpath('h1/i[@class="icon-synio-topic-draft"]'))
     
     rateelem = header.xpath('div[@class="topic-info"]/div[@class="topic-info-vote"]/div/div[@class="vote-item vote-count"]')
-    if not rateelem: return
-    else: rateelem = rateelem[0]
+    if rateelem:
+        rateelem = rateelem[0]
     
-    vote_count = int(rateelem.get("title").rsplit(" ",1)[-1])
-    vote_total = rateelem.getchildren()[0]
-    if not vote_total.getchildren():
-        vote_total = int(vote_total.text.replace("+", ""))
+        vote_count = int(rateelem.get("title").rsplit(" ",1)[-1])
+        vote_total = rateelem.getchildren()[0]
+        if not vote_total.getchildren():
+            vote_total = int(vote_total.text.replace("+", ""))
+        else:
+            vote_total = None
     else:
-        vote_total = None
+        vote_count = -1
+        vote_total = 0
     
     poll = item.xpath('div[@class="poll"]')
     if poll: poll = parse_poll(poll[0])
