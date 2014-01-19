@@ -603,7 +603,7 @@ class User:
         
     def get_people_list(self, page=1, order_by="user_rating", order_way="desc", url=None):
         if not url:
-            url = "/people/" + ("page"+str(page)+"/" if page>1 else "") + "?order=" + str(order_by) + "&order_way=" + str(order_way)
+            url = "/people/" + ("index/page"+str(page)+"/" if page>1 else "") + "?order=" + str(order_by) + "&order_way=" + str(order_way)
 
         data = self.urlopen(url).read()
         data = data[data.find('<table class="table table-users'):data.rfind('</table>')]
@@ -626,6 +626,7 @@ class User:
             if not skill: continue
             
             rating = tr.xpath('td[@class="cell-rating "]/strong/text()[1]')
+            if not rating: rating = tr.xpath('td[@class="cell-rating negative"]/strong/text()[1]')
             if not rating: continue
             
             userpic = tr.xpath('td[@class="cell-name"]/a/img/@src')
