@@ -11,9 +11,10 @@ from hashlib import md5
 # and modified by andreymal
 def encode_multipart_formdata(fields, files):
     """
-    fields is a sequence of (name, value) elements for regular form fields.
-    files is a sequence of (name, filename, value) elements for data to be uploaded as files
-    Return (content_type, body) ready for httplib.HTTP instance
+    Возвращает (content_type, body), готовое для отправки HTTP-запроса
+    
+    * fields - список из элементов (имя, значение) или словарь полей формы
+    * files - список из элементов (имя, имя файла, значение) для данных, загружаемых в виде файлов
     """
     if isinstance(fields, dict): fields = fields.items()
     BOUNDARY = '----------' + md5(str(int(time.time())) + str(random.randrange(1000))).hexdigest()
@@ -36,9 +37,16 @@ def encode_multipart_formdata(fields, files):
     return content_type, body
     
 def get_content_type(filename):
+    """return mimetypes.guess_type(filename)[0] or 'application/octet-stream'"""
     return mimetypes.guess_type(filename)[0] or 'application/octet-stream'
     
 def send_form(url, fields, files, timeout=None, headers={}):
+    """
+    Отправляет форму, пользуясь функцией encode_multipart_formdata(fields, files), возвращает результат вызова urllib2.urlopen
+    
+    * timeout - сколько ожидать ответа, не дождётся - кидается исключением urllib2
+    * headers - дополнительные HTTP-заголовки
+    """
     content_type, data = encode_multipart_formdata(fields, files)
     if not isinstance(url, urllib2.Request): url = urllib2.Request(url)
     if isinstance(headers, dict): headers = headers.items()

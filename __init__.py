@@ -29,14 +29,18 @@ class NoRedirect(urllib2.HTTPRedirectHandler):
 global_opener = urllib2.build_opener()
 
 class TabunError(Exception):
+    """Общее для библиотеки исключение. Содержит атрибут code с всякими разными циферками для разных типов исключения, обычно совпадает с HTTP-кодом ошибки при запросе. А в args[0] или текст, или снова код ошибки."""
     def __init__(self, msg=None, code=0):
         if not msg: msg = str(code)
         Exception.__init__(self, str(msg))
         self.code = int(code)
 
-class TabunResultError(TabunError): pass
+class TabunResultError(TabunError):
+    """Исключение, содержащее текст ошибки, который вернул сервер. Как правило, это текст соответствующих всплывашек на сайте."""
+    pass
 
 class Post:
+    """Пост."""
     def __init__(self, time, blog, post_id, author, title, draft, vote_count, vote_total, body, tags, short=False, private=False, blog_name=None, poll=None):
         self.time = time
         self.blog = str(blog)
@@ -60,6 +64,7 @@ class Post:
         return self.__repr__()
 
 class Comment:
+    """Коммент."""
     def __init__(self, time, blog, post_id, comment_id, author, body, vote, parent_id=None, post_title=None):
         self.time = time
         self.blog = str(blog) if blog else None
@@ -80,6 +85,7 @@ class Comment:
         return self.__repr__()
 
 class Blog:
+    """Блог."""
     def __init__(self, blog_id, blog, name, creator, readers=0, rating=0.0, closed=False, description=None, admins=None, moderators=None, vote_count=-1, posts_count=-1):
         self.blog_id = int(blog_id)
         self.blog = str(blog)
@@ -101,6 +107,7 @@ class Blog:
         return self.__repr__()
 
 class StreamItem:
+    """Элемент «Прямого эфира»."""
     def __init__(self, blog, blog_title, title, author, comment_id, comments_count):
         self.blog = str(blog)
         self.blog_title = unicode(blog_title)
@@ -116,6 +123,7 @@ class StreamItem:
         return self.__repr__()
 
 class UserInfo:
+    """Информация о броняше."""
     def __init__(self, username, realname, skill, rating, userpic=None):
         self.username = str(username)
         self.realname = unicode(realname) if realname else None
@@ -130,6 +138,7 @@ class UserInfo:
         return self.__repr__()
 
 class Poll:
+    """Опрос. Список items содержит кортежи (название ответа, процент проголосовавших, число проголосовавших)."""
     def __init__(self, total, notvoted, items):
         self.total = int(total)
         self.notvoted = int(notvoted)
@@ -138,6 +147,19 @@ class Poll:
             self.items.append( (unicode(x[0]), float(x[1]), int(x[2])) )
  
 class User:
+    """Через объекты класса User осуществляется всё взаимодействие с Табуном. Почти все функции могут кидаться исключением TabunResultError с текстом ошибки (который во всплывашке показывается).
+    
+    Допустимые комбинации параметров (в квадратных скобках опциональные):
+    
+    * login + passwd [ + phpsessid]
+    * phpsessid [+ key] - без куки key разлогинивает через некоторое время
+    * login + phpsessid + security_ls_key [+ key] (без запроса к серверу)
+    * без параметров (анонимус)
+    
+    Если у функции есть параметр raw_data, то через него можно передать код страницы, чтобы избежать лишнего парсинга. Если есть параметр url, то при его указании открывается именно указанный url вместо формирования стандартного с помощью других параметров функции.
+    
+    phpsessid - печенька (cookie), по которой идентифицируется пользователь, security_ls_key - секретный ключ движка livestreet для отправки запросов, key - печенька неизвестного мне назначения. Можно не париться с ними, их автоматически пришлёт сервер во время инициализации объекта. А можно, например, не авторизоваться по логину и паролю, а выдрать из браузера печеньку PHPSESSID и авторизоваться через неё."""
+    
     phpsessid = None
     username = None
     security_ls_key = None
@@ -145,11 +167,6 @@ class User:
     timeout = 20
     
     def __init__(self, login=None, passwd=None, phpsessid=None, security_ls_key=None, key=None):
-        "Допустимые комбинации параметров:"
-        "- login + passwd [ + phpsessid]"
-        "- phpsessid [+ key] - без куки key разлогинивает через некоторое время"
-        "- login + phpsessid + security_ls_key [+ key] (без запроса к серверу)"
-        "- без параметров (анонимус)"
         
         self.jd = JSONDecoder()
         
@@ -190,6 +207,7 @@ class User:
             self.username = str(login)
 
     def parse_userinfo(self, raw_data):
+        """Возвращает имя пользователя из веб-страницы. В объекте ничего не меняет."""
         userinfo = raw_data[raw_data.find('<div class="dropdown-user"'):]
         userinfo = userinfo[:userinfo.find("<nav")]
         if not userinfo: return
@@ -198,6 +216,7 @@ class User:
         if username and username[0]: return str(username[0])
     
     def login(self, login, password, return_path=None, remember=True):
+        """Логинится и записывает печеньку key в случае успеха. Параметр return_path нафиг не нужен, remember - галочка «Запомнить меня»."""
         query = "login=" + urllib2.quote(login) + "&password=" + urllib2.quote(password) + "&remember=" + ("on" if remember else "off")
         query += "&return-path=" + urllib2.quote(return_path if return_path else http_host+"/")
         if self.security_ls_key:
@@ -217,10 +236,12 @@ class User:
         if self.key: self.key = self.key.value
     
     def check_login(self):
+        """Генерирует исключение, если нет печеньки PHPSESSID или security_ls_key."""
         if not self.phpsessid or not self.security_ls_key:
             raise TabunError("Not logined")
     
     def urlopen(self, url, data=None, headers={}, redir=True):
+        """Отправляет HTTP-запрос и возвращает результат urllib2.urlopen (объект urllib.addinfourl). Если указан параметр data, то отправляется POST-запрос. В качестве URL может быть путь с доменом (http://tabun.everypony.ru/), без домена (/index/newall/) или объект urllib2.Request. Если redir установлен в False, то не будет осуществляться переход по перенаправлению (HTTP-коды 3xx). Может кидаться исключением TabunError."""
         if not isinstance(url, urllib2.Request):
             if url[0] == "/": url = http_host + url
             url = urllib2.Request(url, data)
@@ -245,6 +266,7 @@ class User:
             raise TabunError("IOError", -3)
      
     def send_form(self, url, fields=(), files=(), headers={}, redir=True):
+        """Формирует multipart/form-data запрос и отправляет его через функцию urlopen."""
         content_type, data = encode_multipart_formdata(fields, files)
         if not isinstance(url, urllib2.Request):
             if url[0] == "/": url = http_host + url
@@ -253,6 +275,7 @@ class User:
         return self.urlopen(url, None, headers, redir)
        
     def add_post(self, blog_id, title, body, tags, draft=False):
+        """Отправляет пост и возвращает имя блога с номером поста в случае удачи или (None,None) в случае неудачи."""
         self.check_login()
         blog_id = int(blog_id if blog_id else 0)
         
@@ -273,6 +296,7 @@ class User:
         return parse_post_url(link)
 
     def create_blog(self, title, url, description, rating_limit=0, closed=False):
+        """Создаёт блог и возвращает его url-имя или None в случае неудачи."""
         self.check_login()
         
         fields = {
@@ -291,6 +315,7 @@ class User:
         return link[link.rfind('/') + 1:]
 
     def edit_blog(self, blog_id, title, description, rating_limit=0, closed=False):
+        """Редактирует блог и возвращает его url-имя или None в случае неудачи."""
         self.check_login()
         
         fields = {
@@ -310,6 +335,7 @@ class User:
         return link[link.rfind('/') + 1:]
 
     def delete_blog(self, blog_id):
+        """Удаляет блог и возвращает True/False в случае удачи/неудачи."""
         self.check_login()
         return self.urlopen(\
             url='/blog/delete/'+str(int(post_id))+'/?security_ls_key='+self.security_ls_key, \
@@ -318,6 +344,7 @@ class User:
         ).getcode() / 100 == 3
 
     def preview_post(self, blog_id, title, body, tags):
+        """Возвращает HTML-код предпросмотра поста (сам пост плюс мусор типа заголовка «Предпросмотр»)."""
         self.check_login()
         
         fields = {
@@ -337,6 +364,7 @@ class User:
         return result['sText']
        
     def delete_post(self, post_id):
+        """Удаляет пост и возвращает True/False в случае удачи/неудачи."""
         self.check_login()
         return self.urlopen(\
             url='/topic/delete/'+str(int(post_id))+'/?security_ls_key='+self.security_ls_key, \
@@ -345,6 +373,7 @@ class User:
         ).getcode() / 100 == 3
             
     def toggle_blog_subscribe(self, blog_id):
+        """Подписывается на блог/отписывается от блога и возвращает состояние: True - подписан, False - не подписан."""
         self.check_login()
         blog_id = int(blog_id)
         
@@ -360,6 +389,7 @@ class User:
         return result['bState']
         
     def comment(self, post_id, text, reply=0):
+        """Отправляет коммент и возвращает его номер."""
         self.check_login()
         post_id = int(post_id)
         url = "/blog/ajaxaddcomment/"
@@ -375,6 +405,7 @@ class User:
         return data['sCommentId']
         
     def get_posts(self, url="/index/newall/", raw_data=None):
+        """Возвращает список постов со страницы. Если постов нет - кидает исключение TabunError("No post")."""
         if not raw_data:
             req = self.urlopen(url)
             url = req.url
@@ -409,6 +440,7 @@ class User:
             return posts
     
     def get_post(self, post_id, blog=None):
+        """Возвращает пост по номеру. Рекомендуется указать url-имя блога, чтобы избежать перенаправления и лишнего запроса. Если поста нет - кидается исключением TabunError("No post"). В случае проблем с парсингом может вернуть None."""
         if blog and blog != 'blog': url="/blog/"+str(blog)+"/"+str(post_id)+".html"
         else: url="/blog/"+str(post_id)+".html"
         
@@ -456,6 +488,7 @@ class User:
         return comms
 
     def get_blogs_list(self, page=1, order_by="blog_rating", order_way="desc", url=None):
+        """Возвращает список объектов Blog."""
         if not url:
             url = "/blogs/" + ("page"+str(page)+"/" if page>1 else "") + "?order=" + str(order_by) + "&order_way=" + str(order_way)
         
@@ -497,6 +530,7 @@ class User:
         return blogs
     
     def get_blog(self, blog, raw_data=None):
+        """Возвращает информацию о блоге. Функция не доделана."""
         if not raw_data:
             req = self.urlopen("/blog/" + str(blog).replace("/", "") + "/")
             url = req.url
@@ -543,6 +577,7 @@ class User:
         
     
     def get_post_and_comments(self, post_id, blog=None, raw_data=None):
+        """Возвращает пост и список комментов. По сути просто вызывает функции get_posts и get_comments."""
         post_id = int(post_id)
         if not raw_data:
             req = self.urlopen("/blog/" + (blog+"/" if blog else "") + str(post_id) + ".html")
@@ -556,6 +591,7 @@ class User:
         return post[0] if post else None, comments
         
     def get_comments_from(self, post_id, comment_id=0):
+        """Возвращает комментарии к посту, начиная с определённого номера комментария. На сайте используется для подгрузки новых комментариев."""
         self.check_login()
         post_id = int(post_id)
         comment_id = int(comment_id) if comment_id else 0
@@ -581,6 +617,7 @@ class User:
         return comms
         
     def get_stream_comments(self):
+        """Возвращает «Прямой эфир» - объекты StreamItem."""
         self.check_login()
         data = self.urlopen(\
             "/ajax/stream/comment/",\
@@ -613,6 +650,7 @@ class User:
         return items
 
     def get_short_blogs_list(self, raw_data=None):
+        """Возвращает список объектов Blogs, но у которого указаны только blog_id, имя и закрытость. Зато, в отличие от get_blogs_list, возвращаеются сразу все-все блоги."""
         if not raw_data:
             raw_data = self.urlopen("/index/newall/").read()
         
@@ -647,6 +685,7 @@ class User:
         return blogs
         
     def get_people_list(self, page=1, order_by="user_rating", order_way="desc", url=None):
+        """Возвращает список броняш - объекты UserInfo."""
         if not url:
             url = "/people/" + ("index/page"+str(page)+"/" if page>1 else "") + "?order=" + str(order_by) + "&order_way=" + str(order_way)
 
@@ -682,6 +721,7 @@ class User:
         return peoples
         
     def poll_answer(self, post_id, answer=-1):
+        """Проголосовать в опросе. -1 - воздержаться. Возвращает новый объект Poll."""
         self.check_login()
         if answer < -1: answer = -1
         if post_id < 0: post_id = 0
@@ -699,6 +739,7 @@ class User:
         return parse_poll(poll[0])
     
     def vote(self, post_id, value=0):
+        """Ставит плюсик (1) или минусик (-1) или ничего (0) посту и возвращает его рейтинг."""
         self.check_login()
         
         fields = {
@@ -713,6 +754,7 @@ class User:
         return int(result['iRating'])
 
     def edit_comment(self, comment_id, text):
+        """Редактирует комментарий. Ничего не возвращает, потому что не доделал."""
         self.check_login()
         
         fields = {
@@ -730,6 +772,7 @@ class User:
         # int(result['iRating'])
 
     def get_editable_post(self, post_id, raw_data=None):
+        """Возвращает blog_id, заголовок, исходный код поста, список тегов и галочку закрытия комментариев (True/False)."""
         if not raw_data:
             req = self.urlopen("/topic/edit/" + str(int(post_id)) + "/")
             raw_data = req.read()
@@ -757,6 +800,7 @@ class User:
         return blog_id, title, body, tags, forbid_comment
 
     def edit_post(self, post_id, blog_id, title, body, tags, draft=False):
+        """Редактирует пост и возвращает его блог и номер в случае удачи или (None,None) в случае неудачи."""
         self.check_login()
         blog_id = int(blog_id if blog_id else 0)
         
@@ -777,6 +821,7 @@ class User:
         return parse_post_url(link)
 
 def parse_post(item, link=None):
+    # Парсинг поста. Не надо юзать эту функцию.
     header = item.find("header")
     title = header.find("h1")
     if title is None: return
@@ -850,6 +895,7 @@ def parse_post(item, link=None):
     return Post(post_time, blog, post_id, author, title, draft, vote_count, vote_total, node, tags, short=len(nextbtn) > 0, private=private, blog_name=blog_name, poll=poll)
 
 def parse_poll(poll):
+    # Парсинг опроса. Не надо юзать эту функцию.
     ul = poll.find('ul[@class="poll-result"]')
     if ul is not None:
         items = []
@@ -875,6 +921,7 @@ def parse_poll(poll):
         
  
 def parse_rss_post(item):
+    # Парсинг rss. Не надо юзать эту функцию.
     link = str(item.find("link").text)
     
     title = unicode(item.find("title").text)
@@ -918,6 +965,7 @@ def parse_rss_post(item):
     return Post(post_time, blog, post_id, author, title, False, 0, 0, node, tags, short=len(nextbtn) > 0, private=private)
 
 def parse_wrapper(node):
+    # Парсинг коммента. Не надо юзать эту функцию.
     comms = []
     nodes = [node]
     i=0
@@ -931,6 +979,7 @@ def parse_wrapper(node):
     return comms
 
 def parse_comment(node, post_id, blog=None, parent_id=None):
+    # И это тоже парсинг коммента. Не надо юзать эту функцию.
     body = None
     try:
         body = node.xpath('div[@class="comment-content"][1]/div')[0]
@@ -979,6 +1028,7 @@ def parse_comment(node, post_id, blog=None, parent_id=None):
     if body is not None: return Comment(tm, blog, post_id, comment_id, nick, body, vote, parent_id, post_title)
 
 def parse_post_url(link):
+    """Выдирает блог и номер поста из ссылки. Или возвращает (None,None), если выдрать не удалось."""
     if not link or not "/blog/" in link: return None, None
     post_id = int(link[link.rfind("/")+1:link.rfind(".h")])
     blog = link[:link.rfind('/')].encode("utf-8")
@@ -986,6 +1036,7 @@ def parse_post_url(link):
     return blog, post_id
 
 def parse_html(data, encoding='utf-8'):
+    """Парсит HTML-код и возвращает lxml.etree-элемент."""
     #if isinstance(data, unicode): encoding = None
     #doc = html5lib.parse(data, treebuilder="lxml", namespaceHTMLElements=False, encoding=encoding)
     if isinstance(data, str): data = data.decode(encoding, "replace")
@@ -993,6 +1044,7 @@ def parse_html(data, encoding='utf-8'):
     return doc
 
 def parse_html_fragment(data, encoding='utf-8'):
+    """Парсит кусок HTML-кода и возвращает lxml.etree-элемент."""
     #if isinstance(data, unicode): encoding = None
     #doc = html5lib.parseFragment(data, treebuilder="lxml", namespaceHTMLElements=False, encoding=encoding)
     if isinstance(data, str): data = data.decode(encoding, "replace")
@@ -1001,6 +1053,14 @@ def parse_html_fragment(data, encoding='utf-8'):
 
 block_elems = ("div", "p", "blockquote", "section", "ul", "li", "h1", "h2", "h3", "h4", "h5", "h6")
 def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=True):
+    """Пытается косплеить браузер lynx и переделывает html-элемент в читабельный текст.
+    
+    * node: текст поста, html-элемент, распарсенный с помощью parse_html[_fragment]
+    * with_cutted: выводить ли содержимое, которое под катом
+    * fancy: если True, выкинет заголовки спойлеров и текст кнопки «Читать дальше» (при наличии, разумеется)
+    * vk_links: преобразует ссылки вида http://vk.com/blablabla в [blablabla|текст ссылки] для отправки в пост ВКонтакте
+    * hr_lines: если True, добавляет линию из знаков равно на месте тега hr, иначе просто перенос строки
+    """
     data = u""
     newlines = 0
     
@@ -1120,4 +1180,5 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=Tr
     return data.strip()
 
 def node2string(node):
+    """Переводит html-элемент обратно в строку."""
     return lxml.etree.tostring(node, method="html", encoding="utf-8")
