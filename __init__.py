@@ -11,13 +11,16 @@ import lxml
 import lxml.html
 #import html5lib
 
+#: Адрес Табуна. Именно на указанный здесь адрес направляются запросы.
 http_host = "http://tabun.everypony.ru"
+
+#: Список полузакрытых блогов. В tabun_api нигде не используется, но может использоваться в использующих его программах.
 halfclosed = ("borderline", "shipping", "erpg", "gak", "RPG", "roliplay")
 
+#: Заголовки для HTTP-запросов. Возможно, стоит менять user-agent.
 headers_example = {
     "connection": "close",
-    "user-agent": "tabun_api/0.3; Linux/2.6",
-    
+    "user-agent": "tabun_api/0.3; Linux/2.6", 
 }
 
 class NoRedirect(urllib2.HTTPRedirectHandler):
@@ -1109,7 +1112,7 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=Tr
         elif item.tag in ("img",):
             continue
         
-        elif vk_links and item.tag == "a" and item.get('href', '').find("://vk.com/") > 0:
+        elif vk_links and item.tag == "a" and item.get('href', '').find("://vk.com/") > 0 and item.text_content().strip():
             href = item.get('href')
             addr = href[href.find("com/")+4:]
             if addr[-1] in (".", ")"): addr = addr[:-1]
