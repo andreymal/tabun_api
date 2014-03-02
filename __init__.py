@@ -1055,7 +1055,7 @@ def parse_html_fragment(data, encoding='utf-8'):
     return doc
 
 block_elems = ("div", "p", "blockquote", "section", "ul", "li", "h1", "h2", "h3", "h4", "h5", "h6")
-def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=True):
+def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=True, html_strike=False):
     """Пытается косплеить браузер lynx и переделывает html-элемент в читабельный текст.
     
     * node: текст поста, html-элемент, распарсенный с помощью parse_html[_fragment]
@@ -1156,8 +1156,8 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=Tr
             if item.tag == "s": # зачёркивание
                 tmp1=""
                 for x in tmp:
-                    tmp1 += x + u'\u0336'
-                tmp1 = "<s>" + tmp1 + "</s>"
+                    tmp1 += x + (u'\u0336' if not html_strike else u"&#0822;")
+                #tmp1 = "<s>" + tmp1 + "</s>"
             elif item.tag == "blockquote": # цитата
                 tmp1 = u" «" + tmp + u"»\n"
                 newlines = 1
