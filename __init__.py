@@ -68,14 +68,15 @@ class Post:
 
 class Comment:
     """Коммент."""
-    def __init__(self, time, blog, post_id, comment_id, author, body, vote, parent_id=None, post_title=None):
+    def __init__(self, time, blog, post_id, comment_id, author, body, vote, parent_id=None, post_title=None, unread=False):
         self.time = time
         self.blog = str(blog) if blog else None
-        self.post_id = int(post_id)
+        self.post_id = int(post_id) if post_id else None
         self.comment_id = int(comment_id)
         self.author = str(author)
         self.body = body
         self.vote = int(vote)
+        self.unread = bool(unread)
         if parent_id: self.parent_id = int(parent_id)
         else: self.parent_id = None
         if post_title: self.post_title = unicode(post_title)
@@ -149,6 +150,23 @@ class Poll:
         for x in items:
             self.items.append( (unicode(x[0]), float(x[1]), int(x[2])) )
  
+class TalkItem:
+    def __init__(self, talk_id, recipinets, unread, title, date, body=None, author=None, comments=[]):
+        self.talk_id = int(talk_id)
+        self.recipinets = map(str, recipinets)
+        self.unread = bool(unread)
+        self.title = unicode(title)
+        self.date = unicode(date)
+        self.body = body
+        self.author = str(author) if author else None
+        self.comments = comments if comments else []
+    
+    def __repr__(self):
+        return "<talk " + str(self.talk_id) + ">"
+    
+    def __str__(self):
+        return self.__repr__()
+ 
 class User:
     """Через объекты класса User осуществляется всё взаимодействие с Табуном. Почти все функции могут кидаться исключением TabunResultError с текстом ошибки (который во всплывашке показывается).
     
@@ -161,13 +179,25 @@ class User:
     
     Если у функции есть параметр raw_data, то через него можно передать код страницы, чтобы избежать лишнего парсинга. Если есть параметр url, то при его указании открывается именно указанный url вместо формирования стандартного с помощью других параметров функции.
     
-    phpsessid - печенька (cookie), по которой идентифицируется пользователь, security_ls_key - секретный ключ движка livestreet для отправки запросов, key - печенька неизвестного мне назначения. Можно не париться с ними, их автоматически пришлёт сервер во время инициализации объекта. А можно, например, не авторизоваться по логину и паролю, а выдрать из браузера печеньку PHPSESSID и авторизоваться через неё."""
+    phpsessid - печенька (cookie), по которой идентифицируется пользователь, security_ls_key - секретный ключ движка livestreet для отправки запросов, key - печенька неизвестного мне назначения. Можно не париться с ними, их автоматически пришлёт сервер во время инициализации объекта. А можно, например, не авторизоваться по логину и паролю, а выдрать из браузера печеньку PHPSESSID и авторизоваться через неё.
+    
+    У класса также есть следующие поля:
+    
+    * username — имя пользователя или None
+    * talk_unread — число непрочитанных личных сообщений (после update_userinfo)
+    * skill — силушка (после update_userinfo)
+    * rating — кармушка (после update_userinfo)
+    * timeout — таймаут ожидания ответа от сервера (для urllib2.urlopen, по умолчанию 20)
+    * phpsessid, security_ls_key, key — ну вы поняли"""
     
     phpsessid = None
     username = None
     security_ls_key = None
     key = None
     timeout = 20
+    talk_unread = 0
+    skill = 0.0
+    rating = 0.0
     
     def __init__(self, login=None, passwd=None, phpsessid=None, security_ls_key=None, key=None):
         
@@ -210,13 +240,50 @@ class User:
             self.username = str(login)
 
     def parse_userinfo(self, raw_data):
-        """Возвращает имя пользователя из веб-страницы. В объекте ничего не меняет."""
+        """Возвращает имя пользователя из веб-страницы. В объекте ничего не меняет. Устаревший метод: используйте update_userinfo."""
         userinfo = raw_data[raw_data.find('<div class="dropdown-user"'):]
         userinfo = userinfo[:userinfo.find("<nav")]
         if not userinfo: return
         node = parse_html_fragment(userinfo)[0]
         username = node.xpath('//*[@id="dropdown-user"]/a[2]/text()[1]')
         if username and username[0]: return str(username[0])
+    
+    def update_userinfo(self, raw_data):
+        """Парсит имя пользователя, рейтинг и число сообщений и записывает в объект. Возвращает имя пользователя."""
+        userinfo = raw_data[raw_data.find('<div class="dropdown-user"'):]
+        userinfo = userinfo[:userinfo.find("<nav")]
+        if not userinfo: return
+        
+        node = parse_html_fragment(userinfo)[0]
+        dd_user = node.xpath('//*[@id="dropdown-user"]')
+        if not dd_user:
+            self.username = None
+            self.talk_count = 0
+            self.skill = 0.0
+            self.rating = 0.0
+            return
+        dd_user = dd_user[0]
+        
+        username = dd_user.xpath('a[2]/text()[1]')
+        if username and username[0]: self.username = str(username[0])
+        else:
+            self.talk_count = 0
+            self.skill = 0.0
+            self.rating = 0.0
+            return
+        
+        talk_count = dd_user.xpath('ul/li[@class="item-messages"]/a[@class="new-messages"]/text()')
+        if not talk_count: self.talk_unread = 0
+        else: self.talk_unread = int(talk_count[0][1:])
+        
+        strength = dd_user.xpath('ul[@class="dropdown-user-menu"]/li/span/text()')
+        if not strength: self.skill = 0.0
+        else: self.skill = float(strength[0])
+        
+        if len(strength) < 2: self.rating = 0.0
+        else: self.rating = float(strength[1])
+        
+        return self.username
     
     def login(self, login, password, return_path=None, remember=True):
         """Логинится и записывает печеньку key в случае успеха. Параметр return_path нафиг не нужен, remember - галочка «Запомнить меня»."""
@@ -391,11 +458,11 @@ class User:
         if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
         return result['bState']
         
-    def comment(self, post_id, text, reply=0):
+    def comment(self, post_id, text, reply=0, typ="blog"):
         """Отправляет коммент и возвращает его номер."""
         self.check_login()
         post_id = int(post_id)
-        url = "/blog/ajaxaddcomment/"
+        url = "/"+(typ if typ in ("blog", "talk") else "blog")+"/ajaxaddcomment/"
         
         req = "comment_text=" + urllib2.quote(unicode(text).encode("utf-8")) + "&"
         req += "reply=" + str(int(reply)) + "&"
@@ -593,13 +660,13 @@ class User:
         
         return post[0] if post else None, comments
         
-    def get_comments_from(self, post_id, comment_id=0):
+    def get_comments_from(self, post_id, comment_id=0, typ="blog"):
         """Возвращает комментарии к посту, начиная с определённого номера комментария. На сайте используется для подгрузки новых комментариев."""
         self.check_login()
         post_id = int(post_id)
         comment_id = int(comment_id) if comment_id else 0
         
-        url = "/blog/ajaxresponsecomment/"
+        url = "/"+(typ if typ in ("blog", "talk") else "blog")+"/ajaxresponsecomment/"
         
         req = "idCommentLast=" + str(comment_id) + "&"
         req += "idTarget=" + str(post_id) + "&"
@@ -822,6 +889,73 @@ class User:
         
         link = self.send_form('/topic/edit/' + str(int(post_id)) + '/', fields, redir=False).headers.get('location')
         return parse_post_url(link)
+    
+    def invite(self, blog_id, username):
+        self.check_login()
+        
+        blog_id = int(blog_id if blog_id else 0)
+        
+        fields = {
+            "users": str(username),
+            "idBlog": str(blog_id),
+            'security_ls_key': self.security_ls_key,
+        }
+        
+        data = self.send_form("/blog/ajaxaddbloginvite/", fields).read()
+        result = self.jd.decode(data)
+        if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
+        
+        return result
+    
+    def get_talk_list(self, raw_data=None):
+        """Возвращает список объектов Talk с личными сообщениями."""
+        self.check_login()
+        if not raw_data:
+            req = self.urlopen("/talk/")
+            raw_data = req.read()
+            del req
+        
+        raw_data = raw_data[raw_data.find("<table "):]
+        raw_data = raw_data[:raw_data.find("</table>")]
+        if not raw_data: return []
+        
+        node = parse_html_fragment(raw_data)[0]
+        
+        elems = []
+        
+        for elem in node.xpath('//tr')[1:]:
+            elem = parse_talk_item(elem)
+            if elem: elems.append(elem)
+        
+        return elems
+        
+    def get_talk(self, talk_id, raw_data=None):
+        self.check_login()
+        if not raw_data:
+            req = self.urlopen("/talk/read/" + str(int(talk_id)) + "/")
+            raw_data = req.read()
+            del req
+        
+        data = raw_data[raw_data.find("<article "):raw_data.rfind("</article>")+10]
+        if not data: return
+        
+        item = parse_html_fragment(data)[0]
+        title = item.find("header").find("h1").text
+        body = item.xpath('div[@class="topic-content text"]')
+        if len(body) == 0:
+            return
+        body = body[0]
+        
+        recipients = map(lambda x: str(x.text.strip()), item.xpath('div[@class="talk-search talk-recipients"]/header/a[@class="username"]'))
+        
+        
+        footer = item.find("footer")
+        author = str(footer.xpath('ul/li[@class="topic-info-author"]/a[2]/text()')[0].strip())
+        date = footer.xpath('ul/li[@class="topic-info-date"]/time/text()')[0].strip()
+        
+        comments = self.get_comments(raw_data=raw_data)
+        
+        return TalkItem(talk_id, recipients, False, title, date, body, author, comments)
 
 def parse_post(item, link=None):
     # Парсинг поста. Не надо юзать эту функцию.
@@ -985,6 +1119,7 @@ def parse_comment(node, post_id, blog=None, parent_id=None):
     # И это тоже парсинг коммента. Не надо юзать эту функцию.
     body = None
     try:
+        unread = "comment-new" in node.get("class")
         body = node.xpath('div[@class="comment-content"][1]/div')[0]
         info = node.xpath('ul[@class="comment-info"]')
         if len(info) == 0:
@@ -1023,12 +1158,27 @@ def parse_comment(node, post_id, blog=None, parent_id=None):
                 parent_id = int(parent_id[0].find("a").get('onclick').rsplit(",",1)[-1].split(")",1)[0])
             else: parent_id = None
         
-        vote = int(info.xpath('li[starts-with(@id, "vote_area_comment")]/span[@class="vote-count"]/text()[1]')[0].replace("+", ""))
-            
+        vote = info.xpath('li[starts-with(@id, "vote_area_comment")]/span[@class="vote-count"]/text()[1]')
+        if vote: vote = int(vote[0].replace("+", ""))
+        else: vote = 0
+        
     except AttributeError: return
     except IndexError: return
     
-    if body is not None: return Comment(tm, blog, post_id, comment_id, nick, body, vote, parent_id, post_title)
+    if body is not None: return Comment(tm, blog, post_id, comment_id, nick, body, vote, parent_id, post_title, unread)
+
+def parse_talk_item(node):
+    checkbox, recs, title, date = node.findall("td")
+    recipients = []
+    for x in recs.findall("a"):
+        recipients.append( str(x.text.strip()) )
+    unread = bool(title.xpath('a/strong'))
+    talk_id = title.find("a").get('href')[:-1]
+    talk_id = int(talk_id[talk_id.rfind("/")+1:])
+    title = title.find("a").text_content()
+    date = date.text.strip()
+    
+    return TalkItem(talk_id, recipients, unread, title, date)
 
 def parse_post_url(link):
     """Выдирает блог и номер поста из ссылки. Или возвращает (None,None), если выдрать не удалось."""
