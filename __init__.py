@@ -151,6 +151,7 @@ class Poll:
             self.items.append( (unicode(x[0]), float(x[1]), int(x[2])) )
  
 class TalkItem:
+    """Личное сообщение. В поле date временно содержится голая строка, которую тупо лень парсить из-за чутка кривой вёрстки."""
     def __init__(self, talk_id, recipinets, unread, title, date, body=None, author=None, comments=[]):
         self.talk_id = int(talk_id)
         self.recipinets = map(str, recipinets)
@@ -459,7 +460,7 @@ class User:
         return result['bState']
         
     def comment(self, post_id, text, reply=0, typ="blog"):
-        """Отправляет коммент и возвращает его номер."""
+        """Отправляет коммент и возвращает его номер. Тип - blog (посты) или talk (личные сообщения)"""
         self.check_login()
         post_id = int(post_id)
         url = "/"+(typ if typ in ("blog", "talk") else "blog")+"/ajaxaddcomment/"
@@ -661,7 +662,7 @@ class User:
         return post[0] if post else None, comments
         
     def get_comments_from(self, post_id, comment_id=0, typ="blog"):
-        """Возвращает комментарии к посту, начиная с определённого номера комментария. На сайте используется для подгрузки новых комментариев."""
+        """Возвращает комментарии к посту, начиная с определённого номера комментария. На сайте используется для подгрузки новых комментариев. Тип - blog (пост) или talk (личные сообщения)."""
         self.check_login()
         post_id = int(post_id)
         comment_id = int(comment_id) if comment_id else 0
@@ -891,6 +892,7 @@ class User:
         return parse_post_url(link)
     
     def invite(self, blog_id, username):
+        """Отправляет инвайт в блог с указанным номером указанному пользователю (или пользователям, если указать несколько через запятую). Возвращает словарь, который содержит пары юзернейм-текст ошибки в случае, если кому-то инвайт не отправился. Если всё хорошо, то словарь пустой."""
         self.check_login()
         
         blog_id = int(blog_id if blog_id else 0)
@@ -905,7 +907,12 @@ class User:
         result = self.jd.decode(data)
         if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
         
-        return result
+        users = {}
+        for x in result['aUsers']:
+            if x['bStateError']:
+                users[x['sUserLogin']] = x['sMsg']
+        
+        return users
     
     def get_talk_list(self, raw_data=None):
         """Возвращает список объектов Talk с личными сообщениями."""
@@ -930,6 +937,7 @@ class User:
         return elems
         
     def get_talk(self, talk_id, raw_data=None):
+        """Возвращает объект Talk беседы с переданным номером."""
         self.check_login()
         if not raw_data:
             req = self.urlopen("/talk/read/" + str(int(talk_id)) + "/")
