@@ -4,6 +4,7 @@
 import time
 from httputil import encode_multipart_formdata
 import urllib2
+import httplib
 from socket import timeout as socket_timeout
 from json import JSONDecoder
 from Cookie import BaseCookie
@@ -331,6 +332,8 @@ class User:
             raise TabunError(code=exc.getcode())
         except urllib2.URLError as exc:
             raise TabunError(exc.reason.strerror, -exc.reason.errno if exc.reason.errno else 0)
+        except httplib.HTTPException as exc:
+            raise TabunError("HTTP error", -4)
         except socket_timeout:
             raise TabunError("Timeout", -2)
         except IOError as exc:
