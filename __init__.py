@@ -21,8 +21,11 @@ halfclosed = ("borderline", "shipping", "erpg", "gak", "RPG", "roliplay")
 #: Заголовки для HTTP-запросов. Возможно, стоит менять user-agent.
 headers_example = {
     "connection": "close",
-    "user-agent": "tabun_api/0.3; Linux/2.6", 
+    "user-agent": "tabun_api/0.4.0; Linux/2.6", 
 }
+
+#: Месяцы, для парсинга даты.
+mons = (u'января', u'февраля', u'марта', u'апреля', u'мая', u'июня', u'июля', u'августа', u'сентября', u'октября', u'ноября', u'декабря')
 
 class NoRedirect(urllib2.HTTPRedirectHandler):
     def http_error_302(self, req, fp, code, msg, headers):
@@ -129,12 +132,17 @@ class StreamItem:
 
 class UserInfo:
     """Информация о броняше."""
-    def __init__(self, username, realname, skill, rating, userpic=None):
+    def __init__(self, user_id, username, realname, skill, rating, userpic=None, gender=None, birthday=None, registered=None, last_activity=None):
+        self.user_id = int(user_id)
         self.username = str(username)
         self.realname = unicode(realname) if realname else None
         self.skill = float(skill)
         self.rating = float(rating)
         self.userpic = str(userpic) if userpic else None
+        self.gender = ('M' if gender == 'M' else 'F') if gender else None
+        self.birthday = birthday
+        self.registered = registered
+        self.last_activity = last_activity
     
     def __repr__(self):
         return "<userinfo " + self.username + ">"
@@ -158,7 +166,7 @@ class TalkItem:
         self.recipinets = map(str, recipinets)
         self.unread = bool(unread)
         self.title = unicode(title)
-        self.date = unicode(date)
+        self.date = date
         self.body = body
         self.author = str(author) if author else None
         self.comments = comments if comments else []
@@ -790,9 +798,55 @@ class User:
             userpic = tr.xpath('td[@class="cell-name"]/a/img/@src')
             if not userpic: continue
             
-            peoples.append(UserInfo(username[0], realname, skill[0], rating[0], userpic=userpic[0]))
+            peoples.append(UserInfo(-1, username[0], realname, skill[0], rating[0], userpic=userpic[0]))
             
         return peoples
+        
+    def get_profile(self, username=None, raw_data=None):
+        if not raw_data:
+            raw_data = self.urlopen("/profile/" + str(username)).read()
+        
+        data = raw_data[raw_data.find('<div id="content"'):raw_data.rfind('<!-- /content    ')]
+        if not data: return
+        node = parse_html_fragment(data)
+        if not node: return
+        node = node[0]
+        
+        profile = node.xpath('div[@class="profile"]')[0]
+        
+        username = str(profile.xpath('h2[@itemprop="nickname"]/text()')[0])
+        realname = profile.xpath('p[@class="user-name"]/text()')
+        
+        skill = float(profile.xpath('div[@class="strength"]/div[1]/text()')[0])
+        rating = profile.xpath('div[@class="vote-profile"]/div[1]')[0]
+        user_id = int(rating.get("id").rsplit("_")[-1])
+        rating = float(rating.findall('div')[1].find('span').text.strip().replace('+',''))
+        
+        userpic = node.xpath('div[@class="profile-info-about"]/a[1]/img')[0].get('src')
+        
+        birthday = None
+        registered = None
+        last_activity = None
+        gender = None
+        
+        uls = node.xpath('div[@class="wrapper"]/div[@class="profile-left"]/ul[@class="profile-dotted-list"]/li')
+        
+        for ul in uls:
+            name = ul.find('span').text.strip()
+            value = ul.find('strong')
+            
+            if name == u'Дата рождения:':
+                birthday = time.strptime(mon2num(value.text), '%d %m %Y')
+            elif name == u'Зарегистрирован:':
+                registered = time.strptime(mon2num(value.text), '%d %m %Y, %H:%M')
+            elif name == u'Последний визит:':
+                last_activity = time.strptime(mon2num(value.text), '%d %m %Y, %H:%M')
+            elif name == u'Пол:':
+                gender = 'M' if value.text.strip() == u'мужской' else 'F'
+        
+        return UserInfo(user_id, username, realname[0] if realname else None, skill, rating, userpic, gender, birthday, registered, last_activity)
+        
+        
         
     def poll_answer(self, post_id, answer=-1):
         """Проголосовать в опросе. -1 - воздержаться. Возвращает новый объект Poll."""
@@ -962,7 +1016,8 @@ class User:
         
         footer = item.find("footer")
         author = str(footer.xpath('ul/li[@class="topic-info-author"]/a[2]/text()')[0].strip())
-        date = footer.xpath('ul/li[@class="topic-info-date"]/time/text()')[0].strip()
+        date = footer.xpath('ul/li[@class="topic-info-date"]/time')[0]
+        date = time.strptime(date.get("datetime"), "%Y-%m-%dT%H:%M:%S+04:00")
         
         comments = self.get_comments(raw_data=raw_data)
         
@@ -1188,6 +1243,7 @@ def parse_talk_item(node):
     talk_id = int(talk_id[talk_id.rfind("/")+1:])
     title = title.find("a").text_content()
     date = date.text.strip()
+    date = time.strptime(mon2num(date), '%d %m %Y')
     
     return TalkItem(talk_id, recipients, unread, title, date)
 
@@ -1346,3 +1402,8 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=Tr
 def node2string(node):
     """Переводит html-элемент обратно в строку."""
     return lxml.etree.tostring(node, method="html", encoding="utf-8")
+
+def mon2num(s):
+    for i in range(len(mons)):
+        s = s.replace(mons[i], str(i+1))
+    return s
