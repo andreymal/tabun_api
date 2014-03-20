@@ -356,8 +356,9 @@ class User:
         url.add_header('content-type', content_type)
         return self.urlopen(url, None, headers, redir)
        
-    def add_post(self, blog_id, title, body, tags, draft=False):
-        """Отправляет пост и возвращает имя блога с номером поста в случае удачи или (None,None) в случае неудачи."""
+    def add_post(self, blog_id, title, body, tags, draft=False, check_if_error=False):
+        """Отправляет пост и возвращает имя блога с номером поста в случае удачи или (None,None) в случае неудачи.
+        При check_if_error=True проверяет наличие поста по заголовку даже в случае ошибки (если, например, таймаут или 404, но пост, как иногда бывает, добавляется)."""
         self.check_login()
         blog_id = int(blog_id if blog_id else 0)
         
@@ -374,8 +375,24 @@ class User:
         if draft: fields['submit_topic_save'] = "Сохранить в черновиках"
         else: fields['submit_topic_publish'] = "Опубликовать"
         
-        link = self.send_form('/topic/add/', fields, redir=False).headers.get('location')
-        return parse_post_url(link)
+        try:
+            link = self.send_form('/topic/add/', fields, redir=False).headers.get('location')
+        except TabunError:
+            if not check_if_error or not self.username: raise
+            url = '/topic/saved/' if draft else '/profile/' + self.username + '/created/topics/'
+            
+            try: posts = self.get_posts(url)
+            except: posts = []
+            posts.reverse()
+            
+            for post in posts[:2]:
+                if posts and post.title == unicode(title) and post.author == self.username:
+                    return post.blog, post.post_id
+            
+            return None, None
+        else:
+            return parse_post_url(link)
+        
 
     def create_blog(self, title, url, description, rating_limit=0, closed=False):
         """Создаёт блог и возвращает его url-имя или None в случае неудачи."""
