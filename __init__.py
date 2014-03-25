@@ -1349,7 +1349,7 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=Tr
         elif vk_links and item.tag == "a" and item.get('href', '').find("://vk.com/") > 0 and item.text_content().strip():
             href = item.get('href')
             addr = href[href.find("com/")+4:]
-            if addr[-1] in (".", ")"): addr = addr[:-1]
+            if addr and addr[-1] in (".", ")"): addr = addr[:-1]
             
             stop=False
             for c in (u"/", u"?", u"&", u"(", u",", u")", u"|"):
