@@ -1421,6 +1421,52 @@ def node2string(node):
     return lxml.etree.tostring(node, method="html", encoding="utf-8")
 
 def mon2num(s):
+    """Переводит названия месяцев в числа, чтобы строку можно было скормить в strftime."""
     for i in range(len(mons)):
         s = s.replace(mons[i], str(i+1))
     return s
+
+def find_images(post, spoiler_title=True, no_other=False):
+    """Ищет картинки в посте и возвращает их список в виде [[ссылки до ката], [ссылки после ката]].
+    spoiler_title (True) - включать ли картинки с заголовков спойлеров
+    no_other (False) не включать ли всякий мусор. Фильтрация простейшая: по наличию "smile" или "gif" в ссылке."""
+    
+    if isinstance(post, (Post, Comment)): post = post.body
+    imgs = [[], []]
+    links = [[], []]
+    
+    start = False
+    for item in post.iterchildren():
+        if not start and item.tag == "a" and item.get("rel") == "nofollow" and not item.text_content() and not item.getchildren():
+            start = True
+            continue
+        
+        if item.tag == "img":
+            imgs[1 if start else 0].append(item)
+        else:
+            limgs = item.xpath('.//img')
+            if not limgs: limgs = item.xpath('.//a')
+            imgs[1 if start else 0].extend(limgs)
+
+    for i in (0,1):
+        tags = imgs[i]
+        if not tags: continue
+        for img in tags:
+            src = img.get("src")
+            if not src:
+                src = img.get("href")
+                if not src: continue
+                if not src[-4:].lower() not in (u'jpeg', u'.jpg', u'.png'):
+                    continue
+            if "<" in src: continue
+            if no_other and (".gif" in src.lower() or "smile" in src.lower()):
+                continue
+            
+            if not spoiler_title and img.getparent() is not None and img.getparent().get("class") == "spoiler-title":
+                # Hint: если вы пишете пост и хотите, чтобы картика бралась даже из заголовка спойлера,
+                # достаточно лишь положить её внутрь какого-нибудь ещё тега, например <strong>.
+                continue
+           
+            links[i].append(src)
+    
+    return links
