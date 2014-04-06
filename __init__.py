@@ -1238,7 +1238,11 @@ def parse_comment(node, post_id, blog=None, parent_id=None):
         if not parent_id:
             parent_id = info.xpath('li[@class="goto goto-comment-parent"]')
             if len(parent_id) > 0:
-                parent_id = int(parent_id[0].find("a").get('onclick').rsplit(",",1)[-1].split(")",1)[0])
+                parent_id = parent_id[0].find("a")
+                if parent_id.get('onclick'):
+                    parent_id = int(parent_id.get('onclick').rsplit(",",1)[-1].split(")",1)[0])
+                elif '/comments/' in parent_id.get('href', ''):
+                    parent_id = int(parent_id.get('href').rsplit('/',1)[-1])
             else: parent_id = None
         
         vote = info.xpath('li[starts-with(@id, "vote_area_comment")]/span[@class="vote-count"]/text()[1]')
