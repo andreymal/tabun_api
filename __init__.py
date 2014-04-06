@@ -1228,10 +1228,11 @@ def parse_comment(node, post_id, blog=None, parent_id=None):
             link = info.findall("li")
             if not link or link[-1].get('id'): link = info
             else: link = link[-1]
-            link = link.xpath('a[@class="comment-path-topic"]')[0]
-            post_title = link.text
-            link = link.get('href')
-            blog, post_id = parse_post_url(link)
+            link1 = link.xpath('a[@class="comment-path-topic"]')[0]
+            post_title = link1.text
+            link2 = link.xpath('a[@class="comment-path-comments"]')[0]
+            link2 = link2.get('href')
+            blog, post_id = parse_post_url(link2)
         except KeyboardInterrupt: raise
         except: pass
         
