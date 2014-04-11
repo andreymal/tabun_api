@@ -1,16 +1,14 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 
+import re
 import time
-from httputil import encode_multipart_formdata
+from . import utils
 import urllib2
 import httplib
 from socket import timeout as socket_timeout
 from json import JSONDecoder
 from Cookie import BaseCookie
-import lxml
-import lxml.html
-#import html5lib
 
 #: Адрес Табуна. Именно на указанный здесь адрес направляются запросы.
 http_host = "http://tabun.everypony.ru"
@@ -24,16 +22,14 @@ headers_example = {
     "user-agent": "tabun_api/0.4.0; Linux/2.6", 
 }
 
-#: Месяцы, для парсинга даты.
-mons = (u'января', u'февраля', u'марта', u'апреля', u'мая', u'июня', u'июля', u'августа', u'сентября', u'октября', u'ноября', u'декабря')
+#: Регулярка для парсинга ссылки на пост.
+post_url_regex = re.compile(r"/blog/(([A-z0-9_\-\.]{1,})/)?([0-9]{1,}).html")
 
 class NoRedirect(urllib2.HTTPRedirectHandler):
     def http_error_302(self, req, fp, code, msg, headers):
         return fp
 
     http_error_301 = http_error_303 = http_error_307 = http_error_302
-    
-global_opener = urllib2.build_opener()
 
 class TabunError(Exception):
     """Общее для библиотеки исключение. Содержит атрибут code с всякими разными циферками для разных типов исключения, обычно совпадает с HTTP-кодом ошибки при запросе. А в args[0] или текст, или снова код ошибки."""
@@ -178,7 +174,7 @@ class TalkItem:
         return self.__repr__()
  
 class User:
-    """Через объекты класса User осуществляется всё взаимодействие с Табуном. Почти все функции могут кидаться исключением TabunResultError с текстом ошибки (который во всплывашке показывается).
+    """Через божественные объекты класса User осуществляется всё взаимодействие с Табуном. Почти все функции могут кидаться исключением TabunResultError с текстом ошибки (который на сайте обычно показывается во всплывашке в углу).
     
     Допустимые комбинации параметров (в квадратных скобках опциональные):
     
@@ -242,29 +238,19 @@ class User:
                 ls_key = data[pos:]
                 ls_key = ls_key[ls_key.find("'")+1:]
                 self.security_ls_key = ls_key[:ls_key.find("'")]
-            self.username = self.parse_userinfo(data)
+            self.update_userinfo(data)
         
         if login and passwd:
             self.login(login, passwd)
         elif login and self.phpsessid and not self.username:
             self.username = str(login)
-
-    def parse_userinfo(self, raw_data):
-        """Возвращает имя пользователя из веб-страницы. В объекте ничего не меняет. Устаревший метод: используйте update_userinfo."""
-        userinfo = raw_data[raw_data.find('<div class="dropdown-user"'):]
-        userinfo = userinfo[:userinfo.find("<nav")]
-        if not userinfo: return
-        node = parse_html_fragment(userinfo)[0]
-        username = node.xpath('//*[@id="dropdown-user"]/a[2]/text()[1]')
-        if username and username[0]: return str(username[0])
     
     def update_userinfo(self, raw_data):
         """Парсит имя пользователя, рейтинг и число сообщений и записывает в объект. Возвращает имя пользователя."""
-        userinfo = raw_data[raw_data.find('<div class="dropdown-user"'):]
-        userinfo = userinfo[:userinfo.find("<nav")]
+        userinfo = utils.find_substring(raw_data, '<div class="dropdown-user"', "<nav", with_end=False)
         if not userinfo: return
         
-        node = parse_html_fragment(userinfo)[0]
+        node = utils.parse_html_fragment(userinfo)[0]
         dd_user = node.xpath('//*[@id="dropdown-user"]')
         if not dd_user:
             self.username = None
@@ -349,7 +335,7 @@ class User:
      
     def send_form(self, url, fields=(), files=(), headers={}, redir=True):
         """Формирует multipart/form-data запрос и отправляет его через функцию urlopen."""
-        content_type, data = encode_multipart_formdata(fields, files)
+        content_type, data = utils.encode_multipart_formdata(fields, files)
         if not isinstance(url, urllib2.Request):
             if url[0] == "/": url = http_host + url
             url = urllib2.Request(url, data)
@@ -456,7 +442,7 @@ class User:
         }
         
         data = self.send_form('/ajax/preview/topic/', fields, (), headers={'x-requested-with': 'XMLHttpRequest'}).read()
-        node = parse_html_fragment(data)[0]
+        node = utils.parse_html_fragment(data)[0]
         data = node.text
         result = self.jd.decode(data)
         if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
@@ -504,7 +490,7 @@ class User:
         return data['sCommentId']
         
     def get_posts(self, url="/index/newall/", raw_data=None):
-        """Возвращает список постов со страницы. Если постов нет - кидает исключение TabunError("No post")."""
+        """Возвращает список постов со страницы или RSS. Если постов нет - кидает исключение TabunError("No post")."""
         if not raw_data:
             req = self.urlopen(url)
             url = req.url
@@ -514,7 +500,7 @@ class User:
 
         f = raw_data.find("<rss")
         if f < 250 and f >= 0:
-            node = lxml.etree.fromstring(raw_data)
+            node = utils.lxml.etree.fromstring(raw_data)
             channel = node.find("channel")
             if channel is None: raise TabunError("No RSS channel")
             items = channel.findall("item")
@@ -526,17 +512,16 @@ class User:
             
             return posts
         
-        else:
-            data = raw_data[raw_data.find("<article "):raw_data.rfind("</article> <!-- /.topic -->")+10]
-            if not data: raise TabunError("No post")
-            items = filter(lambda x:not isinstance(x, (str, unicode)) and x.tag=="article", parse_html_fragment(data))
-            items.reverse()
-            
-            for item in items:
-                post = parse_post(item, url if ".html" in url else None)
-                if post: posts.append(post)
-            
-            return posts
+        data = utils.find_substring(raw_data, "<article ", "</article> <!-- /.topic -->", extend=True)
+        if not data: raise TabunError("No post")
+        items = filter(lambda x:not isinstance(x, (str, unicode)) and x.tag=="article", utils.parse_html_fragment(data))
+        items.reverse()
+        
+        for item in items:
+            post = parse_post(item, url if ".html" in url else None)
+            if post: posts.append(post)
+        
+        return posts
     
     def get_post(self, post_id, blog=None):
         """Возвращает пост по номеру. Рекомендуется указать url-имя блога, чтобы избежать перенаправления и лишнего запроса. Если поста нет - кидается исключением TabunError("No post"). В случае проблем с парсингом может вернуть None."""
@@ -556,9 +541,9 @@ class User:
             del req
         blog, post_id = parse_post_url(url)
         
-        raw_data = raw_data[raw_data.find('<div class="comments'):raw_data.rfind('<!-- /content -->')]
+        raw_data = utils.find_substring(raw_data, '<div class="comments', '<!-- /content -->', extend=True, with_end=False)
         
-        div = parse_html_fragment(raw_data)
+        div = utils.parse_html_fragment(raw_data)
         if len(div) == 0: return []
         div = div[0]
         
@@ -592,8 +577,8 @@ class User:
             url = "/blogs/" + ("page"+str(page)+"/" if page>1 else "") + "?order=" + str(order_by) + "&order_way=" + str(order_way)
         
         data = self.urlopen(url).read()
-        data = data[data.find('<table class="table table-blogs'):data.rfind('</table>')]
-        node = parse_html_fragment(data)
+        data = utils.find_substring(data, '<table class="table table-blogs', '</table>')
+        node = utils.parse_html_fragment(data)
         if not node: return []
         node = node[0]
         if node.find("tbody") is not None: node = node.find("tbody")
@@ -635,9 +620,9 @@ class User:
             url = req.url
             raw_data = req.read()
             del req
-        data = raw_data[raw_data.find('<div class="blog-top">'):raw_data.find('<div class="nav-menu-wrapper">')]
+        data = utils.find_substring(raw_data, '<div class="blog-top">', '<div class="nav-menu-wrapper">', with_end=False)
         
-        node = parse_html_fragment('<div>' + data + '</div>')
+        node = utils.parse_html_fragment('<div>' + data + '</div>')
         if not node: return
         
         blog_top = node[0].xpath('div[@class="blog-top"]')[0]
@@ -658,7 +643,7 @@ class User:
         
         content = blog_inner.find("div")
         
-        #description = content.find("p") #TODO: <p>a<hr>b
+        #description = content.find("p") #TODO: <p>a<hr>b - пофиксено Орхидеусом, дописать
         #content.remove(description)
         #content.remove(content.find("hr"))
         #content.remove(content.find("br"))
@@ -709,7 +694,7 @@ class User:
         if data['bStateError']: raise TabunResultError(data['sMsg'].encode("utf-8"))
         comms = []
         for comm in data['aComments']:
-            node = parse_html_fragment(comm['html'])
+            node = utils.parse_html_fragment(comm['html'])
             pcomm = parse_comment(node[0], post_id, None, comm['idParent'])
             if pcomm: comms.append(pcomm)
         
@@ -726,7 +711,7 @@ class User:
         data = self.jd.decode(data)
         if data['bStateError']: raise TabunResultError(data['sMsg'].encode("utf-8"))
         
-        node = parse_html_fragment(data['sText'])
+        node = utils.parse_html_fragment(data['sText'])
         if not node: return []
         
         items = []
@@ -753,14 +738,11 @@ class User:
         if not raw_data:
             raw_data = self.urlopen("/index/newall/").read()
         
-        f = raw_data.find('<div class="block-content" id="block-blog-list"')
-        if f < 0: return []
-        raw_data = raw_data[f:]
-        raw_data = raw_data[:raw_data.find("</ul>")]
+        raw_data = utils.find_substring(raw_data, '<div class="block-content" id="block-blog-list"', "</ul>")
         if not raw_data: return []
         
-        node = parse_html_fragment(raw_data)[0]
-        del raw_data, f
+        node = utils.parse_html_fragment(raw_data)[0]
+        del raw_data
         node = node.find("ul")
         
         blogs = []
@@ -789,8 +771,8 @@ class User:
             url = "/people/" + ("index/page"+str(page)+"/" if page>1 else "") + "?order=" + str(order_by) + "&order_way=" + str(order_way)
 
         data = self.urlopen(url).read()
-        data = data[data.find('<table class="table table-users'):data.rfind('</table>')]
-        node = parse_html_fragment(data)
+        data = utils.find_substring(data, '<table class="table table-users', '</table>')
+        node = utils.parse_html_fragment(data)
         if not node: return []
         node = node[0]
         if node.find("tbody") is not None: node = node.find("tbody")
@@ -823,9 +805,9 @@ class User:
         if not raw_data:
             raw_data = self.urlopen("/profile/" + str(username)).read()
         
-        data = raw_data[raw_data.find('<div id="content"'):raw_data.rfind('<!-- /content    ')]
+        data = utils.find_substring(raw_data, '<div id="content"', '<!-- /content ', extend=True, with_end=False)
         if not data: return
-        node = parse_html_fragment(data)
+        node = utils.parse_html_fragment(data)
         if not node: return
         node = node[0]
         
@@ -853,11 +835,11 @@ class User:
             value = ul.find('strong')
             
             if name == u'Дата рождения:':
-                birthday = time.strptime(mon2num(value.text), '%d %m %Y')
+                birthday = time.strptime(utils.mon2num(value.text), '%d %m %Y')
             elif name == u'Зарегистрирован:':
-                registered = time.strptime(mon2num(value.text), '%d %m %Y, %H:%M')
+                registered = time.strptime(utils.mon2num(value.text), '%d %m %Y, %H:%M')
             elif name == u'Последний визит:':
-                last_activity = time.strptime(mon2num(value.text), '%d %m %Y, %H:%M')
+                last_activity = time.strptime(utils.mon2num(value.text), '%d %m %Y, %H:%M')
             elif name == u'Пол:':
                 gender = 'M' if value.text.strip() == u'мужской' else 'F'
         
@@ -880,7 +862,7 @@ class User:
         data = self.send_form('/ajax/vote/question/', fields, (), headers={'x-requested-with': 'XMLHttpRequest'}).read()
         result = self.jd.decode(data)
         if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
-        poll = parse_html_fragment('<div id="topic_question_area_'+str(post_id)+'" class="poll">' + result['sText'] + '</div>')
+        poll = utils.parse_html_fragment('<div id="topic_question_area_'+str(post_id)+'" class="poll">' + result['sText'] + '</div>')
         return parse_poll(poll[0])
     
     def vote(self, post_id, value=0):
@@ -923,9 +905,14 @@ class User:
             raw_data = req.read()
             del req
         
-        raw_data = raw_data[raw_data.find('<form action="" method="POST" enctype="multipart/form-data" id="form-topic-add"'):raw_data.rfind('<div class="topic-preview"')]
+        raw_data = utils.find_substring(
+            raw_data, 
+            '<form action="" method="POST" enctype="multipart/form-data" id="form-topic-add"',
+            '<div class="topic-preview"',
+            extend=True, with_end=False
+        )
         
-        form = parse_html_fragment(raw_data)
+        form = utils.parse_html_fragment(raw_data)
         if len(form) == 0: return None
         form = form[0]
         
@@ -996,11 +983,10 @@ class User:
             raw_data = req.read()
             del req
         
-        raw_data = raw_data[raw_data.find("<table "):]
-        raw_data = raw_data[:raw_data.find("</table>")]
+        raw_data = utils.find_substring(raw_data, '<table ', '</table>')
         if not raw_data: return []
         
-        node = parse_html_fragment(raw_data)[0]
+        node = utils.parse_html_fragment(raw_data)[0]
         
         elems = []
         
@@ -1018,10 +1004,10 @@ class User:
             raw_data = req.read()
             del req
         
-        data = raw_data[raw_data.find("<article "):raw_data.rfind("</article>")+10]
+        data = utils.find_substring(raw_data, "<article ", "</article>", extend=True)
         if not data: return
         
-        item = parse_html_fragment(data)[0]
+        item = utils.parse_html_fragment(data)[0]
         title = item.find("header").find("h1").text
         body = item.xpath('div[@class="topic-content text"]')
         if len(body) == 0:
@@ -1169,7 +1155,7 @@ def parse_rss_post(item):
     
     node = item.find("description").text
     if not node: return
-    node = parse_html_fragment(u"<div class='topic-content text'>" + node + '</div>')[0]
+    node = utils.parse_html_fragment(u"<div class='topic-content text'>" + node + '</div>')[0]
     
     nextbtn = node.xpath(u'a[@title="Читать дальше"][1]')
     if len(nextbtn) > 0:
@@ -1265,213 +1251,13 @@ def parse_talk_item(node):
     talk_id = int(talk_id[talk_id.rfind("/")+1:])
     title = title.find("a").text_content()
     date = date.text.strip()
-    date = time.strptime(mon2num(date), '%d %m %Y')
+    date = time.strptime(utils.mon2num(date), '%d %m %Y')
     
     return TalkItem(talk_id, recipients, unread, title, date)
 
 def parse_post_url(link):
     """Выдирает блог и номер поста из ссылки. Или возвращает (None,None), если выдрать не удалось."""
-    if not link or not "/blog/" in link: return None, None
-    post_id = int(link[link.rfind("/")+1:link.rfind(".h")])
-    blog = link[:link.rfind('/')].encode("utf-8")
-    blog = blog[blog.rfind('/')+1:]
-    return blog, post_id
-
-def parse_html(data, encoding='utf-8'):
-    """Парсит HTML-код и возвращает lxml.etree-элемент."""
-    #if isinstance(data, unicode): encoding = None
-    #doc = html5lib.parse(data, treebuilder="lxml", namespaceHTMLElements=False, encoding=encoding)
-    if isinstance(data, str): data = data.decode(encoding, "replace")
-    doc = lxml.html.fromstring(data)
-    return doc
-
-def parse_html_fragment(data, encoding='utf-8'):
-    """Парсит кусок HTML-кода и возвращает lxml.etree-элемент."""
-    #if isinstance(data, unicode): encoding = None
-    #doc = html5lib.parseFragment(data, treebuilder="lxml", namespaceHTMLElements=False, encoding=encoding)
-    if isinstance(data, str): data = data.decode(encoding, "replace")
-    doc = lxml.html.fragments_fromstring(data)
-    return doc
-
-block_elems = ("div", "p", "blockquote", "section", "ul", "li", "h1", "h2", "h3", "h4", "h5", "h6")
-def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=True):
-    """Пытается косплеить браузер lynx и переделывает html-элемент в читабельный текст.
-    
-    * node: текст поста, html-элемент, распарсенный с помощью parse_html[_fragment]
-    * with_cutted: выводить ли содержимое, которое под катом
-    * fancy: если True, выкинет заголовки спойлеров и текст кнопки «Читать дальше» (при наличии, разумеется)
-    * vk_links: преобразует ссылки вида http://vk.com/blablabla в [blablabla|текст ссылки] для отправки в пост ВКонтакте
-    * hr_lines: если True, добавляет линию из знаков равно на месте тега hr, иначе просто перенос строки
-    """
-    data = u""
-    newlines = 0
-    
-    if node.text:
-        ndata = node.text.replace(u"\n", u" ")
-        if newlines: ndata = ndata.lstrip()
-        data += ndata
-        if ndata: newlines = 0
-    
-    prev_text = None
-    prev_after = None
-    for item in node.iterchildren():
-        if prev_text:
-            ndata = prev_text.replace(u"\n", u" ")
-            if newlines: ndata = ndata.lstrip()
-            data += ndata
-            if ndata: newlines = 0
-        if prev_after:
-            ndata = prev_after.replace(u"\n", u" ")
-            if newlines: ndata = ndata.lstrip()
-            data += ndata
-            if ndata: newlines = 0
-        
-        if item.tail:
-            prev_after = item.tail
-        else:
-            prev_after = None
-        prev_text = item.text
-        
-        if item.tag == "br":
-            if newlines < 2:
-                data += u"\n"
-                newlines += 1
-        elif item.tag == "hr":
-            if hr_lines: data += u"\n=====\n"
-            else: data += u"\n"
-            newlines = 1
-        elif fancy and item.get('class') == 'spoiler-title':
-            prev_text = None
-            continue
-        elif fancy and item.tag == 'a' and item.get('title') == u"Читать дальше":
-            prev_text = None
-            continue
-        elif not with_cutted and item.tag == "a" and item.get("rel") == "nofollow" and not item.text_content() and not item.getchildren():
-            return data.strip()
-        elif item.tag in ("img",):
-            continue
-        
-        elif vk_links and item.tag == "a" and item.get('href', '').find("://vk.com/") > 0 and item.text_content().strip():
-            href = item.get('href')
-            addr = href[href.find("com/")+4:]
-            if addr and addr[-1] in (".", ")"): addr = addr[:-1]
-            
-            stop=False
-            for c in (u"/", u"?", u"&", u"(", u",", u")", u"|"):
-                if c in addr:
-                    stop=True
-                    break
-            if stop:
-                data += item.text_content()
-                prev_text = None
-                continue
-            
-            for typ in (u"wall", u"photo", u"page", u"video", u"topic", u"app"):
-                if addr.find(typ) == 0:
-                    stop=True
-                    break
-            if stop:
-                data += item.text_content()
-                prev_text = None
-                continue
-            
-            ndata = item.text_content().replace("[", " ").replace("|", " ").replace("]", " ")
-            data += " [" + addr + "|" + ndata + "] "
-            prev_text = None
-        
-        else:
-            if item.tag in ("li", ):
-                data += u"• "
-            elif data and item.tag in block_elems and not newlines:
-                data += u"\n"
-                newlines = 1
-            
-            if prev_text:
-                prev_text = None
-                
-            tmp = htmlToString(item, fancy=fancy, vk_links=vk_links, hr_lines=hr_lines)
-            newlines = 0
-            
-            if item.tag == "s": # зачёркивание
-                tmp1=""
-                for x in tmp:
-                    tmp1 += x + u'\u0336'
-                #tmp1 = "<s>" + tmp1 + "</s>"
-            elif item.tag == "blockquote": # цитата
-                tmp1 = u" «" + tmp + u"»\n"
-                newlines = 1
-            else: tmp1 = tmp
-            
-            data += tmp1
-            
-            if item.tag in block_elems and not newlines:
-                data += u"\n"
-                newlines = 1
-                
-    if prev_text:
-        ndata = prev_text.replace(u"\n", u" ")
-        if newlines: ndata = ndata.lstrip()
-        data += ndata
-        if ndata: newlines = 0
-    if prev_after:
-        ndata = prev_after.replace(u"\n", u" ")
-        if newlines: ndata = ndata.lstrip()
-        data += ndata
-        if ndata: newlines = 0
-
-    return data.strip()
-
-def node2string(node):
-    """Переводит html-элемент обратно в строку."""
-    return lxml.etree.tostring(node, method="html", encoding="utf-8")
-
-def mon2num(s):
-    """Переводит названия месяцев в числа, чтобы строку можно было скормить в strftime."""
-    for i in range(len(mons)):
-        s = s.replace(mons[i], str(i+1))
-    return s
-
-def find_images(post, spoiler_title=True, no_other=False):
-    """Ищет картинки в посте и возвращает их список в виде [[ссылки до ката], [ссылки после ката]].
-    spoiler_title (True) - включать ли картинки с заголовков спойлеров
-    no_other (False) не включать ли всякий мусор. Фильтрация простейшая: по наличию "smile" или "gif" в ссылке."""
-    
-    if isinstance(post, (Post, Comment)): post = post.body
-    imgs = [[], []]
-    links = [[], []]
-    
-    start = False
-    for item in post.iterchildren():
-        if not start and item.tag == "a" and item.get("rel") == "nofollow" and not item.text_content() and not item.getchildren():
-            start = True
-            continue
-        
-        if item.tag == "img":
-            imgs[1 if start else 0].append(item)
-        else:
-            limgs = item.xpath('.//img')
-            if not limgs: limgs = item.xpath('.//a')
-            imgs[1 if start else 0].extend(limgs)
-
-    for i in (0,1):
-        tags = imgs[i]
-        if not tags: continue
-        for img in tags:
-            src = img.get("src")
-            if not src:
-                src = img.get("href")
-                if not src: continue
-                if not src[-4:].lower() not in (u'jpeg', u'.jpg', u'.png'):
-                    continue
-            if "<" in src: continue
-            if no_other and (".gif" in src.lower() or "smile" in src.lower()):
-                continue
-            
-            if not spoiler_title and img.getparent() is not None and img.getparent().get("class") == "spoiler-title":
-                # Hint: если вы пишете пост и хотите, чтобы картика бралась даже из заголовка спойлера,
-                # достаточно лишь положить её внутрь какого-нибудь ещё тега, например <strong>.
-                continue
-           
-            links[i].append(src)
-    
-    return links
+    m = post_url_regex.search(link)
+    if not m: return None, None
+    g = m.groups()
+    return (g[1] if g[1] else None), int(g[2])
