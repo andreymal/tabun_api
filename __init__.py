@@ -17,9 +17,9 @@ http_host = "http://tabun.everypony.ru"
 halfclosed = ("borderline", "shipping", "erpg", "gak", "RPG", "roliplay")
 
 #: Заголовки для HTTP-запросов. Возможно, стоит менять user-agent.
-headers_example = {
+http_headers = {
     "connection": "close",
-    "user-agent": "tabun_api/0.4.0; Linux/2.6", 
+    "user-agent": "tabun_api/0.5.0; Linux/2.6", 
 }
 
 #: Регулярка для парсинга ссылки на пост.
@@ -90,7 +90,7 @@ class Comment:
 
 class Blog:
     """Блог."""
-    def __init__(self, blog_id, blog, name, creator, readers=0, rating=0.0, closed=False, description=None, admins=None, moderators=None, vote_count=-1, posts_count=-1):
+    def __init__(self, blog_id, blog, name, creator, readers=0, rating=0.0, closed=False, description=None, admins=None, moderators=None, vote_count=-1, posts_count=-1, created=None):
         self.blog_id = int(blog_id)
         self.blog = str(blog)
         self.name = unicode(name)
@@ -103,6 +103,7 @@ class Blog:
         self.moderators = moderators
         self.vote_count = int(vote_count)
         self.posts_count = int(posts_count)
+        self.created = created
 
     def __repr__(self):
         return "<blog " + self.blog + ">"
@@ -128,7 +129,7 @@ class StreamItem:
 
 class UserInfo:
     """Информация о броняше."""
-    def __init__(self, user_id, username, realname, skill, rating, userpic=None, gender=None, birthday=None, registered=None, last_activity=None):
+    def __init__(self, user_id, username, realname, skill, rating, userpic=None, gender=None, birthday=None, registered=None, last_activity=None, description=None):
         self.user_id = int(user_id)
         self.username = str(username)
         self.realname = unicode(realname) if realname else None
@@ -139,6 +140,7 @@ class UserInfo:
         self.birthday = birthday
         self.registered = registered
         self.last_activity = last_activity
+        self.description = description
     
     def __repr__(self):
         return "<userinfo " + self.username + ">"
@@ -314,7 +316,7 @@ class User:
         if self.phpsessid:
             url.add_header('cookie', "PHPSESSID=" + self.phpsessid + ((';key='+self.key) if self.key else ''))
         
-        for header, value in headers_example.items():
+        for header, value in http_headers.items():
             url.add_header(header, value)
         if headers:
             for header, value in headers.items():
@@ -642,22 +644,24 @@ class User:
         avatar = blog_inner.xpath("header/img")[0].get("src")
         
         content = blog_inner.find("div")
+        info = content.find("ul")
         
-        #description = content.find("p") #TODO: <p>a<hr>b - пофиксено Орхидеусом, дописать
-        #content.remove(description)
-        #content.remove(content.find("hr"))
-        #content.remove(content.find("br"))
-        
-        description = None
-        created = None
-        posts_count = -1
-        readers = -1
+        description = content.find("div")
+        created = time.strptime(utils.mon2num(info.xpath('li[1]/strong/text()')[0]), "%d %m %Y")
+        posts_count = int(info.xpath('li[2]/strong/text()')[0])
+        readers = int(info.xpath('li[3]/strong/text()')[0])
         admins = []
         moderators = []
         
+        arr=admins
+        for user in content.xpath('span[@class="user-avatar"]'):
+            t = user.getprevious().getprevious().text
+            if t and u"Модераторы" in t: arr = moderators
+            arr.append(user.text_content().strip())
+        
         creator = blog_footer.xpath("div/a[2]/text()[1]")[0]
         
-        return Blog(blog_id, blog, name, creator, readers, vote_total, closed, description, admins, moderators, vote_count, posts_count)
+        return Blog(blog_id, blog, name, creator, readers, vote_total, closed, description, admins, moderators, vote_count, posts_count, created)
         
     
     def get_post_and_comments(self, post_id, blog=None, raw_data=None):
@@ -843,7 +847,10 @@ class User:
             elif name == u'Пол:':
                 gender = 'M' if value.text.strip() == u'мужской' else 'F'
         
-        return UserInfo(user_id, username, realname[0] if realname else None, skill, rating, userpic, gender, birthday, registered, last_activity)
+        description = node.xpath('div[@class="profile-info-about"]/div[@class="text"]')
+        
+        #TODO: блоги
+        return UserInfo(user_id, username, realname[0] if realname else None, skill, rating, userpic, gender, birthday, registered, last_activity, description[0] if description else None)
         
         
         
@@ -881,7 +888,7 @@ class User:
         return int(result['iRating'])
 
     def edit_comment(self, comment_id, text):
-        """Редактирует комментарий. Ничего не возвращает, потому что не доделал."""
+        """Редактирует комментарий и возвращает новое тело комментария."""
         self.check_login()
         
         fields = {
@@ -893,10 +900,7 @@ class User:
         data = self.send_form('/role_ajax/savecomment/', fields, (), headers={'x-requested-with': 'XMLHttpRequest'}).read()
         result = self.jd.decode(data)
         if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
-        #TODO: return
-        return None
-        
-        # int(result['iRating'])
+        return utils.parse_html_fragment('<div class="text">' + result['sText'] + '</div>')[0]
 
     def get_editable_post(self, post_id, raw_data=None):
         """Возвращает blog_id, заголовок, исходный код поста, список тегов и галочку закрытия комментариев (True/False)."""
