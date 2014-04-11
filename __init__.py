@@ -46,7 +46,7 @@ class Post:
     """Пост."""
     def __init__(self, time, blog, post_id, author, title, draft, vote_count, vote_total, body, tags, short=False, private=False, blog_name=None, poll=None):
         self.time = time
-        self.blog = str(blog)
+        self.blog = str(blog) if blog else None
         self.post_id = int(post_id)
         self.author = str(author)
         self.title = unicode(title)
