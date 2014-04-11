@@ -168,17 +168,16 @@ def mon2num(s):
         s = s.replace(mons[i], str(i+1))
     return s
 
-def find_images(post, spoiler_title=True, no_other=False):
-    """Ищет картинки в посте и возвращает их список в виде [[ссылки до ката], [ссылки после ката]].
+def find_images(body, spoiler_title=True, no_other=False):
+    """Ищет картинки в lxml-элементе и возвращает их список в виде [[ссылки до ката], [ссылки после ката]].
     spoiler_title (True) - включать ли картинки с заголовков спойлеров
     no_other (False) не включать ли всякий мусор. Фильтрация простейшая: по наличию "smile" или "gif" в ссылке."""
     
-    if isinstance(post, (Post, Comment)): post = post.body
     imgs = [[], []]
     links = [[], []]
     
     start = False
-    for item in post.iterchildren():
+    for item in body.iterchildren():
         if not start and item.tag == "a" and item.get("rel") == "nofollow" and not item.text_content() and not item.getchildren():
             start = True
             continue
