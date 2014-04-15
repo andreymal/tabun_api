@@ -544,7 +544,7 @@ class User:
         blog, post_id = parse_post_url(url)
         
         raw_data = utils.find_substring(raw_data, '<div class="comments', '<!-- /content -->', extend=True, with_end=False)
-        
+        if not raw_data: return []
         div = utils.parse_html_fragment(raw_data)
         if len(div) == 0: return []
         div = div[0]

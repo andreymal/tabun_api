@@ -270,3 +270,32 @@ def find_substring(s, start, end, extend=False, with_start=True, with_end=True):
     f2 = (s.rfind if extend else s.find)(end, f1 + len(start))
     if f2 < 0: return
     return s[f1 + (0 if with_start else len(start)):f2 + (len(end) if with_end else 0)]
+
+def find_good_image(urls, maxmem=20*1024*1024):
+    """Ищет годную картинку из предложенного списка ссылок и возвращает ссылку и скачанные данные картинки (файл). Такой простенький фильтр смайликов и элементов оформления поста по размеру. Требует PIL. Не грузит картинки размером больше maxmem байт, дабы не вылететь от нехватки памяти."""
+    try:
+        import Image
+    except ImportError:
+        from PIL import Image
+    from StringIO import StringIO
+    
+    good_image = None, None
+    for url in urls:
+        try:
+            req = urllib2.urlopen(url.encode("utf-8") if isinstance(url, unicode) else url, timeout=5)
+            size = req.headers.get('content-length')
+            if size and size.isdigit() and int(size) > maxmem:
+                continue
+            data = req.read(maxmem + 1)
+        except IOError: continue
+        if len(data) > maxmem:
+            continue
+        
+        try: img = Image.open(StringIO(data))
+        except: continue
+        
+        if img.size[0] < 100 or img.size[1] < 100: continue
+        good_image = url, data
+        break
+    
+    return good_image
