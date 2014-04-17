@@ -425,7 +425,7 @@ class User:
         """Удаляет блог и возвращает True/False в случае удачи/неудачи."""
         self.check_login()
         return self.urlopen(\
-            url='/blog/delete/'+str(int(post_id))+'/?security_ls_key='+self.security_ls_key, \
+            url='/blog/delete/'+str(int(blog_id))+'/?security_ls_key='+self.security_ls_key, \
             headers={"referer": http_host+"/"}, \
             redir=False\
         ).getcode() / 100 == 3
@@ -619,7 +619,6 @@ class User:
         """Возвращает информацию о блоге. Функция не доделана."""
         if not raw_data:
             req = self.urlopen("/blog/" + str(blog).replace("/", "") + "/")
-            url = req.url
             raw_data = req.read()
             del req
         data = utils.find_substring(raw_data, '<div class="blog-top">', '<div class="nav-menu-wrapper">', with_end=False)
@@ -1178,7 +1177,6 @@ def parse_wrapper(node):
     # Парсинг коммента. Не надо юзать эту функцию.
     comms = []
     nodes = [node]
-    i=0
     while len(nodes) > 0:
         node = nodes.pop(0)
         sect = node.find("section")
