@@ -299,3 +299,22 @@ def find_good_image(urls, maxmem=20*1024*1024):
         break
     
     return good_image
+
+def generate_comments_tree(comms):
+    """Строит дерево комментариев из словаря, возвращаемого функциями get_comments[_from]. Формат элемента: [(комментарий, элемент), (комментарий, элемент), ...] Возвращает само такое дерево и список номеров комментариев-сирот (по идее должен быть пустой, но мало ли)."""
+    tree_dict = {}
+    tree = []
+    orphans = []
+    for comment in sorted(comms.values(), key=lambda x:x.comment_id):
+        item = (comment, [])
+        tree_dict[comment.comment_id] = item
+        if not comment.parent_id:
+            tree.append(item)
+            continue
+        parent = tree_dict.get(comment.parent_id)
+        if not parent:
+            tree.append(item)
+            orphans.append(comment.comment_id)
+        else:
+            parent[1].append(item)
+    return tree, orphans

@@ -44,7 +44,7 @@ class TabunResultError(TabunError):
 
 class Post:
     """Пост."""
-    def __init__(self, time, blog, post_id, author, title, draft, vote_count, vote_total, body, tags, short=False, private=False, blog_name=None, poll=None):
+    def __init__(self, time, blog, post_id, author, title, draft, vote_count, vote_total, body, tags, short=False, private=False, blog_name=None, poll=None, favourite=0):
         self.time = time
         self.blog = str(blog) if blog else None
         self.post_id = int(post_id)
@@ -59,6 +59,7 @@ class Post:
         self.private = bool(private)
         self.blog_name = unicode(blog_name) if blog_name else None
         self.poll = poll
+        self.favourite = int(favourite) if favourite is not None else None
         
     def __repr__(self):
         return "<post " + self.blog + "/" + str(self.post_id) + ">"
@@ -67,23 +68,25 @@ class Post:
         return self.__repr__()
 
 class Comment:
-    """Коммент."""
-    def __init__(self, time, blog, post_id, comment_id, author, body, vote, parent_id=None, post_title=None, unread=False):
+    """Коммент. Возможно, удалённый, поэтому следите, чтобы значения не были None!"""
+    def __init__(self, time, blog, post_id, comment_id, author, body, vote, parent_id=None, post_title=None, unread=False, deleted=False, favourite=0):
         self.time = time
         self.blog = str(blog) if blog else None
         self.post_id = int(post_id) if post_id else None
         self.comment_id = int(comment_id)
-        self.author = str(author)
+        self.author = str(author) if author else None
         self.body = body
-        self.vote = int(vote)
+        self.vote = int(vote) if vote is not None else None
         self.unread = bool(unread)
         if parent_id: self.parent_id = int(parent_id)
         else: self.parent_id = None
         if post_title: self.post_title = unicode(post_title)
         else: self.post_title = None
+        self.deleted = bool(deleted)
+        self.favourite = int(favourite) if favourite is not None else None
         
     def __repr__(self):
-        return "<comment " + (self.blog + "/" + str(self.post_id) + "/" if self.blog and self.post_id else "") + str(self.comment_id) + ">"
+        return "<"+("deleted " if self.deleted else "")+"comment " + (self.blog + "/" + str(self.post_id) + "/" if self.blog and self.post_id else "") + str(self.comment_id) + ">"
 
     def __str__(self):
         return self.__repr__()
@@ -546,7 +549,7 @@ class User:
         raw_data = utils.find_substring(raw_data, '<div class="comments', '<!-- /content -->', extend=True, with_end=False)
         if not raw_data: return []
         div = utils.parse_html_fragment(raw_data)
-        if len(div) == 0: return []
+        if not div: return []
         div = div[0]
         
         raw_comms = []
@@ -560,16 +563,19 @@ class User:
             if "comment" in sect.get('class', ''):
                 raw_comms.append(sect)
                 
-        comms = []
+        comms = {}
         
         for sect in raw_comms:
             c = parse_comment(sect, post_id, blog)
-            if c: comms.append(c)
+            if c:
+                comms[c.comment_id] = c
             else:
                 if sect.get("id", "").find("comment_id_")==0:
-                    comms.append(int(sect.get("id").rsplit("_",1)[-1]))
+                    c = parse_deleted_comment(sect, post_id, blog)
+                    if c: comms[c.comment_id] = c
+                    else: print "Warning: cannot parse deleted comment"
                 else:
-                    print "wtf comment"
+                    print "Warning: unknown comment format"
         
         return comms
 
@@ -695,11 +701,12 @@ class User:
         data = self.jd.decode(data)
         
         if data['bStateError']: raise TabunResultError(data['sMsg'].encode("utf-8"))
-        comms = []
+        comms = {}
         for comm in data['aComments']:
             node = utils.parse_html_fragment(comm['html'])
             pcomm = parse_comment(node[0], post_id, None, comm['idParent'])
-            if pcomm: comms.append(pcomm)
+            if pcomm: comms[pcomm.comment_id] = pcomm
+            else: print "Warning: cannot parse ajax comment from", post_id
         
         return comms
         
@@ -1101,7 +1108,12 @@ def parse_post(item, link=None):
     poll = item.xpath('div[@class="poll"]')
     if poll: poll = parse_poll(poll[0])
     
-    return Post(post_time, blog, post_id, author, title, draft, vote_count, vote_total, node, tags, short=len(nextbtn) > 0, private=private, blog_name=blog_name, poll=poll)
+    fav = footer.xpath('ul[@class="topic-info"]/li[@class="topic-info-favourite"]')
+    favourite = utils.find_substring(fav[0][1].text, '>', '</', with_start=False, with_end=False).strip()
+    try: favourite = int(favourite) if favourite else 0
+    except: favourite = None
+
+    return Post(post_time, blog, post_id, author, title, draft, vote_count, vote_total, node, tags, short=len(nextbtn) > 0, private=private, blog_name=blog_name, poll=poll, favourite=favourite)
 
 def parse_poll(poll):
     # Парсинг опроса. Не надо юзать эту функцию.
@@ -1190,7 +1202,8 @@ def parse_comment(node, post_id, blog=None, parent_id=None):
     # И это тоже парсинг коммента. Не надо юзать эту функцию.
     body = None
     try:
-        unread = "comment-new" in node.get("class")
+        unread = "comment-new" in node.get("class", "")
+        deleted = "comment-deleted" in node.get("class", "")
         body = node.xpath('div[@class="comment-content"][1]/div')[0]
         info = node.xpath('ul[@class="comment-info"]')
         if len(info) == 0:
@@ -1237,11 +1250,38 @@ def parse_comment(node, post_id, blog=None, parent_id=None):
         vote = info.xpath('li[starts-with(@id, "vote_area_comment")]/span[@class="vote-count"]/text()[1]')
         if vote: vote = int(vote[0].replace("+", ""))
         else: vote = 0
+
+        favourite = info.xpath('li[@class="comment-favourite"]')
+        if not favourite: favourite = None
+        else:
+            favourite = favourite[0].find('span').text
+            try: favourite = int(favourite) if favourite else 0
+            except: favourite = None
         
     except AttributeError: return
     except IndexError: return
     
-    if body is not None: return Comment(tm, blog, post_id, comment_id, nick, body, vote, parent_id, post_title, unread)
+    if body is not None: return Comment(tm, blog, post_id, comment_id, nick, body, vote, parent_id, post_title, unread, deleted, favourite)
+
+def parse_deleted_comment(node, post_id, blog=None):
+    # И это тоже парсинг коммента! Но не простого, а удалённого.
+    try: comment_id = int(node.get("id").rsplit("_",1)[-1])
+    except: return
+    unread = "comment-new" in node.get("class", "")
+    deleted = "comment-deleted" in node.get("class", "")
+    if not deleted: print "Warning: deleted comment %d is not deleted! Please report to andreymal."%comment_id
+    body = None
+    nick = None
+    tm = None
+    post_title = None
+    vote = None
+    parent_wrapper = node.getparent().getparent()
+    if parent_wrapper is not None and parent_wrapper.tag == "div" and parent_wrapper.get("id", "").startswith("comment_wrapper_id_"):
+        parent_id = int(parent_wrapper.get("id").rsplit("_",1)[-1])
+        print "parent", comment_id, parent_id
+    else:
+        parent_id = None
+    return Comment(tm, blog, post_id, comment_id, nick, body, vote, parent_id, post_title, unread, deleted)
 
 def parse_talk_item(node):
     checkbox, recs, title, date = node.findall("td")
