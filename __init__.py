@@ -44,7 +44,7 @@ class TabunResultError(TabunError):
 
 class Post:
     """Пост."""
-    def __init__(self, time, blog, post_id, author, title, draft, vote_count, vote_total, body, tags, short=False, private=False, blog_name=None, poll=None, favourite=0):
+    def __init__(self, time, blog, post_id, author, title, draft, vote_count, vote_total, body, tags, short=False, private=False, blog_name=None, poll=None, favourite=0, link=None, link_count=None):
         self.time = time
         self.blog = str(blog) if blog else None
         self.post_id = int(post_id)
@@ -60,6 +60,8 @@ class Post:
         self.blog_name = unicode(blog_name) if blog_name else None
         self.poll = poll
         self.favourite = int(favourite) if favourite is not None else None
+        self.link = unicode(link) if link else None
+        self.link_count = int(link_count) if link_count is not None else None
         
     def __repr__(self):
         return "<post " + self.blog + "/" + str(self.post_id) + ">"
@@ -1113,7 +1115,15 @@ def parse_post(item, link=None):
     try: favourite = int(favourite) if favourite else 0
     except: favourite = None
 
-    return Post(post_time, blog, post_id, author, title, draft, vote_count, vote_total, node, tags, short=len(nextbtn) > 0, private=private, blog_name=blog_name, poll=poll, favourite=favourite)
+    post_link = item.xpath('div[@class="topic-url"]/a')
+    if post_link:
+        link_count = int(post_link[0].get("title", "0").rsplit(" ",1)[-1])
+        post_link = post_link[0].text.strip()
+    else:
+        post_link = None
+        link_count = None
+
+    return Post(post_time, blog, post_id, author, title, draft, vote_count, vote_total, node, tags, short=len(nextbtn) > 0, private=private, blog_name=blog_name, poll=poll, favourite=favourite, link=post_link, link_count=link_count)
 
 def parse_poll(poll):
     # Парсинг опроса. Не надо юзать эту функцию.
