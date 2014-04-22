@@ -25,6 +25,9 @@ http_headers = {
 #: Регулярка для парсинга ссылки на пост.
 post_url_regex = re.compile(r"/blog/(([A-z0-9_\-\.]{1,})/)?([0-9]{1,}).html")
 
+#: Регулярка для парсинга прикреплённых файлов.
+post_file_regex = re.compile(ur'^Скачать \"(.+)" \(([0-9]*(\.[0-9]*)?) (Кб|Мб)\)$')
+
 class NoRedirect(urllib2.HTTPRedirectHandler):
     def http_error_302(self, req, fp, code, msg, headers):
         return fp
@@ -44,7 +47,7 @@ class TabunResultError(TabunError):
 
 class Post:
     """Пост."""
-    def __init__(self, time, blog, post_id, author, title, draft, vote_count, vote_total, body, tags, short=False, private=False, blog_name=None, poll=None, favourite=0, link=None, link_count=None):
+    def __init__(self, time, blog, post_id, author, title, draft, vote_count, vote_total, body, tags, comments_count=None, short=False, private=False, blog_name=None, poll=None, favourite=0, download=None):
         self.time = time
         self.blog = str(blog) if blog else None
         self.post_id = int(post_id)
@@ -55,19 +58,31 @@ class Post:
         self.vote_total = int(vote_total) if not vote_total is None else None
         self.body = body
         self.tags = tags
+        self.comments_count = int(comments_count) if comments_count is not None else None
         self.short = bool(short)
         self.private = bool(private)
         self.blog_name = unicode(blog_name) if blog_name else None
         self.poll = poll
         self.favourite = int(favourite) if favourite is not None else None
-        self.link = unicode(link) if link else None
-        self.link_count = int(link_count) if link_count is not None else None
+        if download and (not isinstance(download, Download) or download.post_id != self.post_id):
+            raise ValueError
+        self.download = download
         
     def __repr__(self):
         return "<post " + self.blog + "/" + str(self.post_id) + ">"
     
     def __str__(self):
         return self.__repr__()
+
+class Download:
+    """Прикрепленный к посту файл (в новом Табуне) или ссылка (в старом Табуне)."""
+    def __init__(self, type, post_id, filename, count, filesize=None):
+        self.type = str(type)
+        if not self.type in ("file", "link"): raise ValueError
+        self.post_id = int(post_id)
+        self.filename = unicode(filename) if filename else None # или ссылка
+        self.filesize = int(filesize) if filesize is not None else None # в байтах
+        self.count = int(count)
 
 class Comment:
     """Коммент. Возможно, удалённый, поэтому следите, чтобы значения не были None!"""
@@ -1115,15 +1130,46 @@ def parse_post(item, link=None):
     try: favourite = int(favourite) if favourite else 0
     except: favourite = None
 
-    post_link = item.xpath('div[@class="topic-url"]/a')
-    if post_link:
-        link_count = int(post_link[0].get("title", "0").rsplit(" ",1)[-1])
-        post_link = post_link[0].text.strip()
-    else:
-        post_link = None
-        link_count = None
+    comments_count = None
+    download_count = None
+    for li in footer.xpath('ul[@class="topic-info"]/li[@class="topic-info-comments"]'):
+        a = li.find('a')
+        if a is None or not a.get('title'): continue
+        if u'комментарии' in a.get('title'):
+            comments_count = int(a.find('span').text.strip())
+        elif u'Скачиваний' in a.get('title'):
+            download_count = int(a.find('span').text.strip())
 
-    return Post(post_time, blog, post_id, author, title, draft, vote_count, vote_total, node, tags, short=len(nextbtn) > 0, private=private, blog_name=blog_name, poll=poll, favourite=favourite, link=post_link, link_count=link_count)
+    download = None
+    if download_count is not None:
+        dname = None
+        dsize = None
+        
+        dlink = item.xpath('div[@class="download"]')
+        if dlink: dlink = dlink[0].find('a')
+        else: dlink = None
+        
+        if dlink is not None and dlink.get('href'):
+            m = post_file_regex.match(dlink.text.strip())
+            dlink = dlink.get('href')
+            if u'/file/go/' in dlink and m:
+                m = m.groups()
+                dname = m[0]
+                dsize = float(m[1])
+                if m[3] == u'Кб': dsize *= 1024
+                elif m[3] == u'Мб': dsize *= 1024*1024
+                
+        download = Download("file", post_id, dname, download_count, dsize)
+        del dlink
+
+    if not download:
+        post_link = item.xpath('div[@class="topic-url"]/a')
+        if post_link:
+            link_count = int(post_link[0].get("title", "0").rsplit(" ",1)[-1])
+            post_link = post_link[0].text.strip()
+            download = Download("link", post_id, post_link, link_count, None)
+
+    return Post(post_time, blog, post_id, author, title, draft, vote_count, vote_total, node, tags, comments_count=comments_count, short=len(nextbtn) > 0, private=private, blog_name=blog_name, poll=poll, favourite=favourite, download=download)
 
 def parse_poll(poll):
     # Парсинг опроса. Не надо юзать эту функцию.
