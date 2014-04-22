@@ -47,7 +47,7 @@ class TabunResultError(TabunError):
 
 class Post:
     """Пост."""
-    def __init__(self, time, blog, post_id, author, title, draft, vote_count, vote_total, body, tags, comments_count=None, short=False, private=False, blog_name=None, poll=None, favourite=0, download=None):
+    def __init__(self, time, blog, post_id, author, title, draft, vote_count, vote_total, body, tags, comments_count=None, comments_new_count=None, short=False, private=False, blog_name=None, poll=None, favourite=0, favourited=False, download=None):
         self.time = time
         self.blog = str(blog) if blog else None
         self.post_id = int(post_id)
@@ -59,11 +59,13 @@ class Post:
         self.body = body
         self.tags = tags
         self.comments_count = int(comments_count) if comments_count is not None else None
+        self.comments_new_count = int(comments_new_count) if comments_new_count is not None else None
         self.short = bool(short)
         self.private = bool(private)
         self.blog_name = unicode(blog_name) if blog_name else None
         self.poll = poll
         self.favourite = int(favourite) if favourite is not None else None
+        self.favourited = bool(favourited)
         if download and (not isinstance(download, Download) or download.post_id != self.post_id):
             raise ValueError
         self.download = download
@@ -86,7 +88,7 @@ class Download:
 
 class Comment:
     """Коммент. Возможно, удалённый, поэтому следите, чтобы значения не были None!"""
-    def __init__(self, time, blog, post_id, comment_id, author, body, vote, parent_id=None, post_title=None, unread=False, deleted=False, favourite=0):
+    def __init__(self, time, blog, post_id, comment_id, author, body, vote, parent_id=None, post_title=None, unread=False, deleted=False, favourite=None, favourited=False):
         self.time = time
         self.blog = str(blog) if blog else None
         self.post_id = int(post_id) if post_id else None
@@ -101,6 +103,7 @@ class Comment:
         else: self.post_title = None
         self.deleted = bool(deleted)
         self.favourite = int(favourite) if favourite is not None else None
+        self.favourited = bool(favourited)
         
     def __repr__(self):
         return "<"+("deleted " if self.deleted else "")+"comment " + (self.blog + "/" + str(self.post_id) + "/" if self.blog and self.post_id else "") + str(self.comment_id) + ">"
@@ -205,9 +208,11 @@ class User:
     * login + phpsessid + security_ls_key [+ key] (без запроса к серверу)
     * без параметров (анонимус)
     
-    Если у функции есть параметр raw_data, то через него можно передать код страницы, чтобы избежать лишнего парсинга. Если есть параметр url, то при его указании открывается именно указанный url вместо формирования стандартного с помощью других параметров функции.
+    Если у функции есть параметр raw_data, то через него можно передать код страницы, чтобы избежать лишнего парсинга.
+    Если есть параметр url, то при его указании открывается именно указанный url вместо формирования стандартного с помощью других параметров функции.
     
-    phpsessid - печенька (cookie), по которой идентифицируется пользователь, security_ls_key - секретный ключ движка livestreet для отправки запросов, key - печенька неизвестного мне назначения. Можно не париться с ними, их автоматически пришлёт сервер во время инициализации объекта. А можно, например, не авторизоваться по логину и паролю, а выдрать из браузера печеньку PHPSESSID и авторизоваться через неё.
+    phpsessid - печенька (cookie), по которой идентифицируется пользователь, security_ls_key - секретный ключ движка livestreet для отправки запросов, key - печенька неизвестного мне назначения.
+    Можно не париться с ними, их автоматически пришлёт сервер во время инициализации объекта. А можно, например, не авторизоваться по логину и паролю, а выдрать из браузера печеньку PHPSESSID и авторизоваться через неё.
     
     У класса также есть следующие поля:
     
@@ -329,7 +334,11 @@ class User:
             raise TabunError("Not logined")
     
     def urlopen(self, url, data=None, headers={}, redir=True):
-        """Отправляет HTTP-запрос и возвращает результат urllib2.urlopen (объект urllib.addinfourl). Если указан параметр data, то отправляется POST-запрос. В качестве URL может быть путь с доменом (http://tabun.everypony.ru/), без домена (/index/newall/) или объект urllib2.Request. Если redir установлен в False, то не будет осуществляться переход по перенаправлению (HTTP-коды 3xx). Может кидаться исключением TabunError."""
+        """Отправляет HTTP-запрос и возвращает результат urllib2.urlopen (объект urllib.addinfourl). """
+        """Если указан параметр data, то отправляется POST-запрос. """
+        """В качестве URL может быть путь с доменом (http://tabun.everypony.ru/), без домена (/index/newall/) или объект urllib2.Request. """
+        """Если redir установлен в False, то не будет осуществляться переход по перенаправлению (HTTP-коды 3xx). """
+        """Может кидаться исключением TabunError."""
         if not isinstance(url, urllib2.Request):
             if url[0] == "/": url = http_host + url
             url = urllib2.Request(url, data)
@@ -910,6 +919,36 @@ class User:
         if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
         return int(result['iRating'])
 
+    def favourite_topic(self, post_id, type=True):
+        """Добавляет (type=True) пост в избранное или убирает (type=False) оттуда. Возвращает новое число пользователей, добавивших пост в избранное."""
+        self.check_login()
+
+        fields = {
+            "idTopic": str(post_id),
+            "type": "1" if type else "0",
+            "security_ls_key": self.security_ls_key
+        }
+
+        data = self.send_form('/ajax/favourite/topic/', fields, (), headers={'x-requested-with': 'XMLHttpRequest'}).read()
+        result = self.jd.decode(data)
+        if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
+        return result['iCount']
+
+    def favourite_comment(self, comment_id, type=True):
+        """Добавляет (type=True) коммент в избранное или убирает (type=False) оттуда. Возвращает новое число пользователей, добавивших коммент в избранное."""
+        self.check_login()
+
+        fields = {
+            "idComment": str(comment_id),
+            "type": "1" if type else "0",
+            "security_ls_key": self.security_ls_key
+        }
+
+        data = self.send_form('/ajax/favourite/comment/', fields, (), headers={'x-requested-with': 'XMLHttpRequest'}).read()
+        result = self.jd.decode(data)
+        if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
+        return result['iCount']
+
     def edit_comment(self, comment_id, text):
         """Редактирует комментарий и возвращает новое тело комментария."""
         self.check_login()
@@ -980,7 +1019,8 @@ class User:
         return parse_post_url(link)
     
     def invite(self, blog_id, username):
-        """Отправляет инвайт в блог с указанным номером указанному пользователю (или пользователям, если указать несколько через запятую). Возвращает словарь, который содержит пары юзернейм-текст ошибки в случае, если кому-то инвайт не отправился. Если всё хорошо, то словарь пустой."""
+        """Отправляет инвайт в блог с указанным номером указанному пользователю (или пользователям, если указать несколько через запятую). """
+        """Возвращает словарь, который содержит пары юзернейм-текст ошибки в случае, если кому-то инвайт не отправился. Если всё хорошо, то словарь пустой."""
         self.check_login()
         
         blog_id = int(blog_id if blog_id else 0)
@@ -1129,15 +1169,25 @@ def parse_post(item, link=None):
     favourite = utils.find_substring(fav[0][1].text, '>', '</', with_start=False, with_end=False).strip()
     try: favourite = int(favourite) if favourite else 0
     except: favourite = None
+    favourited = fav[0].find('i')
+    favourited = favourited is not None and 'active' in favourited.get('class', '')
 
     comments_count = None
+    comments_new_count = None
     download_count = None
     for li in footer.xpath('ul[@class="topic-info"]/li[@class="topic-info-comments"]'):
         a = li.find('a')
-        if a is None or not a.get('title'): continue
-        if u'комментарии' in a.get('title'):
-            comments_count = int(a.find('span').text.strip())
-        elif u'Скачиваний' in a.get('title'):
+        if a is None: continue
+        icon = a.find('i')
+        if icon is None: continue
+        if icon.get('class') == 'icon-synio-comments-green-filled':
+            span = a.findall('span')
+            comments_count = int(span[0].text.strip())
+            if len(span) > 1:
+                comments_new_count = int(span[1].text.strip()[1:])
+            else:
+                comments_new_count = 0
+        elif icon.get('class') == 'icon-download-alt':
             download_count = int(a.find('span').text.strip())
 
     download = None
@@ -1169,7 +1219,11 @@ def parse_post(item, link=None):
             post_link = post_link[0].text.strip()
             download = Download("link", post_id, post_link, link_count, None)
 
-    return Post(post_time, blog, post_id, author, title, draft, vote_count, vote_total, node, tags, comments_count=comments_count, short=len(nextbtn) > 0, private=private, blog_name=blog_name, poll=poll, favourite=favourite, download=download)
+    return Post(
+        post_time, blog, post_id, author, title, draft, vote_count, vote_total, node, tags,
+        comments_count, comments_new_count, len(nextbtn) > 0, private, blog_name,
+        poll, favourite, favourited, download
+    )
 
 def parse_poll(poll):
     # Парсинг опроса. Не надо юзать эту функцию.
@@ -1307,9 +1361,12 @@ def parse_comment(node, post_id, blog=None, parent_id=None):
         if vote: vote = int(vote[0].replace("+", ""))
         else: vote = 0
 
+        favourited = False
         favourite = info.xpath('li[@class="comment-favourite"]')
         if not favourite: favourite = None
         else:
+            favourited = favourite[0].find('div')
+            favourited = favourited is not None and 'active' in favourited.get('class', '')
             favourite = favourite[0].find('span').text
             try: favourite = int(favourite) if favourite else 0
             except: favourite = None
@@ -1317,7 +1374,7 @@ def parse_comment(node, post_id, blog=None, parent_id=None):
     except AttributeError: return
     except IndexError: return
     
-    if body is not None: return Comment(tm, blog, post_id, comment_id, nick, body, vote, parent_id, post_title, unread, deleted, favourite)
+    if body is not None: return Comment(tm, blog, post_id, comment_id, nick, body, vote, parent_id, post_title, unread, deleted, favourite, favourited)
 
 def parse_deleted_comment(node, post_id, blog=None):
     # И это тоже парсинг коммента! Но не простого, а удалённого.
