@@ -181,7 +181,7 @@ class Poll:
             self.items.append( (unicode(x[0]), float(x[1]), int(x[2])) )
  
 class TalkItem:
-    """Личное сообщение. В поле date временно содержится голая строка, которую тупо лень парсить из-за чутка кривой вёрстки."""
+    """Личное сообщение."""
     def __init__(self, talk_id, recipinets, unread, title, date, body=None, author=None, comments=[]):
         self.talk_id = int(talk_id)
         self.recipinets = map(str, recipinets)
@@ -334,11 +334,11 @@ class User:
             raise TabunError("Not logined")
     
     def urlopen(self, url, data=None, headers={}, redir=True):
-        """Отправляет HTTP-запрос и возвращает результат urllib2.urlopen (объект urllib.addinfourl). """
-        """Если указан параметр data, то отправляется POST-запрос. """
-        """В качестве URL может быть путь с доменом (http://tabun.everypony.ru/), без домена (/index/newall/) или объект urllib2.Request. """
-        """Если redir установлен в False, то не будет осуществляться переход по перенаправлению (HTTP-коды 3xx). """
-        """Может кидаться исключением TabunError."""
+        """Отправляет HTTP-запрос и возвращает результат urllib2.urlopen (объект urllib.addinfourl). 
+        Если указан параметр data, то отправляется POST-запрос. 
+        В качестве URL может быть путь с доменом (http://tabun.everypony.ru/), без домена (/index/newall/) или объект urllib2.Request. 
+        Если redir установлен в False, то не будет осуществляться переход по перенаправлению (HTTP-коды 3xx). 
+        Может кидаться исключением TabunError."""
         if not isinstance(url, urllib2.Request):
             if url[0] == "/": url = http_host + url
             url = urllib2.Request(url, data)
@@ -1019,8 +1019,8 @@ class User:
         return parse_post_url(link)
     
     def invite(self, blog_id, username):
-        """Отправляет инвайт в блог с указанным номером указанному пользователю (или пользователям, если указать несколько через запятую). """
-        """Возвращает словарь, который содержит пары юзернейм-текст ошибки в случае, если кому-то инвайт не отправился. Если всё хорошо, то словарь пустой."""
+        """Отправляет инвайт в блог с указанным номером указанному пользователю (или пользователям, если указать несколько через запятую).
+        Возвращает словарь, который содержит пары юзернейм-текст ошибки в случае, если кому-то инвайт не отправился. Если всё хорошо, то словарь пустой."""
         self.check_login()
         
         blog_id = int(blog_id if blog_id else 0)
