@@ -71,7 +71,7 @@ class Post:
         self.download = download
         
     def __repr__(self):
-        return "<post " + self.blog + "/" + str(self.post_id) + ">"
+        return "<post " + ((self.blog + "/") if self.blog else "personal ") + str(self.post_id) + ">"
     
     def __str__(self):
         return self.__repr__()
@@ -519,7 +519,30 @@ class User:
         data = self.jd.decode(data)
         if data['bStateError']: raise TabunResultError(data['sMsg'].encode("utf-8"))
         return data['sCommentId']
-        
+       
+    def get_recommendations(self, raw_data):
+        """Возвращает со страницы список постов, которые советует Дискорд."""
+        if isinstance(raw_data, str): raw_data = raw_data.decode("utf-8", "replace")
+        elif not isinstance(raw_data, unicode): raw_data = unicode(raw_data)
+
+        section = raw_data.find('<section class="block block-type-stream">')
+        if section < 0: return []
+        section2 = raw_data.find('<section class="block block-type-stream">', section+1)
+        if section2 < raw_data.find(u'Дискорд советует', section):
+            section = section2
+        del section2
+
+        section = raw_data[section:raw_data.find('</section>', section+1)+10]
+        section = utils.parse_html_fragment(section)
+        if not section: return []
+        section = section[0]
+
+        posts = []
+        for li in section.xpath('div[@class="block-content"]/ul/li'):
+            posts.append(parse_discord(li))
+
+        return posts
+
     def get_posts(self, url="/index/newall/", raw_data=None):
         """Возвращает список постов со страницы или RSS. Если постов нет - кидает исключение TabunError("No post")."""
         if not raw_data:
@@ -564,7 +587,7 @@ class User:
         return posts[0]
 
     def get_comments(self, url="/comments/", raw_data=None):
-        """Возвращает массив, содержащий объекты Comment и числа (id комментария) вместо удалённых комментариев."""
+        """Возвращает словарть id-комментарий."""
         if not raw_data:
             req = self.urlopen(url)
             url = req.url
@@ -573,9 +596,9 @@ class User:
         blog, post_id = parse_post_url(url)
         
         raw_data = utils.find_substring(raw_data, '<div class="comments', '<!-- /content -->', extend=True, with_end=False)
-        if not raw_data: return []
+        if not raw_data: return {}
         div = utils.parse_html_fragment(raw_data)
-        if not div: return []
+        if not div: return {}
         div = div[0]
         
         raw_comms = []
@@ -749,7 +772,8 @@ class User:
         
         node = utils.parse_html_fragment(data['sText'])
         if not node: return []
-        
+        node = node[0]
+
         items = []
         
         for item in node.getTags("li", {"class": "js-title-comment"}):
@@ -808,6 +832,7 @@ class User:
 
         data = self.urlopen(url).read()
         data = utils.find_substring(data, '<table class="table table-users', '</table>')
+        if not data: return []
         node = utils.parse_html_fragment(data)
         if not node: return []
         node = node[0]
@@ -869,7 +894,6 @@ class User:
         for ul in uls:
             name = ul.find('span').text.strip()
             value = ul.find('strong')
-            
             if name == u'Дата рождения:':
                 birthday = time.strptime(utils.mon2num(value.text), '%d %m %Y')
             elif name == u'Зарегистрирован:':
@@ -880,6 +904,11 @@ class User:
                 gender = 'M' if value.text.strip() == u'мужской' else 'F'
         
         description = node.xpath('div[@class="profile-info-about"]/div[@class="text"]')
+        
+        if registered is None:
+            # забагованная учётка Tailsik208
+            registered = time.gmtime(0)
+            description = []
         
         #TODO: блоги
         return UserInfo(user_id, username, realname[0] if realname else None, skill, rating, userpic, gender, birthday, registered, last_activity, description[0] if description else None)
@@ -1250,7 +1279,22 @@ def parse_poll(poll):
             items.append(item)
         return Poll(-1, -1, items)
         
- 
+
+def parse_discord(li):
+    body = '<div class="topic-content text">' 
+    body += li.get('title', u'').replace('&','&amp;').replace('<', '&lt;').replace('>','&gt;')
+    body += '</div>'
+    body = utils.parse_html_fragment(body)[0]
+    p = li.find('p')
+    author = p.find('a').text.strip()
+    tm = time.strptime(p.find('time').get('datetime'), "%Y-%m-%dT%H:%M:%S+04:00")
+    blog_name, title = li.findall('a')[:2]
+    blog_name = blog_name.text.strip()
+    blog, post_id = parse_post_url(title.get('href'))
+    title = title.text.strip()
+    comments_count = int(li.find('span').text_content().strip())
+    return Post(tm, blog, post_id, author, title, False, None, None, body, [], comments_count)
+
 def parse_rss_post(item):
     # Парсинг rss. Не надо юзать эту функцию.
     link = str(item.find("link").text)

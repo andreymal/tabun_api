@@ -281,6 +281,8 @@ def find_good_image(urls, maxmem=20*1024*1024):
     
     good_image = None, None
     for url in urls:
+        if url.startswith('//'):
+            url = 'http:' + url
         try:
             req = urllib2.urlopen(url.encode("utf-8") if isinstance(url, unicode) else url, timeout=5)
             size = req.headers.get('content-length')
