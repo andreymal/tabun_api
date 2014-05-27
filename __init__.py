@@ -14,7 +14,7 @@ from Cookie import BaseCookie
 http_host = "http://tabun.everypony.ru"
 
 #: Список полузакрытых блогов. В tabun_api нигде не используется, но может использоваться в использующих его программах.
-halfclosed = ("borderline", "shipping", "erpg", "gak", "RPG", "roliplay")
+halfclosed = ("borderline", "shipping", "erpg", "gak", "RPG", "roliplay", "tearsfromthemoon")
 
 #: Заголовки для HTTP-запросов. Возможно, стоит менять user-agent.
 http_headers = {
@@ -152,13 +152,14 @@ class StreamItem:
 
 class UserInfo:
     """Информация о броняше."""
-    def __init__(self, user_id, username, realname, skill, rating, userpic=None, gender=None, birthday=None, registered=None, last_activity=None, description=None):
+    def __init__(self, user_id, username, realname, skill, rating, userpic=None, foto=None, gender=None, birthday=None, registered=None, last_activity=None, description=None):
         self.user_id = int(user_id)
         self.username = str(username)
         self.realname = unicode(realname) if realname else None
         self.skill = float(skill)
         self.rating = float(rating)
         self.userpic = str(userpic) if userpic else None
+        self.foto = unicode(foto) if foto else None
         self.gender = ('M' if gender == 'M' else 'F') if gender else None
         self.birthday = birthday
         self.registered = registered
@@ -685,7 +686,7 @@ class User:
         blog_inner = node[0].xpath('div[@id="blog"]/div[@class="blog-inner"]')[0]
         blog_footer = node[0].xpath('div[@id="blog"]/footer[@class="blog-footer"]')[0]
     
-        name = blog_top.xpath('h2/text()[1]')[0]
+        name = blog_top.xpath('h2/text()[1]')[0].rstrip()
         closed = len(blog_top.xpath('h2/i[@class="icon-synio-topic-private"]')) > 0
     
         vote_item = blog_top.xpath('div/div[@class="vote-item vote-count"]')[0]
@@ -906,12 +907,25 @@ class User:
         description = node.xpath('div[@class="profile-info-about"]/div[@class="text"]')
         
         if registered is None:
-            # забагованная учётка Tailsik208
+            # забагованная учётка Tailsik208 (была когда-то)
             registered = time.gmtime(0)
             description = []
         
+        foto = raw_data.find('id="foto-img"')
+        if foto >= 0:
+            foto = raw_data[raw_data.rfind('<img', 0, foto):]
+            foto = foto[:foto.find('</a>')]
+        else:
+            foto = None
+        
+        if foto is not None:
+            foto = utils.parse_html_fragment(foto)
+            foto = foto[0].get('src') if foto else None
+            if foto.endswith('user_photo_male.png') or foto.endswith('user_photo_female.png'):
+                foto = None
+        
         #TODO: блоги
-        return UserInfo(user_id, username, realname[0] if realname else None, skill, rating, userpic, gender, birthday, registered, last_activity, description[0] if description else None)
+        return UserInfo(user_id, username, realname[0] if realname else None, skill, rating, userpic, foto, gender, birthday, registered, last_activity, description[0] if description else None)
         
         
         
