@@ -197,7 +197,7 @@ def find_images(body, spoiler_title=True, no_other=False):
             if not src:
                 src = img.get("href")
                 if not src: continue
-                if not src[-4:].lower() not in (u'jpeg', u'.jpg', u'.png'):
+                if src[-4:].lower() not in (u'jpeg', u'.jpg', u'.png'):
                     continue
             if "<" in src: continue
             if no_other and (".gif" in src.lower() or "smile" in src.lower()):
@@ -288,7 +288,16 @@ def find_good_image(urls, maxmem=20*1024*1024):
             size = req.headers.get('content-length')
             if size and size.isdigit() and int(size) > maxmem:
                 continue
-            data = req.read(maxmem + 1)
+            data = ''
+            start_dwnl = time.time()
+            while 1:
+                if len(data) > maxmem: break
+                tmp = req.read(128*1024)
+                if not tmp: break
+                data += tmp
+                if time.time() - start_dwnl >= 15:
+                    raise IOError("Too long")
+            req.close()
         except IOError: continue
         if len(data) > maxmem:
             continue
