@@ -199,6 +199,60 @@ class TalkItem:
     def __str__(self):
         return self.__repr__()
  
+class ActivityItem:
+    """Событие со страницы /stream/."""
+    WALL_ADD = 0 # Просто чтобы было :)
+    POST_ADD = 1
+    COMMENT_ADD = 2
+    BLOG_ADD = 3
+    POST_VOTE = 11
+    COMMENT_VOTE = 12
+    BLOG_VOTE = 13
+    USER_VOTE = 14
+    FRIEND_ADD = 4
+    JOIN_BLOG = 24
+    def __init__(self, type, date, post_id=None, comment_id=None, blog=None, username=None, title=None, data=None, id=None):
+        self.type = int(type)
+        if not self.type in (
+            self.WALL_ADD, self.POST_ADD, self.COMMENT_ADD, self.POST_VOTE, self.COMMENT_VOTE, self.BLOG_VOTE,
+            self.USER_VOTE, self.FRIEND_ADD, self.JOIN_BLOG
+        ):
+            raise ValueError
+
+        self.date = date
+
+        self.post_id = int(post_id) if post_id is not None else None
+        self.comment_id = int(comment_id) if comment_id is not None else None
+        self.blog = str(blog) if blog is not None else None
+        self.username = str(username) if username is not None else None
+        self.title = unicode(title) if title is not None else None
+        self.data = unicode(data) if data is not None else None
+        self.id = int(id) if id is not None else None
+
+    def __str__(self):
+        return "<activity " + str(self.type) + " " + self.username + ">"
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, ActivityItem) and
+            self.type == other.type and
+            self.date == other.date and
+            self.post_id == other.post_id and
+            self.comment_id == other.comment_id and
+            self.blog == other.blog and
+            self.username == other.username and
+            self.title == other.title and
+            self.data == other.data
+        )
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+
+
 class User:
     """Через божественные объекты класса User осуществляется всё взаимодействие с Табуном. Почти все функции могут кидаться исключением TabunResultError с текстом ошибки (который на сайте обычно показывается во всплывашке в углу).
     
@@ -1040,6 +1094,35 @@ class User:
         forbid_comment = bool(form.xpath('p/label/input[@id="topic_forbid_comment"]')[0].get("checked"))
         return blog_id, title, body, tags, forbid_comment
 
+    def get_editable_blog(self, blog_id, raw_data=None):
+        """Возвращает заголовок блога, URL, тип (True - закрытый, False - открытый), описание и ограничение рейтинга."""
+        if not raw_data:
+            req = self.urlopen("/blog/edit/" + str(int(blog_id)) + "/")
+            raw_data = req.read()
+            del req
+
+        raw_data = utils.find_substring(
+            raw_data,
+            '<form method="post" enctype="multipart/form-data" class="wrapper-content">',
+            '</form>'
+        )
+
+        if not raw_data: return
+        form = utils.parse_html_fragment(raw_data)
+        if not form: return
+        form = form[0]
+
+        #return form
+
+        blog_title = form.xpath('p/input[@id="blog_title"]')[0].get('value')
+        blog_url = form.xpath('p/input[@id="blog_url"]')[0].get('value')
+        blog_type = form.xpath('p/select[@id="blog_type"]/option[@selected]')[0].get('value')
+        blog_description = form.xpath('p/textarea[@id="blog_description"]/text()[1]')[0].replace('\r\n', '\n')
+        blog_limit_rating_topic = float(form.xpath('p/input[@id="blog_limit_rating_topic"]')[0].get('value'))
+
+        return blog_title, blog_url, blog_type=="close", blog_description, blog_limit_rating_topic
+
+
     def edit_post(self, post_id, blog_id, title, body, tags, draft=False):
         """Редактирует пост и возвращает его блог и номер в случае удачи или (None,None) в случае неудачи."""
         self.check_login()
@@ -1135,6 +1218,132 @@ class User:
         comments = self.get_comments(raw_data=raw_data)
         
         return TalkItem(talk_id, recipients, False, title, date, body, author, comments)
+
+    def get_activity(self, url='/stream/all/', raw_data=None):
+        """Возвращает список последних событий."""
+        if not raw_data:
+            req = self.urlopen(url)
+            raw_data = req.read()
+            del req
+
+        raw_data = utils.find_substring(raw_data, '<ul class="stream-list', '<a class="stream-get-more"', with_end=False)
+        if not raw_data: return []
+        node = utils.parse_html_fragment(raw_data[:raw_data.rfind('</ul>')])
+        if not node: return []
+        node = node[0]
+
+        last_id = raw_data[raw_data.rfind('value="')+7:]; last_id = int(last_id[:last_id.find('"')])
+
+        items = []
+
+        for li in node.findall('li'):
+            if not li.get('class', '').startswith('stream-item'):
+                continue
+            item = parse_activity(li)
+            if item: items.append(item)
+
+        if item: item.id = last_id
+        return last_id, items
+
+    def get_more_activity(self, last_id=0x7fffffff):
+        """Возвращает список событий старее данного id."""
+        self.check_login()
+
+        fields = {
+            "last_id": str(int(last_id)),
+            'security_ls_key': self.security_ls_key,
+        }
+        
+        data = self.send_form("/stream/get_more_all/", fields).read()
+        result = self.jd.decode(data)
+        if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
+        
+        items = []
+
+        last_id = int(result.get('iStreamLastId', 0))
+        for li in utils.parse_html_fragment(result['result']):
+            if li.tag != 'li' or not li.get('class', '').startswith('stream-item'):
+                continue
+            item = parse_activity(li)
+            if item: items.append(item)
+
+        if item: item.id = last_id
+        return last_id, items
+
+
+def parse_activity(item):
+    classes = item.get('class').split()
+
+    post_id = None
+    comment_id = None
+    blog = None
+    title = None
+    data = None
+    date = None
+
+    if 'stream-item-type-add_topic' in classes:
+        typ = ActivityItem.POST_ADD
+        href = item.xpath('a[2]')[0].get('href')
+        blog, post_id = parse_post_url(href)
+        title = item.xpath('a[2]/text()[1]')[0]
+    
+    elif 'stream-item-type-add_comment' in classes:
+        typ = ActivityItem.COMMENT_ADD
+        href = item.xpath('a[2]')[0].get('href')
+        blog, post_id = parse_post_url(href)
+        comment_id = int(href[href.rfind("#comment")+8:])
+        data = item.xpath('div/text()')
+        data = data[0] if data else None
+        title = item.xpath('a[2]/text()[1]')[0]
+    
+    elif 'stream-item-type-add_blog' in classes:
+        typ = ActivityItem.BLOG_ADD
+        #print utils.node2string(item)
+        return #TODO: 
+    
+    elif 'stream-item-type-vote_topic' in classes:
+        typ = ActivityItem.POST_VOTE
+        href = item.xpath('a[2]')[0].get('href')
+        blog, post_id = parse_post_url(href)
+        title = item.xpath('a[2]/text()[1]')[0]
+    
+    elif 'stream-item-type-vote_comment' in classes:
+        typ = ActivityItem.COMMENT_VOTE
+        href = item.xpath('a[2]')[0].get('href')
+        blog, post_id = parse_post_url(href)
+        comment_id = int(href[href.rfind("#comment")+8:])
+        title = item.xpath('a[2]/text()[1]')[0]
+    
+    elif 'stream-item-type-vote_blog' in classes:
+        typ = ActivityItem.BLOG_VOTE
+        href = item.xpath('a[2]')[0].get('href')[:-1]
+        blog = href[href.rfind('/')+1:]
+        title = item.xpath('a[2]/text()[1]')[0]
+    
+    elif 'stream-item-type-vote_user' in classes:
+        typ = ActivityItem.USER_VOTE
+        data = item.xpath('span/a[2]/text()')[0]
+    
+    elif 'stream-item-type-add_friend' in classes:
+        typ = ActivityItem.FRIEND_ADD
+        #print utils.node2string(item)
+        return #TODO:
+    
+    elif 'stream-item-type-join_blog' in classes:
+        typ = ActivityItem.JOIN_BLOG
+        href = item.xpath('a[2]')[0].get('href')[:-1]
+        blog = href[href.rfind('/')+1:]
+        title = item.xpath('a[2]/text()[1]')[0]
+    
+    else:
+        return
+
+    username = item.xpath('p[@class="info"]/a/strong/text()[1]')[0].encode("utf-8")
+    date = item.xpath('p[@class="info"]/span[@class="date"]')[0].get('title')
+    if not date: return
+    date = time.strptime(utils.mon2num(date), "%d %m %Y, %H:%M")
+    return ActivityItem(typ, date, post_id, comment_id, blog, username, title, data)
+
 
 def parse_post(item, link=None):
     # Парсинг поста. Не надо юзать эту функцию.
