@@ -37,8 +37,8 @@ class NoRedirect(urllib2.HTTPRedirectHandler):
 class TabunError(Exception):
     """Общее для библиотеки исключение. Содержит атрибут code с всякими разными циферками для разных типов исключения, обычно совпадает с HTTP-кодом ошибки при запросе. А в args[0] или текст, или снова код ошибки."""
     def __init__(self, msg=None, code=0):
-        if not msg: msg = str(code)
-        Exception.__init__(self, str(msg))
+        msg = str(msg) if msg else str(code)
+        Exception.__init__(self, msg)
         self.code = int(code)
 
 class TabunResultError(TabunError):
@@ -642,7 +642,7 @@ class User:
         return posts[0]
 
     def get_comments(self, url="/comments/", raw_data=None):
-        """Возвращает словарть id-комментарий."""
+        """Возвращает словарь id-комментарий."""
         if not raw_data:
             req = self.urlopen(url)
             url = req.url
@@ -1012,6 +1012,21 @@ class User:
         }
         
         data = self.send_form('/ajax/vote/topic/', fields, (), headers={'x-requested-with': 'XMLHttpRequest'}).read()
+        result = self.jd.decode(data)
+        if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
+        return int(result['iRating'])
+
+    def vote_comment(self, comment_id, value):
+        """Ставит плюсик (1) или минусик (-1) комменту и возвращает его рейтинг."""
+        self.check_login()
+        
+        fields = {
+            "idComment": str(comment_id),
+            "value": str(value),
+            "security_ls_key": self.security_ls_key
+        }
+        
+        data = self.send_form('/ajax/vote/comment/', fields, (), headers={'x-requested-with': 'XMLHttpRequest'}).read()
         result = self.jd.decode(data)
         if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
         return int(result['iRating'])
