@@ -152,7 +152,7 @@ class StreamItem:
 
 class UserInfo:
     """Информация о броняше."""
-    def __init__(self, user_id, username, realname, skill, rating, userpic=None, foto=None, gender=None, birthday=None, registered=None, last_activity=None, description=None):
+    def __init__(self, user_id, username, realname, skill, rating, userpic=None, foto=None, gender=None, birthday=None, registered=None, last_activity=None, description=None, blogs=None):
         self.user_id = int(user_id)
         self.username = str(username)
         self.realname = unicode(realname) if realname else None
@@ -165,6 +165,11 @@ class UserInfo:
         self.registered = registered
         self.last_activity = last_activity
         self.description = description
+        self.blogs = {}
+        self.blogs['owner'] = blogs.get('owner', []) if blogs else []
+        self.blogs['admin'] = blogs.get('admin', []) if blogs else []
+        self.blogs['moderator'] = blogs.get('moderator', []) if blogs else []
+        self.blogs['member'] = blogs.get('member', []) if blogs else []
     
     def __repr__(self):
         return "<userinfo " + self.username + ">"
@@ -946,6 +951,13 @@ class User:
         
         uls = node.xpath('div[@class="wrapper"]/div[@class="profile-left"]/ul[@class="profile-dotted-list"]/li')
         
+        blogs = {
+            'owner': [],
+            'admin': [],
+            'moderator': [],
+            'member': []
+        }
+
         for ul in uls:
             name = ul.find('span').text.strip()
             value = ul.find('strong')
@@ -957,6 +969,18 @@ class User:
                 last_activity = time.strptime(utils.mon2num(value.text), '%d %m %Y, %H:%M')
             elif name == u'Пол:':
                 gender = 'M' if value.text.strip() == u'мужской' else 'F'
+
+            elif name in (u'Создал:', u'Администрирует:', u'Модерирует:', u'Состоит в:'):
+                blist = []
+                for b in value.findall('a'):
+                    link = b.get('href', '')[:-1]
+                    if link:
+                        blist.append((link[link.rfind('/')+1:], b.text_content()))
+
+                if name == u'Создал:': blogs['owner'] = blist
+                elif name == u'Администрирует:': blogs['admin'] = blist
+                elif name == u'Модерирует:': blogs['moderator'] = blist
+                elif name == u'Состоит в:': blogs['member'] = blist
         
         description = node.xpath('div[@class="profile-info-about"]/div[@class="text"]')
         
@@ -979,7 +1003,7 @@ class User:
                 foto = None
         
         #TODO: блоги
-        return UserInfo(user_id, username, realname[0] if realname else None, skill, rating, userpic, foto, gender, birthday, registered, last_activity, description[0] if description else None)
+        return UserInfo(user_id, username, realname[0] if realname else None, skill, rating, userpic, foto, gender, birthday, registered, last_activity, description[0] if description else None, blogs)
         
         
         
@@ -1030,6 +1054,21 @@ class User:
         result = self.jd.decode(data)
         if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
         return int(result['iRating'])
+
+    def vote_user(self, user_id, value):
+        """Ставит плюсик (1) или минусик (-1) пользователю и возвращает его рейтинг."""
+        self.check_login()
+        
+        fields = {
+            "idUser": str(user_id),
+            "value": str(value),
+            "security_ls_key": self.security_ls_key
+        }
+        
+        data = self.send_form('/ajax/vote/user/', fields, (), headers={'x-requested-with': 'XMLHttpRequest'}).read()
+        result = self.jd.decode(data)
+        if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
+        return float(result['iRating'])
 
     def favourite_topic(self, post_id, type=True):
         """Добавляет (type=True) пост в избранное или убирает (type=False) оттуда. Возвращает новое число пользователей, добавивших пост в избранное."""
@@ -1596,6 +1635,11 @@ def parse_comment(node, post_id, blog=None, parent_id=None):
     try:
         unread = "comment-new" in node.get("class", "")
         deleted = "comment-deleted" in node.get("class", "")
+
+        # TODO: заюзать
+        is_author = "comment-author" in node.get("class", "")
+        is_self = "comment-self" in node.get("class", "")
+
         body = node.xpath('div[@class="comment-content"][1]/div')[0]
         info = node.xpath('ul[@class="comment-info"]')
         if len(info) == 0:
