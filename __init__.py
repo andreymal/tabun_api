@@ -37,9 +37,15 @@ class NoRedirect(urllib2.HTTPRedirectHandler):
 class TabunError(Exception):
     """Общее для библиотеки исключение. Содержит атрибут code с всякими разными циферками для разных типов исключения, обычно совпадает с HTTP-кодом ошибки при запросе. А в args[0] или текст, или снова код ошибки."""
     def __init__(self, msg=None, code=0):
-        msg = str(msg) if msg else str(code)
-        Exception.__init__(self, msg)
         self.code = int(code)
+        self.message = unicode(msg) if msg else unicode(code)
+        Exception.__init__(self, self.message.encode("utf-8"))
+
+    def __str__(self):
+        return self.message.encode("utf-8")
+
+    def __unicode__(self):
+        return self.message
 
 class TabunResultError(TabunError):
     """Исключение, содержащее текст ошибки, который вернул сервер. Как правило, это текст соответствующих всплывашек на сайте."""
@@ -367,7 +373,7 @@ class User:
         else: self.rating = float(strength[1])
         
         return self.username
-    
+
     def login(self, login, password, return_path=None, remember=True):
         """Логинится и записывает печеньку key в случае успеха. Параметр return_path нафиг не нужен, remember - галочка «Запомнить меня»."""
         query = "login=" + urllib2.quote(login) + "&password=" + urllib2.quote(password) + "&remember=" + ("on" if remember else "off")
@@ -377,10 +383,10 @@ class User:
         
         resp = self.urlopen("/login/ajax-login", query, {"X-Requested-With": "XMLHttpRequest"})
         data = resp.read()
-        if data[0] != "{": raise TabunResultError(data)
+        if data[0] != "{": raise TabunResultError(data.decode("utf-8", "replace"))
         data = self.jd.decode(data)
         if data.get('bStateError') != False:
-            raise TabunResultError(data.get("sMsg", u"").encode("utf-8"))
+            raise TabunResultError(data.get("sMsg", u""))
         self.username = str(login)
         
         cook = BaseCookie()
@@ -416,13 +422,13 @@ class User:
         except urllib2.HTTPError as exc:
             raise TabunError(code=exc.getcode())
         except urllib2.URLError as exc:
-            raise TabunError(exc.reason.strerror, -exc.reason.errno if exc.reason.errno else 0)
+            raise TabunError(exc.reason, -exc.reason.errno if exc.reason.errno else 0)
         except httplib.HTTPException as exc:
             raise TabunError("HTTP error", -4)
         except socket_timeout:
             raise TabunError("Timeout", -2)
         except IOError as exc:
-            raise TabunError("IOError", -3)
+            raise TabunError(str(exc).decode("utf-8", "replace"), -3)
      
     def send_form(self, url, fields=(), files=(), headers={}, redir=True):
         """Формирует multipart/form-data запрос и отправляет его через функцию urlopen."""
@@ -432,7 +438,7 @@ class User:
             url = urllib2.Request(url, data)
         url.add_header('content-type', content_type)
         return self.urlopen(url, None, headers, redir)
-       
+
     def add_post(self, blog_id, title, body, tags, draft=False, check_if_error=False):
         """Отправляет пост и возвращает имя блога с номером поста в случае удачи или (None,None) в случае неудачи.
         При check_if_error=True проверяет наличие поста по заголовку даже в случае ошибки (если, например, таймаут или 404, но пост, как иногда бывает, добавляется)."""
@@ -536,7 +542,7 @@ class User:
         node = utils.parse_html_fragment(data)[0]
         data = node.text
         result = self.jd.decode(data)
-        if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
+        if result['bStateError']: raise TabunResultError(result['sMsg'])
         return result['sText']
        
     def delete_post(self, post_id):
@@ -551,35 +557,37 @@ class User:
     def toggle_blog_subscribe(self, blog_id):
         """Подписывается на блог/отписывается от блога и возвращает состояние: True - подписан, False - не подписан."""
         self.check_login()
-        blog_id = int(blog_id)
+        return self.ajax('/blog/ajaxblogjoin/', {'idBlog': int(blog_id)})['bState']
+
+    def ajax(self, url, fields={}, files=(), headers={}, throw_if_error=True):
+        """Отправляет ajax-запрос и возвращает распарсенный json-ответ. Или кидается исключением TabunResultError в случае ошибки."""
+        headers['x-requested-with'] = 'XMLHttpRequest'
+        if self.security_ls_key:
+            fields['security_ls_key'] = self.security_ls_key
+        data = self.send_form(url, fields, files, headers=headers).read()
         
-        fields = {
-            'idBlog': str(blog_id),
-            'security_ls_key': self.security_ls_key
-        }
+        try:
+            data = self.jd.decode(data)
+        except:
+            raise TabunResultError(data.decode("utf-8", "replace"))
         
-        data = self.send_form('/blog/ajaxblogjoin/', fields, (), headers={'x-requested-with': 'XMLHttpRequest'}).read()
+        if throw_if_error and data['bStateError']:
+            raise TabunResultError(data['sMsg'])
         
-        result = self.jd.decode(data)
-        if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
-        return result['bState']
-        
+        return data
+
     def comment(self, post_id, text, reply=0, typ="blog"):
         """Отправляет коммент и возвращает его номер. Тип - blog (посты) или talk (личные сообщения)"""
         self.check_login()
-        post_id = int(post_id)
-        url = "/"+(typ if typ in ("blog", "talk") else "blog")+"/ajaxaddcomment/"
-        
-        req = "comment_text=" + urllib2.quote(unicode(text).encode("utf-8")) + "&"
-        req += "reply=" + str(int(reply)) + "&"
-        req += "cmt_target_id=" + str(post_id) + "&"
-        req += "security_ls_key=" + urllib2.quote(self.security_ls_key)
-        
-        data = self.urlopen(url, req).read()
-        data = self.jd.decode(data)
-        if data['bStateError']: raise TabunResultError(data['sMsg'].encode("utf-8"))
-        return data['sCommentId']
-       
+
+        fields = {
+            'comment_text': unicode(text),
+            'reply': int(reply),
+            'cmt_target_id': int(post_id)
+        }
+
+        return self.ajax("/"+(typ if typ in ("blog", "talk") else "blog")+"/ajaxaddcomment/", fields)['sCommentId']
+
     def get_recommendations(self, raw_data):
         """Возвращает со страницы список постов, которые советует Дискорд."""
         if isinstance(raw_data, str): raw_data = raw_data.decode("utf-8", "replace")
@@ -809,7 +817,7 @@ class User:
         #return data
         data = self.jd.decode(data)
         
-        if data['bStateError']: raise TabunResultError(data['sMsg'].encode("utf-8"))
+        if data['bStateError']: raise TabunResultError(data['sMsg'])
         comms = {}
         for comm in data['aComments']:
             node = utils.parse_html_fragment(comm['html'])
@@ -828,7 +836,7 @@ class User:
         ).read()
         
         data = self.jd.decode(data)
-        if data['bStateError']: raise TabunResultError(data['sMsg'].encode("utf-8"))
+        if data['bStateError']: raise TabunResultError(data['sMsg'])
         
         node = utils.parse_html_fragment(data['sText'])
         if not node: return []
@@ -918,7 +926,7 @@ class User:
             userpic = tr.xpath('td[@class="cell-name"]/a/img/@src')
             if not userpic: continue
             
-            peoples.append(UserInfo(-1, username[0], realname, skill[0], rating[0], userpic=userpic[0]))
+            peoples.append(UserInfo(utils.parse_avatar_url(userpic[0])[0] or -1, username[0], realname, skill[0], rating[0], userpic=userpic[0]))
             
         return peoples
         
@@ -1002,7 +1010,6 @@ class User:
             if foto.endswith('user_photo_male.png') or foto.endswith('user_photo_female.png'):
                 foto = None
         
-        #TODO: блоги
         return UserInfo(user_id, username, realname[0] if realname else None, skill, rating, userpic, foto, gender, birthday, registered, last_activity, description[0] if description else None, blogs)
         
         
@@ -1012,17 +1019,14 @@ class User:
         self.check_login()
         if answer < -1: answer = -1
         if post_id < 0: post_id = 0
-        
+
         fields = {
-            "idTopic": str(post_id),
-            "idAnswer": str(answer),
-            "security_ls_key": self.security_ls_key
+            "idTopic": post_id,
+            "idAnswer": answer
         }
-        
-        data = self.send_form('/ajax/vote/question/', fields, (), headers={'x-requested-with': 'XMLHttpRequest'}).read()
-        result = self.jd.decode(data)
-        if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
-        poll = utils.parse_html_fragment('<div id="topic_question_area_'+str(post_id)+'" class="poll">' + result['sText'] + '</div>')
+
+        data = self.ajax('/ajax/vote/question/', fields)
+        poll = utils.parse_html_fragment('<div id="topic_question_area_'+str(post_id)+'" class="poll">' + data['sText'] + '</div>')
         return parse_poll(poll[0])
     
     def vote(self, post_id, value=0):
@@ -1030,90 +1034,64 @@ class User:
         self.check_login()
         
         fields = {
-            "idTopic": str(post_id),
-            "value": str(value),
-            "security_ls_key": self.security_ls_key
+            "idTopic": int(post_id),
+            "value": int(value)
         }
-        
-        data = self.send_form('/ajax/vote/topic/', fields, (), headers={'x-requested-with': 'XMLHttpRequest'}).read()
-        result = self.jd.decode(data)
-        if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
-        return int(result['iRating'])
+
+        return int(self.ajax('/ajax/vote/topic/', fields)['iRating'])
 
     def vote_comment(self, comment_id, value):
         """Ставит плюсик (1) или минусик (-1) комменту и возвращает его рейтинг."""
         self.check_login()
         
         fields = {
-            "idComment": str(comment_id),
-            "value": str(value),
-            "security_ls_key": self.security_ls_key
+            "idComment": int(comment_id),
+            "value": int(value)
         }
-        
-        data = self.send_form('/ajax/vote/comment/', fields, (), headers={'x-requested-with': 'XMLHttpRequest'}).read()
-        result = self.jd.decode(data)
-        if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
-        return int(result['iRating'])
+
+        return int(self.ajax('/ajax/vote/comment/', fields)['iRating'])
 
     def vote_user(self, user_id, value):
         """Ставит плюсик (1) или минусик (-1) пользователю и возвращает его рейтинг."""
         self.check_login()
         
         fields = {
-            "idUser": str(user_id),
-            "value": str(value),
-            "security_ls_key": self.security_ls_key
+            "idUser": int(user_id),
+            "value": int(value)
         }
-        
-        data = self.send_form('/ajax/vote/user/', fields, (), headers={'x-requested-with': 'XMLHttpRequest'}).read()
-        result = self.jd.decode(data)
-        if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
-        return float(result['iRating'])
+
+        return float(self.ajax('/ajax/vote/user/', fields)['iRating'])
 
     def favourite_topic(self, post_id, type=True):
         """Добавляет (type=True) пост в избранное или убирает (type=False) оттуда. Возвращает новое число пользователей, добавивших пост в избранное."""
         self.check_login()
-
         fields = {
-            "idTopic": str(post_id),
-            "type": "1" if type else "0",
-            "security_ls_key": self.security_ls_key
+            "idTopic": int(post_id),
+            "type": "1" if type else "0"
         }
 
-        data = self.send_form('/ajax/favourite/topic/', fields, (), headers={'x-requested-with': 'XMLHttpRequest'}).read()
-        result = self.jd.decode(data)
-        if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
-        return result['iCount']
+        return self.ajax('/ajax/favourite/topic/', fields)['iCount']
 
     def favourite_comment(self, comment_id, type=True):
         """Добавляет (type=True) коммент в избранное или убирает (type=False) оттуда. Возвращает новое число пользователей, добавивших коммент в избранное."""
         self.check_login()
-
         fields = {
-            "idComment": str(comment_id),
-            "type": "1" if type else "0",
-            "security_ls_key": self.security_ls_key
+            "idComment": int(comment_id),
+            "type": "1" if type else "0"
         }
 
-        data = self.send_form('/ajax/favourite/comment/', fields, (), headers={'x-requested-with': 'XMLHttpRequest'}).read()
-        result = self.jd.decode(data)
-        if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
-        return result['iCount']
+        return self.ajax('/ajax/favourite/comment/', fields)['iCount']
 
     def edit_comment(self, comment_id, text):
         """Редактирует комментарий и возвращает новое тело комментария."""
         self.check_login()
-        
         fields = {
-            "commentId": str(int(comment_id)),
-            "text": text.encode("utf-8"),
-            "security_ls_key": self.security_ls_key
+            "commentId": int(comment_id),
+            "text": text.encode("utf-8")
         }
-        
-        data = self.send_form('/role_ajax/savecomment/', fields, (), headers={'x-requested-with': 'XMLHttpRequest'}).read()
-        result = self.jd.decode(data)
-        if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
-        return utils.parse_html_fragment('<div class="text">' + result['sText'] + '</div>')[0]
+
+        data = self.ajax('/role_ajax/savecomment/', fields)
+        return utils.parse_html_fragment('<div class="text">' + data['sText'] + '</div>')[0]
 
     def get_editable_post(self, post_id, raw_data=None):
         """Возвращает blog_id, заголовок, исходный код поста, список тегов и галочку закрытия комментариев (True/False)."""
@@ -1213,7 +1191,7 @@ class User:
         
         data = self.send_form("/blog/ajaxaddbloginvite/", fields).read()
         result = self.jd.decode(data)
-        if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
+        if result['bStateError']: raise TabunResultError(result['sMsg'])
         
         users = {}
         for x in result['aUsers']:
@@ -1310,7 +1288,7 @@ class User:
         
         data = self.send_form("/stream/get_more_all/", fields).read()
         result = self.jd.decode(data)
-        if result['bStateError']: raise TabunResultError(result['sMsg'].encode("utf-8"))
+        if result['bStateError']: raise TabunResultError(result['sMsg'])
         
         items = []
 

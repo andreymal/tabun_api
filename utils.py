@@ -1,6 +1,7 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 
+import re
 import time
 import random
 import urllib2
@@ -225,11 +226,16 @@ def encode_multipart_formdata(fields, files):
     BOUNDARY = '----------' + md5(str(int(time.time())) + str(random.randrange(1000))).hexdigest()
     L = []
     for (key, value) in fields:
+        key = key.encode("utf-8") if isinstance(key, unicode) else str(key)
+        value = value.encode("utf-8") if isinstance(value, unicode) else str(value)
         L.append('--' + BOUNDARY)
         L.append('Content-Disposition: form-data; name="%s"' % key)
         L.append('')
         L.append(value)
     for (key, filename, value) in files:
+        key = key.encode("utf-8") if isinstance(key, unicode) else str(key)
+        filename = filename.encode("utf-8") if isinstance(filename, unicode) else str(filename)
+        value = value.encode("utf-8") if isinstance(value, unicode) else str(value)
         L.append('--' + BOUNDARY)
         L.append('Content-Disposition: form-data; name="%s"; filename="%s"' % (key, filename))
         L.append('Content-Type: %s' % get_content_type(filename))
@@ -329,3 +335,18 @@ def generate_comments_tree(comms):
         else:
             parent[1].append(item)
     return tree, orphans
+
+ava_regex = re.compile(r"\/uploads\/images\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/avatar_([0-9]+)x([0-9]+)\.(...)(\?([0-9]+))?")
+
+def parse_avatar_url(url):
+    """Парсит ссылку на аватарку и возвращает id пользователя, дату отправки, размер, расширение и какой-то номер с конца ссылки."""
+    match = ava_regex.search(url)
+    if not match: return None, None, None, None, None
+    g = match.groups()
+    user_id =int(g[0] + g[1] + g[2])
+    date = g[3] + "-" + g[4] + "-" + g[5]
+    size = (int(g[6]), int(g[7]))
+    ext = g[8]
+    num = int(g[10])
+
+    return user_id, date, size, ext, num
