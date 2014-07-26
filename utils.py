@@ -277,6 +277,30 @@ def find_substring(s, start, end, extend=False, with_start=True, with_end=True):
     if f2 < 0: return
     return s[f1 + (0 if with_start else len(start)):f2 + (len(end) if with_end else 0)]
 
+def download(url, maxmem=20*1024*1024, timeout=5, waitout=15):
+    """Скачивает данные по урлу. Имеет защиту от переполнения памяти и слишком долгого ожидания, чтобы всякие боты тут не висли. В случае чего кидает IOError."""
+    if url.startswith('//'):
+            url = 'http:' + url
+    req = urllib2.urlopen(url.encode("utf-8") if isinstance(url, unicode) else url, timeout=timeout)
+    
+    size = req.headers.get('content-length')
+    if size and size.isdigit() and int(size) > maxmem:
+        raise IOError("Too big")
+
+    data = ''
+    start_dwnl = time.time()
+    
+    while 1:
+        if len(data) > maxmem: raise IOError("Too big")
+        tmp = req.read(128*1024)
+        if not tmp: break
+        data += tmp
+        if time.time() - start_dwnl >= waitout:
+            raise IOError("Too long")
+    req.close()
+    
+    return data
+
 def find_good_image(urls, maxmem=20*1024*1024):
     """Ищет годную картинку из предложенного списка ссылок и возвращает ссылку и скачанные данные картинки (файл). Такой простенький фильтр смайликов и элементов оформления поста по размеру. Требует PIL. Не грузит картинки размером больше maxmem байт, дабы не вылететь от нехватки памяти."""
     try:
@@ -287,26 +311,9 @@ def find_good_image(urls, maxmem=20*1024*1024):
     
     good_image = None, None
     for url in urls:
-        if url.startswith('//'):
-            url = 'http:' + url
         try:
-            req = urllib2.urlopen(url.encode("utf-8") if isinstance(url, unicode) else url, timeout=5)
-            size = req.headers.get('content-length')
-            if size and size.isdigit() and int(size) > maxmem:
-                continue
-            data = ''
-            start_dwnl = time.time()
-            while 1:
-                if len(data) > maxmem: break
-                tmp = req.read(128*1024)
-                if not tmp: break
-                data += tmp
-                if time.time() - start_dwnl >= 15:
-                    raise IOError("Too long")
-            req.close()
+            data = download(url, maxmem)
         except IOError: continue
-        if len(data) > maxmem:
-            continue
         
         try: img = Image.open(StringIO(data))
         except: continue

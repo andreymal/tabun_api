@@ -690,9 +690,9 @@ class User:
                 if sect.get("id", "").find("comment_id_")==0:
                     c = parse_deleted_comment(sect, post_id, blog)
                     if c: comms[c.comment_id] = c
-                    else: print "Warning: cannot parse deleted comment"
+                    else: print "Warning: cannot parse deleted comment", sect.get("id")
                 else:
-                    print "Warning: unknown comment format"
+                    print "Warning: unknown comment format", sect.get("id")
         
         return comms
 
