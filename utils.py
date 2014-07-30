@@ -169,6 +169,7 @@ def mon2num(s):
         s = s.replace(mons[i], str(i+1))
     return s
 
+youtube_regex = re.compile(r'youtube.com\/embed\/(.{10,15})((\?)|($))')
 def find_images(body, spoiler_title=True, no_other=False):
     """Ищет картинки в lxml-элементе и возвращает их список в виде [[ссылки до ката], [ссылки после ката]].
     spoiler_title (True) - включать ли картинки с заголовков спойлеров
@@ -211,6 +212,14 @@ def find_images(body, spoiler_title=True, no_other=False):
            
             links[i].append(src)
     
+    if not links[0] and not links[1]:
+        videos = body.xpath('.//iframe')
+        for video in videos:
+            match = youtube_regex.search(video.get('src', ''))
+            if not match: continue
+            if match.groups()[0]:
+                links[1].append('http://i4.ytimg.com/vi/%s/sddefault.jpg'%match.groups()[0])
+
     return links
 
 # copypasted from http://code.activestate.com/recipes/146306-http-client-to-post-using-multipartform-data/

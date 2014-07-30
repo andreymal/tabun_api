@@ -459,7 +459,13 @@ class User:
         else: fields['submit_topic_publish'] = "Опубликовать"
         
         try:
-            link = self.send_form('/topic/add/', fields, redir=False).headers.get('location')
+            result = self.send_form('/topic/add/', fields, redir=False)
+            data = result.read()
+            error = utils.find_substring(data, '<ul class="system-message-error">', '</ul>', with_start=False, with_end=False)
+            if error and ':' in error:
+                error = utils.find_substring(error.decode('utf-8', 'replace'), ':', '</li>', extend=True, with_start=False, with_end=False).strip()
+                raise TabunResultError(error)
+            link = result.headers.get('location')
         except TabunError:
             if not check_if_error or not self.username: raise
             url = '/topic/saved/' if draft else '/profile/' + self.username + '/created/topics/'
@@ -1716,6 +1722,7 @@ def parse_talk_item(node):
 
 def parse_post_url(link):
     """Выдирает блог и номер поста из ссылки. Или возвращает (None,None), если выдрать не удалось."""
+    if not link: return None, None
     m = post_url_regex.search(link)
     if not m: return None, None
     g = m.groups()
