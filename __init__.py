@@ -1068,6 +1068,17 @@ class User:
 
         return float(self.ajax('/ajax/vote/user/', fields)['iRating'])
 
+    def vote_blog(self, blog_id, value):
+        """Ставит плюсик (1) или минусик (-1) блогу и возвращает его рейтинг."""
+        self.check_login()
+        
+        fields = {
+            "idBlog": int(blog_id),
+            "value": int(value)
+        }
+
+        return float(self.ajax('/ajax/vote/blog/', fields)['iRating'])
+
     def favourite_topic(self, post_id, type=True):
         """Добавляет (type=True) пост в избранное или убирает (type=False) оттуда. Возвращает новое число пользователей, добавивших пост в избранное."""
         self.check_login()
