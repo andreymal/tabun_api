@@ -331,6 +331,11 @@ class User:
                 ls_key = data[pos:]
                 ls_key = ls_key[ls_key.find("'")+1:]
                 self.security_ls_key = ls_key[:ls_key.find("'")]
+
+            if self.security_ls_key == 'LIVESTREET_SECURITY_KEY': # security fix by Random
+                self.security_ls_key = cook.get("LIVESTREET_SECURITY_KEY")
+                if self.security_ls_key: self.security_ls_key = self.security_ls_key.value
+
             self.update_userinfo(data)
         
         if login and passwd:
@@ -409,7 +414,9 @@ class User:
             if url[0] == "/": url = http_host + url
             url = urllib2.Request(url, data)
         if self.phpsessid:
-            url.add_header('cookie', "PHPSESSID=" + self.phpsessid + ((';key='+self.key) if self.key else ''))
+            url.add_header('cookie', "PHPSESSID=%s; key=%s; LIVESTREET_SECURITY_KEY=%s" % (
+                self.phpsessid, self.key, self.security_ls_key
+            ))
         
         for header, value in http_headers.items():
             url.add_header(header, value)
@@ -1310,13 +1317,16 @@ class User:
         items = []
 
         last_id = int(result.get('iStreamLastId', 0))
+        item = None
         for li in utils.parse_html_fragment(result['result']):
             if li.tag != 'li' or not li.get('class', '').startswith('stream-item'):
                 continue
             item = parse_activity(li)
-            if item: items.append(item)
+            if item:
+                items.append(item)
 
-        if item: item.id = last_id
+        if item:
+            item.id = last_id
         return last_id, items
 
 
