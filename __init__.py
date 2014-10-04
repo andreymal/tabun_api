@@ -414,7 +414,7 @@ class User:
             if url[0] == "/": url = http_host + url
             url = urllib2.Request(url, data)
         if self.phpsessid:
-            url.add_header('cookie', "PHPSESSID=%s; key=%s; COOKIE_SECURITY_KEY=%s" % (
+            url.add_header('cookie', "PHPSESSID=%s; key=%s; LIVESTREET_SECURITY_KEY=%s" % (
                 self.phpsessid, self.key, self.security_ls_key
             ))
         
@@ -823,16 +823,6 @@ class User:
 
         data = self.ajax(url, {'idCommentLast': comment_id, 'idTarget': post_id, 'typeTarget': 'topic'})
         
-        #req = "idCommentLast=" + str(comment_id) + "&"
-        #req += "idTarget=" + str(post_id) + "&"
-        #req += "typeTarget=topic&"
-        #req += "security_ls_key=" + urllib2.quote(self.security_ls_key)
-        
-        #data = self.urlopen(url, req).read()
-        #return data
-        #data = self.jd.decode(data)
-        
-        #if data['bStateError']: raise TabunResultError(data['sMsg'])
         comms = {}
         for comm in data['aComments']:
             node = utils.parse_html_fragment(comm['html'])
