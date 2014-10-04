@@ -297,6 +297,7 @@ class User:
     talk_unread = 0
     skill = 0.0
     rating = 0.0
+    query_interval = 0
     
     def __init__(self, login=None, passwd=None, phpsessid=None, security_ls_key=None, key=None):
         
@@ -342,6 +343,8 @@ class User:
             self.login(login, passwd)
         elif login and self.phpsessid and not self.username:
             self.username = str(login)
+
+        self.last_query_time = 0
     
     def update_userinfo(self, raw_data):
         """Парсит имя пользователя, рейтинг и число сообщений и записывает в объект. Возвращает имя пользователя."""
@@ -404,12 +407,17 @@ class User:
         if not self.phpsessid or not self.security_ls_key:
             raise TabunError("Not logined")
     
-    def urlopen(self, url, data=None, headers={}, redir=True):
+    def urlopen(self, url, data=None, headers={}, redir=True, nowait=False):
         """Отправляет HTTP-запрос и возвращает результат urllib2.urlopen (объект urllib.addinfourl). 
         Если указан параметр data, то отправляется POST-запрос. 
         В качестве URL может быть путь с доменом (http://tabun.everypony.ru/), без домена (/index/newall/) или объект urllib2.Request. 
-        Если redir установлен в False, то не будет осуществляться переход по перенаправлению (HTTP-коды 3xx). 
+        Если redir установлен в False, то не будет осуществляться переход по перенаправлению (HTTP-коды 3xx).
+        По умолчанию соблюдает между запросами временной интервал query_interval (который по умолчанию 0); nowait=True отправляет запрос немедленно.
         Может кидаться исключением TabunError."""
+        if not nowait and self.query_interval > 0 and time.time() - self.last_query_time < self.query_interval:
+            time.sleep(self.query_interval - time.time() + self.last_query_time)
+        self.last_query_time = time.time()
+
         if not isinstance(url, urllib2.Request):
             if url[0] == "/": url = http_host + url
             url = urllib2.Request(url, data)
