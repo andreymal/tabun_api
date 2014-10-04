@@ -9,6 +9,7 @@ import httplib
 from socket import timeout as socket_timeout
 from json import JSONDecoder
 from Cookie import BaseCookie
+from threading import RLock
 
 #: Адрес Табуна. Именно на указанный здесь адрес направляются запросы.
 http_host = "http://tabun.everypony.ru"
@@ -320,6 +321,7 @@ class User:
 
     def __init__(self, login=None, passwd=None, phpsessid=None, security_ls_key=None, key=None):
         self.jd = JSONDecoder()
+        self.lock = RLock()
 
         # for thread safety
         self.opener = urllib2.build_opener()
@@ -446,38 +448,54 @@ class User:
         Если redir установлен в False, то не будет осуществляться переход по перенаправлению (HTTP-коды 3xx).
         По умолчанию соблюдает между запросами временной интервал query_interval (который по умолчанию 0); nowait=True отправляет запрос немедленно.
         Может кидаться исключением TabunError."""
-        if not nowait and self.query_interval > 0 and time.time() - self.last_query_time < self.query_interval:
-            time.sleep(self.query_interval - time.time() + self.last_query_time)
-        self.last_query_time = time.time()
-
         if not isinstance(url, urllib2.Request):
             if url[0] == "/":
                 url = http_host + url
             url = urllib2.Request(url, data)
-        if self.phpsessid:
-            url.add_header('cookie', "PHPSESSID=%s; key=%s; LIVESTREET_SECURITY_KEY=%s" % (
-                self.phpsessid, self.key, self.security_ls_key
-            ))
 
-        for header, value in http_headers.items():
-            url.add_header(header, value)
-        if headers:
-            for header, value in headers.items():
-                if header and value:
-                    url.add_header(header, value)
-
+        # FIXME: ну чего так некрасиво-то получилось?
+        self.lock.acquire()
         try:
-            return (self.opener.open if redir else self.noredir.open)(url, timeout=self.timeout)
-        except urllib2.HTTPError as exc:
-            raise TabunError(code=exc.getcode())
-        except urllib2.URLError as exc:
-            raise TabunError(exc.reason, -exc.reason.errno if exc.reason.errno else 0)
-        except httplib.HTTPException as exc:
-            raise TabunError("HTTP error", -4)
-        except socket_timeout:
-            raise TabunError("Timeout", -2)
-        except IOError as exc:
-            raise TabunError(str(exc).decode("utf-8", "replace"), -3)
+            while not nowait and self.query_interval > 0 and time.time() - self.last_query_time < self.query_interval:
+                sleeptime = self.query_interval - time.time() + self.last_query_time
+                if sleeptime > 0:
+                    self.lock.release()
+                    try:
+                        time.sleep(sleeptime)
+                    finally:
+                        self.lock.acquire()
+
+            self.last_query_time = time.time()
+        
+            if self.phpsessid:
+                url.add_header('cookie', "PHPSESSID=%s; key=%s; LIVESTREET_SECURITY_KEY=%s" % (
+                    self.phpsessid, self.key, self.security_ls_key
+                ))
+
+            for header, value in http_headers.items():
+                url.add_header(header, value)
+            if headers:
+                for header, value in headers.items():
+                    if header and value:
+                        url.add_header(header, value)
+
+            try:
+                return (self.opener.open if redir else self.noredir.open)(url, timeout=self.timeout)
+            except KeyboardInterrupt:
+                raise
+            except urllib2.HTTPError as exc:
+                raise TabunError(code=exc.getcode())
+            except urllib2.URLError as exc:
+                raise TabunError(exc.reason, -exc.reason.errno if exc.reason.errno else 0)
+            except httplib.HTTPException as exc:
+                raise TabunError("HTTP error", -4)
+            except socket_timeout:
+                raise TabunError("Timeout", -2)
+            except IOError as exc:
+                raise TabunError(str(exc).decode("utf-8", "replace"), -3)
+
+        finally:
+            self.lock.release()
 
     def send_form(self, url, fields=(), files=(), headers={}, redir=True):
         """Формирует multipart/form-data запрос и отправляет его через функцию urlopen."""
