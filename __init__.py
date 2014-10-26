@@ -1384,7 +1384,7 @@ class User:
         footer = item.find("footer")
         author = str(footer.xpath('ul/li[@class="topic-info-author"]/a[2]/text()')[0].strip())
         date = footer.xpath('ul/li[@class="topic-info-date"]/time')[0]
-        date = time.strptime(date.get("datetime"), "%Y-%m-%dT%H:%M:%S+04:00")
+        date = time.strptime(date.get("datetime"), "%Y-%m-%dT%H:%M:%S+03:00")
 
         comments = self.get_comments(raw_data=raw_data)
 
@@ -1560,7 +1560,7 @@ def parse_post(item, link=None):
     if not post_time:
         post_time = item.xpath('header/div[@class="topic-info"]/time')  # mylittlebrony.ru
     if post_time:
-        post_time = time.strptime(post_time[0].get("datetime"), "%Y-%m-%dT%H:%M:%S+04:00")
+        post_time = time.strptime(post_time[0].get("datetime"), "%Y-%m-%dT%H:%M:%S+03:00")
     else:
         post_time = time.localtime()
 
@@ -1712,7 +1712,7 @@ def parse_discord(li):
     body = utils.parse_html_fragment(body)[0]
     p = li.find('p')
     author = p.find('a').text.strip()
-    tm = time.strptime(p.find('time').get('datetime'), "%Y-%m-%dT%H:%M:%S+04:00")
+    tm = time.strptime(p.find('time').get('datetime'), "%Y-%m-%dT%H:%M:%S+03:00")
     blog_name, title = li.findall('a')[:2]
     blog_name = blog_name.text.strip()
     blog, post_id = parse_post_url(title.get('href'))
@@ -1744,7 +1744,7 @@ def parse_rss_post(item):
 
     post_time = item.find("pubDate")
     if post_time is not None and post_time.text is not None:
-        post_time = time.strptime(str(post_time.text).split(" ", 1)[-1], "%d %b %Y %H:%M:%S +0400")
+        post_time = time.strptime(str(post_time.text).split(" ", 1)[-1], "%d %b %Y %H:%M:%S +0300")
     else:
         post_time = time.localtime()
 
@@ -1813,7 +1813,7 @@ def parse_comment(node, post_id, blog=None, parent_id=None):
 
         nick = info.findall("li")[0].findall("a")[-1].text
         tm = info.findall("li")[1].find("time").get('datetime')
-        tm = time.strptime(tm, "%Y-%m-%dT%H:%M:%S+04:00")
+        tm = time.strptime(tm, "%Y-%m-%dT%H:%M:%S+03:00")
 
         comment_id = int(info.xpath('li[@class="comment-link"]/a')[0].get('href').rsplit("/", 1)[-1])
         post_title = None
