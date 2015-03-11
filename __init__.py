@@ -21,7 +21,7 @@ halfclosed = ("borderline", "shipping", "erpg", "gak", "RPG", "roliplay", "tears
 #: Заголовки для HTTP-запросов. Возможно, стоит менять user-agent.
 http_headers = {
     "connection": "close",
-    "user-agent": "tabun_api/0.5.2; Linux/2.6",
+    "user-agent": "tabun_api/0.5.3; Linux/2.6",
 }
 
 #: Регулярка для парсинга ссылки на пост.
@@ -938,9 +938,10 @@ class User:
         try:
             data = self.ajax(url, {'idCommentLast': comment_id, 'idTarget': post_id, 'typeTarget': 'topic'})
         except TabunResultError as exc:
-            if exc.data and (
-                exc.data.get('sMsg') == u"Истекло время для редактирование комментариев" or
-                exc.data.get('sMsg') == u"Не хватает прав для редактирования коментариев"
+            if exc.data and exc.data.get('sMsg') in (
+                u"Истекло время для редактирование комментариев",
+                u"Не хватает прав для редактирования коментариев",
+                u"Запрещено редактировать, коментарии с ответами"
             ):
                 data = exc.data
             else:
