@@ -24,7 +24,7 @@ def parse_html(data, encoding='utf-8'):
     return doc
 
 def parse_html_fragment(data, encoding='utf-8'):
-    """Парсит кусок HTML-кода и возвращает lxml.etree-элемент."""
+    """Парсит кусок HTML-кода и возвращает список lxml.etree-элементов и строк."""
     #if isinstance(data, unicode): encoding = None
     #doc = html5lib.parseFragment(data, treebuilder="lxml", namespaceHTMLElements=False, encoding=encoding)
     if isinstance(data, str): data = data.decode(encoding, "replace")
@@ -32,7 +32,7 @@ def parse_html_fragment(data, encoding='utf-8'):
     return doc
 
 block_elems = ("div", "p", "blockquote", "section", "ul", "li", "h1", "h2", "h3", "h4", "h5", "h6")
-def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=True):
+def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=True, disable_links=False):
     """Пытается косплеить браузер lynx и переделывает html-элемент в читабельный текст.
     
     * node: текст поста, html-элемент, распарсенный с помощью parse_html[_fragment]
@@ -40,7 +40,12 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=Tr
     * fancy: если True, выкинет заголовки спойлеров и текст кнопки «Читать дальше» (при наличии, разумеется)
     * vk_links: преобразует ссылки вида http://vk.com/blablabla в [blablabla|текст ссылки] для отправки в пост ВКонтакте
     * hr_lines: если True, добавляет линию из знаков равно на месте тега hr, иначе просто перенос строки
+    * disable_links: если True, то будут проигнорированы ссылки, текст которых совпадает с самой ссылкой
     """
+
+    if isinstance(node, basestring):
+        return unicode(node)
+
     data = u""
     newlines = 0
     
@@ -94,19 +99,19 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=Tr
             addr = href[href.find("com/")+4:]
             if addr and addr[-1] in (".", ")"): addr = addr[:-1]
             
-            stop=False
+            stop = False
             for c in (u"/", u"?", u"&", u"(", u",", u")", u"|"):
                 if c in addr:
-                    stop=True
+                    stop = True
                     break
             if stop:
                 data += item.text_content()
                 prev_text = None
                 continue
             
-            for typ in (u"wall", u"photo", u"page", u"video", u"topic", u"app"):
+            for typ in (u"wall", u"photo", u"page", u"video", u"topic", u"app", u"album"):
                 if addr.find(typ) == 0:
-                    stop=True
+                    stop = True
                     break
             if stop:
                 data += item.text_content()
@@ -116,6 +121,10 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=Tr
             ndata = item.text_content().replace("[", " ").replace("|", " ").replace("]", " ")
             data += " [" + addr + "|" + ndata + "] "
             prev_text = None
+
+        elif disable_links and item.tag == "a" and item.get('href', '').endswith(item.text_content().strip()) and abs(len(item.get('href', '')) - len(item.text_content().strip())) < 10:
+            prev_text = None
+            continue
         
         else:
             if item.tag in ("li", ):
@@ -130,8 +139,8 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=Tr
             tmp = htmlToString(item, fancy=fancy, vk_links=vk_links, hr_lines=hr_lines)
             newlines = 0
             
-            if item.tag == "s": # зачёркивание
-                tmp1=""
+            if item.tag == "s":  # зачёркивание
+                tmp1 = ""
                 for x in tmp:
                     tmp1 += x + u'\u0336'
                 #tmp1 = "<s>" + tmp1 + "</s>"

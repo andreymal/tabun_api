@@ -15,7 +15,7 @@ from threading import RLock
 http_host = "http://tabun.everypony.ru"
 
 #: Список полузакрытых блогов. В tabun_api нигде не используется, но может использоваться в использующих его программах.
-halfclosed = ("borderline", "shipping", "erpg", "gak", "RPG", "roliplay", "tearsfromthemoon")
+halfclosed = ("borderline", "shipping", "erpg", "gak", "RPG", "roliplay", "tearsfromthemoon", "Technic")
 
 #: Заголовки для HTTP-запросов. Возможно, стоит менять user-agent.
 http_headers = {
@@ -39,9 +39,10 @@ class NoRedirect(urllib2.HTTPRedirectHandler):
 
 class TabunError(Exception):
     """Общее для библиотеки исключение. Содержит атрибут code с всякими разными циферками для разных типов исключения, обычно совпадает с HTTP-кодом ошибки при запросе. А в args[0] или текст, или снова код ошибки."""
-    def __init__(self, msg=None, code=0):
+    def __init__(self, msg=None, code=0, data=None):
         self.code = int(code)
         self.message = unicode(msg) if msg else unicode(code)
+        self.data = data
         Exception.__init__(self, self.message.encode("utf-8"))
 
     def __str__(self):
@@ -213,9 +214,9 @@ class Poll:
 
 class TalkItem:
     """Личное сообщение."""
-    def __init__(self, talk_id, recipinets, unread, title, date, body=None, author=None, comments=[]):
+    def __init__(self, talk_id, recipients, unread, title, date, body=None, author=None, comments=[]):
         self.talk_id = int(talk_id)
-        self.recipinets = map(str, recipinets)
+        self.recipients = map(str, recipients)
         self.unread = bool(unread)
         self.title = unicode(title)
         self.date = date
@@ -656,7 +657,7 @@ class User:
             raise TabunResultError(data.decode("utf-8", "replace"))
 
         if throw_if_error and data['bStateError']:
-            raise TabunResultError(data['sMsg'])
+            raise TabunResultError(data['sMsg'], data=data)
 
         return data
 
@@ -914,7 +915,16 @@ class User:
 
         url = "/" + (typ if typ in ("blog", "talk") else "blog") + "/ajaxresponsecomment/"
 
-        data = self.ajax(url, {'idCommentLast': comment_id, 'idTarget': post_id, 'typeTarget': 'topic'})
+        try:
+            data = self.ajax(url, {'idCommentLast': comment_id, 'idTarget': post_id, 'typeTarget': 'topic'})
+        except TabunResultError as exc:
+            if exc.data and (
+                exc.data.get('sMsg') == u"Истекло время для редактирование комментариев" or
+                exc.data.get('sMsg') == u"Не хватает прав для редактирования коментариев"
+            ):
+                data = exc.data
+            else:
+                raise
 
         comms = {}
         for comm in data['aComments']:
@@ -1087,7 +1097,11 @@ class User:
             if name == u'Дата рождения:':
                 birthday = time.strptime(utils.mon2num(value.text), '%d %m %Y')
             elif name == u'Зарегистрирован:':
-                registered = time.strptime(utils.mon2num(value.text), '%d %m %Y, %H:%M')
+                try:
+                    registered = time.strptime(utils.mon2num(value.text), '%d %m %Y, %H:%M')
+                except ValueError:
+                    if username != 'guest':
+                        raise
             elif name == u'Последний визит:':
                 last_activity = time.strptime(utils.mon2num(value.text), '%d %m %Y, %H:%M')
             elif name == u'Пол:':
@@ -1379,7 +1393,7 @@ class User:
             return
         body = body[0]
 
-        recipients = map(lambda x: str(x.text.strip()), item.xpath('div[@class="talk-search talk-recipients"]/header/a[@class="username"]'))
+        recipients = map(lambda x: x.text.strip().encode("utf-8"), item.xpath('div[@class="talk-search talk-recipients"]/header/a'))
 
         footer = item.find("footer")
         author = str(footer.xpath('ul/li[@class="topic-info-author"]/a[2]/text()')[0].strip())
