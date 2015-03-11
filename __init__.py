@@ -1,6 +1,7 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 
+import os
 import re
 import time
 from . import utils
@@ -301,6 +302,9 @@ class User:
     phpsessid - печенька (cookie), по которой идентифицируется пользователь, security_ls_key - секретный ключ движка livestreet для отправки запросов, key - печенька неизвестного мне назначения.
     Можно не париться с ними, их автоматически пришлёт сервер во время инициализации объекта. А можно, например, не авторизоваться по логину и паролю, а выдрать из браузера печеньку PHPSESSID и авторизоваться через неё.
 
+    Конструктор также принимает кортеж proxy из трёх элементов (тип, хост, порт) для задания прокси-сервера. Сейчас поддерживаются только типы socks4 и socks5.
+    Вместо передачи параметра можно установить переменную окружения TABUN_API_PROXY=тип,хост,порт — конструктор её подхватит.
+
     У класса также есть следующие поля:
 
     * username — имя пользователя или None
@@ -308,7 +312,8 @@ class User:
     * skill — силушка (после update_userinfo)
     * rating — кармушка (после update_userinfo)
     * timeout — таймаут ожидания ответа от сервера (для urllib2.urlopen, по умолчанию 20)
-    * phpsessid, security_ls_key, key — ну вы поняли"""
+    * phpsessid, security_ls_key, key — ну вы поняли
+    """
 
     phpsessid = None
     username = None
@@ -320,13 +325,28 @@ class User:
     rating = 0.0
     query_interval = 0
 
-    def __init__(self, login=None, passwd=None, phpsessid=None, security_ls_key=None, key=None):
+    def __init__(self, login=None, passwd=None, phpsessid=None, security_ls_key=None, key=None, proxy=None):
         self.jd = JSONDecoder()
         self.lock = RLock()
 
+        handlers = []
+
+        if proxy is None and os.getenv('TABUN_API_PROXY') and os.getenv('TABUN_API_PROXY').count(',') == 2:
+            proxy = os.getenv('TABUN_API_PROXY').split(',')
+
+        if proxy:
+            if proxy[0] not in ('socks4', 'socks5'):
+                raise NotImplementedError('I can use only socks proxies now')
+            import socks
+            from socksipyhandler import SocksiPyHandler
+            if proxy[0] == 'socks5':
+                handlers.append(SocksiPyHandler(socks.PROXY_TYPE_SOCKS5, proxy[1], int(proxy[2])))
+            elif proxy[0] == 'socks4':
+                handlers.append(SocksiPyHandler(socks.PROXY_TYPE_SOCKS4, proxy[1], int(proxy[2])))
+
         # for thread safety
-        self.opener = urllib2.build_opener()
-        self.noredir = urllib2.build_opener(NoRedirect)
+        self.opener = urllib2.build_opener(*handlers)
+        self.noredir = urllib2.build_opener(*(handlers + [NoRedirect]))
 
         if phpsessid:
             self.phpsessid = str(phpsessid).split(";", 1)[0]
