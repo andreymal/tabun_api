@@ -161,7 +161,7 @@ class Blog:
 class StreamItem:
     """Элемент «Прямого эфира»."""
     def __init__(self, blog, blog_title, title, author, comment_id, comments_count):
-        self.blog = str(blog)
+        self.blog = str(blog) if blog else None
         self.blog_title = unicode(blog_title)
         self.title = unicode(title)
         self.author = str(author)
@@ -462,7 +462,7 @@ class User:
         if not self.phpsessid or not self.security_ls_key:
             raise TabunError("Not logined")
 
-    def urlopen(self, url, data=None, headers={}, redir=True, nowait=False):
+    def urlopen(self, url, data=None, headers={}, redir=True, nowait=False, timeout=None):
         """Отправляет HTTP-запрос и возвращает результат urllib2.urlopen (объект urllib.addinfourl).
         Если указан параметр data, то отправляется POST-запрос.
         В качестве URL может быть путь с доменом (http://tabun.everypony.ru/), без домена (/index/newall/) или объект urllib2.Request.
@@ -500,8 +500,11 @@ class User:
                     if header and value:
                         url.add_header(header, value)
 
+            if timeout is None:
+                timeout = self.timeout
+
             try:
-                return (self.opener.open if redir else self.noredir.open)(url, timeout=self.timeout)
+                return (self.opener.open if redir else self.noredir.open)(url, timeout=timeout)
             except KeyboardInterrupt:
                 raise
             except urllib2.HTTPError as exc:
@@ -752,20 +755,20 @@ class User:
         items.reverse()
 
         for item in items:
-            post = parse_post(item, url if ".html" in url else None)
+            post = parse_post(item)
             if post:
                 posts.append(post)
 
         return posts
 
-    def get_post(self, post_id, blog=None):
+    def get_post(self, post_id, blog=None, raw_data=None):
         """Возвращает пост по номеру. Рекомендуется указать url-имя блога, чтобы избежать перенаправления и лишнего запроса. Если поста нет - кидается исключением TabunError("No post"). В случае проблем с парсингом может вернуть None."""
         if blog and blog != 'blog':
             url = "/blog/" + str(blog) + "/" + str(post_id) + ".html"
         else:
             url = "/blog/" + str(post_id) + ".html"
 
-        posts = self.get_posts(url)
+        posts = self.get_posts(url, raw_data=raw_data)
         if not posts:
             return None
         return posts[0]
@@ -977,20 +980,52 @@ class User:
 
         items = []
 
-        for item in node.getTags("li", {"class": "js-title-comment"}):
-            p = item.getTag("p")
-            a, blog_a = p.getTags("a")[:2]
-            author = a.getData().encode("utf-8")
-            blog = blog_a['href'][:-1].rsplit("/", 1)[-1].encode("utf-8")
-            blog_title = blog_a.getData()
+        for item in node.findall("li"):
+            p = item.find("p")
+            a, blog_a = p.findall("a")[:2]
 
-            comment_id = int(item.getTag("a")['href'].rsplit("/", 1)[-1])
-            title = item.getTag("a").getData()
+            author = a.text_content().encode("utf-8")
+            if blog_a.get('href', '').endswith('/created/topics/'):
+                blog = None
+            else:
+                blog = blog_a.get('href', '')[:-1].rsplit("/", 1)[-1].encode("utf-8")
+            blog_title = blog_a.text_content()
 
-            comments_count = int(item.getTag("span").getData())
+            comment_id = int(item.find("a").get('href', '').rsplit("/", 1)[-1])
+            title = item.find("a").text_content()
+
+            comments_count = int(item.find("span").text_content())
 
             sitem = StreamItem(blog, blog_title, title, author, comment_id, comments_count)
             items.append(sitem)
+
+        return items
+
+    def get_stream_topics(self):
+        """Возвращает список последних постов (без самого содержимого постов, только автор, дата, заголовки и число комментариев)."""
+        self.check_login()
+        data = self.ajax('/ajax/stream/topic/')
+        node = utils.parse_html_fragment(data['sText'])
+        if not node:
+            return []
+        node = node[0]
+
+        items = []
+
+        for item in node.findall("li"):
+            p = item.find("p")
+            a = p.find("a")
+            topic_a = item.findall("a")[1]
+
+            author = a.text_content().encode("utf-8")
+            title = topic_a.text_content().strip()
+            blog, post_id = parse_post_url(topic_a.get('href', ''))
+            comments_count = int(item.find("span").text_content())
+
+            items.append(Post(
+                time=None, blog=blog, post_id=post_id, author=author, title=title, draft=False,
+                vote_count=None, vote_total=None, body=None, tags=[], comments_count=comments_count
+            ))
 
         return items
 
@@ -1561,26 +1596,40 @@ def parse_activity(item):
     return ActivityItem(typ, date, post_id, comment_id, blog, username, title, data)
 
 
-def parse_post(item, link=None):
+def parse_post(item):
     # Парсинг поста. Не надо юзать эту функцию.
     header = item.find("header")
     title = header.find("h1")
     if title is None:
         return
-    if not link:
-        link = title.find("a")
-        if link is None:
-            return
-        link = link.get("href")
-        if link is None:
-            return
+
+    link = title.find("a")
+    if link is not None:
+        # есть ссылка на сам пост, парсим её
+        blog, post_id = parse_post_url(link.get("href"))
+    else:
+        # если ссылки нет, то костыляем: достаём блог из ссылки на него
+        blog = None
+        link = header.xpath('div/a[@class="topic-blog"]')
+        if link:
+            link = link[0].get('href')
+            if link and '/blog/' in link:
+                blog = link[:-1]
+                blog = blog[blog.rfind('/', 1) + 1:]
+
+        # достаём номер поста из блока с рейтингом
+        vote_elem = header.xpath('div/div[@class="topic-info-vote"]/div')
+        if vote_elem and vote_elem[0].get('id'):
+            post_id = int(vote_elem[0].get('id').rsplit('_', 1)[-1])
+        else:
+            post_id = -1
+        del vote_elem
+    del link
 
     author = header.xpath('div/a[@rel="author"]/text()[1]')
     if len(author) == 0:
         return
     author = str(author[0])
-
-    blog, post_id = parse_post_url(link)
 
     title = title.text_content().strip()
     private = bool(header.xpath('div/a[@class="topic-blog private-blog"]'))
