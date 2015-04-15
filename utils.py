@@ -21,6 +21,9 @@ block_elems = ("div", "p", "blockquote", "section", "ul", "li", "h1", "h2", "h3"
 #: Регулярка для парсинга ютуба для выдирания превьюшки.
 youtube_regex = re.compile(r'youtube.com\/embed\/(.{10,15})((\?)|($))')
 
+#: Регулярка для парсинга ссылки на аватарку — из неё можно узнать много полезного!
+ava_regex = re.compile(r"\/uploads\/images\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/avatar_([0-9]+)x([0-9]+)\.(...)(\?([0-9]+))?")
+
 
 def parse_html(data, encoding='utf-8'):
     """Парсит HTML-код и возвращает lxml.etree-элемент."""
@@ -411,8 +414,6 @@ def generate_comments_tree(comms):
             parent[1].append(item)
     return tree, orphans
 
-ava_regex = re.compile(r"\/uploads\/images\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/avatar_([0-9]+)x([0-9]+)\.(...)(\?([0-9]+))?")
-
 
 def parse_avatar_url(url):
     """Парсит ссылку на аватарку и возвращает id пользователя, дату отправки, размер, расширение и какой-то номер с конца ссылки."""
@@ -424,6 +425,6 @@ def parse_avatar_url(url):
     date = g[3] + "-" + g[4] + "-" + g[5]
     size = (int(g[6]), int(g[7]))
     ext = g[8]
-    num = int(g[10])
+    num = int(g[10]) if g[10] is not None else None
 
     return user_id, date, size, ext, num
