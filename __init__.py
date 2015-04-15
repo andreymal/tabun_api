@@ -67,8 +67,8 @@ class Post:
         self.author = str(author)
         self.title = unicode(title)
         self.draft = bool(draft)
-        self.vote_count = int(vote_count) if not vote_count is None else None
-        self.vote_total = int(vote_total) if not vote_total is None else None
+        self.vote_count = int(vote_count) if vote_count is not None else None
+        self.vote_total = int(vote_total) if vote_total is not None else None
         self.body = body
         self.tags = tags
         self.comments_count = int(comments_count) if comments_count is not None else None
@@ -94,7 +94,7 @@ class Download:
     """Прикрепленный к посту файл (в новом Табуне) или ссылка (в старом Табуне)."""
     def __init__(self, type, post_id, filename, count, filesize=None):
         self.type = str(type)
-        if not self.type in ("file", "link"):
+        if self.type not in ("file", "link"):
             raise ValueError
         self.post_id = int(post_id)
         self.filename = unicode(filename) if filename else None  # или ссылка
@@ -247,7 +247,7 @@ class ActivityItem:
 
     def __init__(self, type, date, post_id=None, comment_id=None, blog=None, username=None, title=None, data=None, id=None):
         self.type = int(type)
-        if not self.type in (
+        if self.type not in (
             self.WALL_ADD, self.POST_ADD, self.COMMENT_ADD, self.BLOG_ADD,
             self.POST_VOTE, self.COMMENT_VOTE, self.BLOG_VOTE,
             self.USER_VOTE, self.FRIEND_ADD, self.JOIN_BLOG
@@ -488,7 +488,7 @@ class User:
                         self.lock.acquire()
 
             self.last_query_time = time.time()
-        
+
             if self.phpsessid:
                 url.add_header('cookie', "PHPSESSID=%s; key=%s; LIVESTREET_SECURITY_KEY=%s" % (
                     self.phpsessid, self.key, self.security_ls_key
@@ -836,8 +836,6 @@ class User:
 
         blogs = []
 
-        #for tr in node.findall("tr"):
-        #for p in node.xpath('tr/td[@class="cell-name"]/p'):
         for tr in node.findall("tr"):
             p = tr.xpath('td[@class="cell-name"]/p')
             if len(p) == 0:
@@ -1348,8 +1346,6 @@ class User:
         if not form:
             return
         form = form[0]
-
-        #return form
 
         blog_title = form.xpath('p/input[@id="blog_title"]')[0].get('value')
         blog_url = form.xpath('p/input[@id="blog_url"]')[0].get('value')
@@ -1867,7 +1863,7 @@ def parse_wrapper(node):
         sect = node.find("section")
         if not sect.get('class'):
             break
-        if not "comment" in sect.get('class'):
+        if "comment" not in sect.get('class'):
             break
         comms.append(sect)
         nodes.extend(node.xpath('div[@class="comment-wrapper"]'))
