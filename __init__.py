@@ -1889,7 +1889,8 @@ def parse_comment(node, post_id, blog=None, parent_id=None):
             info = info[0]
 
         if body is not None:
-            body.text = body.text.lstrip()
+            if body.text:
+                body.text = body.text.lstrip()
             body.tail = ""
             if len(body) > 0 and body[-1].tail:
                 body[-1].tail = body[-1].tail.rstrip()
