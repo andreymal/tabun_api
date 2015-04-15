@@ -248,7 +248,8 @@ class ActivityItem:
     def __init__(self, type, date, post_id=None, comment_id=None, blog=None, username=None, title=None, data=None, id=None):
         self.type = int(type)
         if not self.type in (
-            self.WALL_ADD, self.POST_ADD, self.COMMENT_ADD, self.POST_VOTE, self.COMMENT_VOTE, self.BLOG_VOTE,
+            self.WALL_ADD, self.POST_ADD, self.COMMENT_ADD, self.BLOG_ADD,
+            self.POST_VOTE, self.COMMENT_VOTE, self.BLOG_VOTE,
             self.USER_VOTE, self.FRIEND_ADD, self.JOIN_BLOG
         ):
             raise ValueError
@@ -1467,7 +1468,7 @@ class User:
             raw_data = req.read()
             del req
 
-        raw_data = utils.find_substring(raw_data, '<ul class="stream-list', '<a class="stream-get-more"', with_end=False)
+        raw_data = utils.find_substring(raw_data, '<ul class="stream-list', '<!-- /content', with_end=False)
         if not raw_data:
             return []
         node = utils.parse_html_fragment(raw_data[:raw_data.rfind('</ul>')])
@@ -1475,8 +1476,12 @@ class User:
             return []
         node = node[0]
 
-        last_id = raw_data[raw_data.rfind('value="') + 7:]
-        last_id = int(last_id[:last_id.find('"')])
+        inp = '<input type="hidden" id="stream_last_id" value="'
+        if raw_data.rfind(inp) > 0:
+            last_id = raw_data[raw_data.rfind(inp) + len(inp):]
+            last_id = int(last_id[:last_id.find('"')])
+        else:
+            last_id = -1
 
         items = []
 
@@ -1548,8 +1553,9 @@ def parse_activity(item):
 
     elif 'stream-item-type-add_blog' in classes:
         typ = ActivityItem.BLOG_ADD
-        # print utils.node2string(item)
-        return  # TODO:
+        href = item.xpath('a[2]')[0].get('href')[:-1]
+        blog = href[href.rfind('/') + 1:]
+        title = item.xpath('a[2]/text()[1]')[0]
 
     elif 'stream-item-type-vote_topic' in classes:
         typ = ActivityItem.POST_VOTE
@@ -1576,8 +1582,7 @@ def parse_activity(item):
 
     elif 'stream-item-type-add_friend' in classes:
         typ = ActivityItem.FRIEND_ADD
-        # print utils.node2string(item)
-        return  # TODO:
+        data = item.xpath('span/a[2]/text()')[0]
 
     elif 'stream-item-type-join_blog' in classes:
         typ = ActivityItem.JOIN_BLOG
