@@ -21,7 +21,7 @@ halfclosed = ("borderline", "shipping", "erpg", "gak", "RPG", "roliplay", "tears
 #: Заголовки для HTTP-запросов. Возможно, стоит менять user-agent.
 http_headers = {
     "connection": "close",
-    "user-agent": "tabun_api/0.5.4; Linux/2.6",
+    "user-agent": "tabun_api/0.6.0; Linux/2.6",
 }
 
 #: Регулярка для парсинга ссылки на пост.
@@ -60,7 +60,10 @@ class TabunResultError(TabunError):
 
 class Post:
     """Пост."""
-    def __init__(self, time, blog, post_id, author, title, draft, vote_count, vote_total, body, tags, comments_count=None, comments_new_count=None, short=False, private=False, blog_name=None, poll=None, favourite=0, favourited=False, download=None):
+    def __init__(self, time, blog, post_id, author, title, draft,
+                 vote_count, vote_total, body, tags, comments_count=None, comments_new_count=None,
+                 short=False, private=False, blog_name=None, poll=None, favourite=0, favourited=False,
+                 download=None, raw_body=None):
         self.time = time
         self.blog = str(blog) if blog else None
         self.post_id = int(post_id)
@@ -69,7 +72,6 @@ class Post:
         self.draft = bool(draft)
         self.vote_count = int(vote_count) if vote_count is not None else None
         self.vote_total = int(vote_total) if vote_total is not None else None
-        self.body = body
         self.tags = tags
         self.comments_count = int(comments_count) if comments_count is not None else None
         self.comments_new_count = int(comments_new_count) if comments_new_count is not None else None
@@ -83,11 +85,16 @@ class Post:
             raise ValueError
         self.download = download
 
+        self.body, self.raw_body = utils.normalize_body(body, raw_body, cls='topic-content text')
+
     def __repr__(self):
         return "<post " + ((self.blog + "/") if self.blog else "personal ") + str(self.post_id) + ">"
 
     def __str__(self):
         return self.__repr__()
+
+    def __unicode__(self):
+        return self.__repr__().decode('utf-8', 'replace')
 
 
 class Download:
@@ -104,13 +111,14 @@ class Download:
 
 class Comment:
     """Коммент. Возможно, удалённый, поэтому следите, чтобы значения не были None!"""
-    def __init__(self, time, blog, post_id, comment_id, author, body, vote, parent_id=None, post_title=None, unread=False, deleted=False, favourite=None, favourited=False):
+    def __init__(self, time, blog, post_id, comment_id, author, body, vote, parent_id=None,
+                 post_title=None, unread=False, deleted=False, favourite=None, favourited=False,
+                 raw_body=None):
         self.time = time
         self.blog = str(blog) if blog else None
         self.post_id = int(post_id) if post_id else None
         self.comment_id = int(comment_id)
         self.author = str(author) if author else None
-        self.body = body
         self.vote = int(vote) if vote is not None else None
         self.unread = bool(unread)
         if parent_id:
@@ -125,6 +133,8 @@ class Comment:
         self.favourite = int(favourite) if favourite is not None else None
         self.favourited = bool(favourited)
 
+        self.body, self.raw_body = utils.normalize_body(body, raw_body)
+
     def __repr__(self):
         return "<" + ("deleted " if self.deleted else "") + "comment " + \
             (self.blog + "/" + str(self.post_id) + "/" if self.blog and self.post_id else "") + \
@@ -133,10 +143,15 @@ class Comment:
     def __str__(self):
         return self.__repr__()
 
+    def __unicode__(self):
+        return self.__repr__().decode('utf-8', 'replace')
+
 
 class Blog:
     """Блог."""
-    def __init__(self, blog_id, blog, name, creator, readers=0, rating=0.0, closed=False, description=None, admins=None, moderators=None, vote_count=-1, posts_count=-1, created=None):
+    def __init__(self, blog_id, blog, name, creator, readers=0, rating=0.0, closed=False,
+                 description=None, admins=None, moderators=None, vote_count=-1, posts_count=-1,
+                 created=None, raw_description=None):
         self.blog_id = int(blog_id)
         self.blog = str(blog)
         self.name = unicode(name)
@@ -144,18 +159,22 @@ class Blog:
         self.readers = int(readers)
         self.rating = int(rating)
         self.closed = bool(closed)
-        self.description = description
         self.admins = admins
         self.moderators = moderators
         self.vote_count = int(vote_count)
         self.posts_count = int(posts_count)
         self.created = created
 
+        self.description, self.raw_description = utils.normalize_body(description, raw_description)
+
     def __repr__(self):
         return "<blog " + self.blog + ">"
 
     def __str__(self):
         return self.__repr__()
+
+    def __unicode__(self):
+        return self.__repr__().decode('utf-8', 'replace')
 
 
 class StreamItem:
@@ -177,7 +196,9 @@ class StreamItem:
 
 class UserInfo:
     """Информация о броняше."""
-    def __init__(self, user_id, username, realname, skill, rating, userpic=None, foto=None, gender=None, birthday=None, registered=None, last_activity=None, description=None, blogs=None):
+    def __init__(self, user_id, username, realname, skill, rating, userpic=None, foto=None,
+                 gender=None, birthday=None, registered=None, last_activity=None,
+                 description=None, blogs=None, raw_description=None):
         self.user_id = int(user_id)
         self.username = str(username)
         self.realname = unicode(realname) if realname else None
@@ -189,18 +210,22 @@ class UserInfo:
         self.birthday = birthday
         self.registered = registered
         self.last_activity = last_activity
-        self.description = description
         self.blogs = {}
         self.blogs['owner'] = blogs.get('owner', []) if blogs else []
         self.blogs['admin'] = blogs.get('admin', []) if blogs else []
         self.blogs['moderator'] = blogs.get('moderator', []) if blogs else []
         self.blogs['member'] = blogs.get('member', []) if blogs else []
 
+        self.description, self.raw_description = utils.normalize_body(description, raw_description)
+
     def __repr__(self):
         return "<userinfo " + self.username + ">"
 
     def __str__(self):
         return self.__repr__()
+
+    def __unicode__(self):
+        return self.__repr__().decode('utf-8', 'replace')
 
 
 class Poll:
@@ -215,21 +240,25 @@ class Poll:
 
 class TalkItem:
     """Личное сообщение."""
-    def __init__(self, talk_id, recipients, unread, title, date, body=None, author=None, comments=[]):
+    def __init__(self, talk_id, recipients, unread, title, date, body=None, author=None, comments=[], raw_body=None):
         self.talk_id = int(talk_id)
         self.recipients = map(str, recipients)
         self.unread = bool(unread)
         self.title = unicode(title)
         self.date = date
-        self.body = body
         self.author = str(author) if author else None
         self.comments = comments if comments else []
+
+        self.body, self.raw_body = utils.normalize_body(body, raw_body)
 
     def __repr__(self):
         return "<talk " + str(self.talk_id) + ">"
 
     def __str__(self):
         return self.__repr__()
+
+    def __unicode__(self):
+        return self.__repr__().decode('utf-8', 'replace')
 
 
 class ActivityItem:
@@ -742,6 +771,7 @@ class User:
             items = channel.findall("item")
             items.reverse()
 
+            # TODO: заюзать новое экранирование
             for item in items:
                 post = parse_rss_post(item)
                 if post:
@@ -752,7 +782,10 @@ class User:
         data = utils.find_substring(raw_data, "<article ", "</article> <!-- /.topic -->", extend=True)
         if not data:
             raise TabunError("No post")
-        items = filter(lambda x: not isinstance(x, (str, unicode)) and x.tag == "article", utils.parse_html_fragment(data))
+
+        can_be_short = not url.split('?', 1)[0].endswith('.html')
+        escaped_data = utils.escape_comment_contents(utils.escape_topic_contents(data, can_be_short))
+        items = filter(lambda x: not isinstance(x, basestring) and x.tag == "article", utils.parse_html_fragment(escaped_data))
         items.reverse()
 
         for item in items:
@@ -786,7 +819,8 @@ class User:
         raw_data = utils.find_substring(raw_data, '<div class="comments', '<!-- /content -->', extend=True, with_end=False)
         if not raw_data:
             return {}
-        div = utils.parse_html_fragment(raw_data)
+        escaped_data = utils.escape_comment_contents(utils.escape_topic_contents(raw_data, True))
+        div = utils.parse_html_fragment(escaped_data)
         if not div:
             return {}
         div = div[0]
@@ -951,7 +985,7 @@ class User:
 
         comms = {}
         for comm in data['aComments']:
-            node = utils.parse_html_fragment(comm['html'])
+            node = utils.parse_html_fragment(utils.escape_comment_contents(comm['html']))
             pcomm = parse_comment(node[0], post_id, None, comm['idParent'])
             if pcomm:
                 comms[pcomm.comment_id] = pcomm
@@ -1649,21 +1683,43 @@ def parse_post(item):
     else:
         post_time = time.localtime()
 
-    node = item.xpath('div[@class="topic-content text"]')
-    if len(node) == 0:
+    body = item.xpath('div[@class="topic-content text"]')
+    if len(body) == 0:
         return
-    node = node[0]
+    body = body[0]
 
-    node.text = node.text.lstrip()
-    node.tail = ""
-    if len(node) > 0 and node[-1].tail:
-        node[-1].tail = node[-1].tail.rstrip()
-    elif len(node) == 0 and node.text:
-        node.text = node.text.rstrip()
+    if body.get('data-escaped') == '1':
+        # всё почищего в utils
+        raw_body = body.text
+        is_short = body.get('data-short') == '1'
+        # TODO: cut_text
 
-    nextbtn = node.xpath(u'a[@title="Читать дальше"][1]')
-    if len(nextbtn) > 0:
-        node.remove(nextbtn[0])
+    else:
+        raw_body = None
+
+        # чистим от topic-actions, а также сносим мусорные отступы
+        post_header = body.xpath('header[@class="topic-header"]')
+        if post_header:
+            post_header = post_header[0]
+            body.remove(post_header)
+            body.text = ''
+            if post_header.tail:
+                body.text = post_header.tail.lstrip()
+        else:
+            post_header = None
+            if body.text:
+                body.text = body.text.lstrip()
+        body.tail = ""
+
+        nextbtn = body.xpath(u'a[@title="Читать дальше"][1]')
+        is_short = len(nextbtn) > 0
+        if is_short:
+            body.remove(nextbtn[-1])
+
+        if len(body) > 0 and body[-1].tail:
+            body[-1].tail = body[-1].tail.rstrip()
+        elif len(body) == 0 and body.text:
+            body.text = body.text.rstrip()
 
     footer = item.find("footer")
     ntags = footer.find("p")
@@ -1757,9 +1813,9 @@ def parse_post(item):
             download = Download("link", post_id, post_link, link_count, None)
 
     return Post(
-        post_time, blog, post_id, author, title, draft, vote_count, vote_total, node, tags,
-        comments_count, comments_new_count, len(nextbtn) > 0, private, blog_name,
-        poll, favourite, favourited, download
+        post_time, blog, post_id, author, title, draft, vote_count, vote_total, body if raw_body is None else None, tags,
+        comments_count, comments_new_count, is_short, private, blog_name,
+        poll, favourite, favourited, download, raw_body
     )
 
 
@@ -1881,21 +1937,25 @@ def parse_comment(node, post_id, blog=None, parent_id=None):
         is_author = "comment-author" in node.get("class", "")
         is_self = "comment-self" in node.get("class", "")
 
-        body = node.xpath('div[@class="comment-content"][1]/div')[0]
         info = node.xpath('ul[@class="comment-info"]')
         if len(info) == 0:
             info = node.xpath('div[@class="comment-path"]/ul[@class="comment-info"]')[0]
         else:
             info = info[0]
 
+        body = node.xpath('div[@class="comment-content"][1]/div')[0]
+        raw_body = None
         if body is not None:
-            if body.text:
-                body.text = body.text.lstrip()
-            body.tail = ""
-            if len(body) > 0 and body[-1].tail:
-                body[-1].tail = body[-1].tail.rstrip()
-            elif len(body) == 0 and body.text:
-                body.text = body.text.rstrip()
+            if body.get('data-escaped') == '1':
+                raw_body = body.text
+            else:
+                if body.text:
+                    body.text = body.text.lstrip()
+                body.tail = ""
+                if len(body) > 0 and body[-1].tail:
+                    body[-1].tail = body[-1].tail.rstrip()
+                elif len(body) == 0 and body.text:
+                    body.text = body.text.rstrip()
 
         nick = info.findall("li")[0].findall("a")[-1].text
         tm = info.findall("li")[1].find("time").get('datetime')
@@ -1955,7 +2015,8 @@ def parse_comment(node, post_id, blog=None, parent_id=None):
         return
 
     if body is not None:
-        return Comment(tm, blog, post_id, comment_id, nick, body, vote, parent_id, post_title, unread, deleted, favourite, favourited)
+        return Comment(tm, blog, post_id, comment_id, nick, body if raw_body is None else None, vote, parent_id,
+                       post_title, unread, deleted, favourite, favourited, raw_body)
 
 
 def parse_deleted_comment(node, post_id, blog=None):

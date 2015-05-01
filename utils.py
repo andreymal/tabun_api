@@ -117,7 +117,7 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=Tr
 
         elif vk_links and item.tag == "a" and item.get('href', '').find("://vk.com/") > 0 and item.text_content().strip():
             href = item.get('href')
-            addr = href[href.find("com/")+4:]
+            addr = href[href.find("com/") + 4:]
             if addr and addr[-1] in (".", ")"):
                 addr = addr[:-1]
 
@@ -204,7 +204,7 @@ def node2string(node):
 def mon2num(s):
     """Переводит названия месяцев в числа, чтобы строку можно было скормить в strftime."""
     for i in range(len(mons)):
-        s = s.replace(mons[i], str(i+1))
+        s = s.replace(mons[i], str(i + 1))
     return s
 
 
@@ -340,7 +340,7 @@ def find_substring(s, start, end, extend=False, with_start=True, with_end=True):
     return s[f1 + (0 if with_start else len(start)):f2 + (len(end) if with_end else 0)]
 
 
-def download(url, maxmem=20*1024*1024, timeout=5, waitout=15):
+def download(url, maxmem=20 * 1024 * 1024, timeout=5, waitout=15):
     """Скачивает данные по урлу. Имеет защиту от переполнения памяти и слишком долгого ожидания, чтобы всякие боты тут не висли. В случае чего кидает IOError."""
     if url.startswith('//'):
         url = 'http:' + url
@@ -356,7 +356,7 @@ def download(url, maxmem=20*1024*1024, timeout=5, waitout=15):
     while 1:
         if len(data) > maxmem:
             raise IOError("Too big")
-        tmp = req.read(128*1024)
+        tmp = req.read(128 * 1024)
         if not tmp:
             break
         data += tmp
@@ -367,7 +367,7 @@ def download(url, maxmem=20*1024*1024, timeout=5, waitout=15):
     return data
 
 
-def find_good_image(urls, maxmem=20*1024*1024):
+def find_good_image(urls, maxmem=20 * 1024 * 1024):
     """Ищет годную картинку из предложенного списка ссылок и возвращает ссылку и скачанные данные картинки (файл). Такой простенький фильтр смайликов и элементов оформления поста по размеру. Требует PIL. Не грузит картинки размером больше maxmem байт, дабы не вылететь от нехватки памяти."""
     try:
         import Image
@@ -428,3 +428,133 @@ def parse_avatar_url(url):
     num = int(g[10]) if g[10] is not None else None
 
     return user_id, date, size, ext, num
+
+
+def normalize_body(body=None, raw_body=None, cls='text'):
+    """Кодирует lxml-элемент в исходник html или наоборот декодирует исходник в lxml-элемент."""
+    if body is not None and raw_body is None:
+        raw_body = lxml.etree.tostring(body, method="xml", encoding="utf-8").replace('&#13;', '\r').decode('utf-8')
+        raw_body = raw_body[raw_body.find(">") + 1:raw_body.rfind("</")]  # <div class="text">body</div>
+
+        # Занимаемся подгонкой под оригинальный исходник
+        # Табун принудительно сводит несколько br подряд в <br/>\r\n<br/>, чем и пользуемся, обходя баг lxml
+        while '<br/><' in raw_body:
+            raw_body = raw_body.replace('<br/><', '<br/>\r\n<')
+
+        raw_body = raw_body.replace(' allowfullscreen=""/>', ' allowfullscreen></iframe>')
+        # это типа тег <cut>
+        raw_body = raw_body.replace('<a rel="nofollow"/>', '<a rel="nofollow"></a>', 1)
+        # однако полученный исходник всё равно не совпадает в точности с исходником на Табуне,
+        # например, из-за разного порядка атрибутов, &quot; и битой вёрстки, так что осторожно
+
+    elif raw_body is not None and body is None:
+        body = parse_html_fragment(('<div class="%s">' % cls) + raw_body + '</div>')[0]
+
+    return body, unicode(raw_body) if raw_body is not None else None
+
+
+def escape_topic_contents(data, may_be_short=False):
+    """Экранирует содержимое постов для защиты от поехавшей вёрстки и багов lxml."""
+    f1 = 0
+    f2 = 0
+    last_end = 0
+    buf = []
+    while True:
+        # определяем границы тела очередного поста
+        f1 = data.find('<div class="topic-content text">', last_end)
+        if f1 < 0:
+            break
+        f2 = data.find('<footer', f1)
+        if f2 < 0:
+            break
+        f2 = data.rfind('</div>', f1, f2)
+        if f2 < 0:
+            break
+
+        # старые топики-ссылки
+        if data.rfind('<div class="topic-url"', f1, f2) > 0:
+            f2 = data.rfind('</div>', f1, data.rfind('<div class="topic-url"', f1, f2))
+            if f2 < 0:
+                break
+
+        # топики-файлы
+        if data.rfind('<div class="download"', f1, f2) > 0:
+            f2 = data.rfind('</div>', f1, data.rfind('<div class="download"', f1, f2))
+            if f2 < 0:
+                break
+
+        # выясняем, есть кат или нет
+        body = data[data.find('>', f1) + 1:f2].strip()
+        short = None
+        if may_be_short:
+            fa = body.rfind('title="Читать дальше">')
+            if fa > 0:
+                fa2 = body.find('</a>', fa)
+                if fa2 > 0 and fa2 == len(body) - 4:
+                    short = body[body.find(">", fa) + 1:fa2].strip()
+                    body = body[:body.rfind('<', 0, fa)].rstrip()
+
+        # выпиливаем header при его наличии
+        if body.startswith('<header'):
+            body = body[body.find('</header>') + 9:].lstrip()
+
+        # экранируем тело
+        body = body.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+
+        # собираем страницу обратно
+        buf.extend((
+            data[last_end:f1],
+            '<div class="topic-content text" data-escaped="1" data-short="%s" data-short-text="%s">' % (1 if short is not None else 0, short if short is not None else ''),
+            body,
+            '</div>'
+        ))
+        last_end = f2 + 6
+
+    buf.append(data[last_end:])
+    return ''.join(buf)
+
+
+def escape_comment_contents(data):
+    """Экранирует содержимое комментов."""
+    f1 = 0
+    f2 = 0
+    last_end = 0
+    buf = []
+    while True:
+        # определяем границы очередного коммента
+        f1 = data.find('class="comment-content">', last_end)
+        if f1 >= 0:
+            f = data.find('<div class=" text">', f1, f1 + 150)
+            if f < 0:
+                f1 = data.find('<div class="text">', f1, f1 + 150)
+            else:
+                f1 = f
+            del f
+        if f1 < 0:
+            break
+        f2 = data.find('<div id="info_edit_', f1)
+        if f2 < 0:
+            f2 = data.find('<div class="comment-path', f1)
+        if f2 < 0:
+            break
+        f2 = data.rfind('</div>', f1, f2)
+        if f2 >= 0:
+            f2 = data.rfind('</div>', f1, f2)
+        if f2 < 0:
+            break
+
+        # экранируем тело
+        body = data[data.find('>', f1) + 1:f2].strip()
+        body = body.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+
+        # собираем страницу обратно
+        buf.extend((
+            data[last_end:f1],
+            '<div class="text" data-escaped="1">',
+            body,
+            '</div>'
+        ))
+        last_end = f2 + 6
+
+    buf.append(data[last_end:])
+    return ''.join(buf)
