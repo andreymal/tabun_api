@@ -1646,6 +1646,8 @@ def parse_post(item):
         # если ссылки нет, то костыляем: достаём блог из ссылки на него
         blog = None
         link = header.xpath('div/a[@class="topic-blog"]')
+        if not link:
+            link = header.xpath('div/a[@class="topic-blog private-blog"]')
         if link:
             link = link[0].get('href')
             if link and '/blog/' in link:
@@ -1670,6 +1672,8 @@ def parse_post(item):
     private = bool(header.xpath('div/a[@class="topic-blog private-blog"]'))
 
     blog_name = header.xpath('div/a[@class="topic-blog"]/text()[1]')
+    if not blog_name:
+        blog_name = header.xpath('div/a[@class="topic-blog private-blog"]/text()[1]')
     if len(blog_name) > 0:
         blog_name = unicode(blog_name[0])
     else:
@@ -1930,18 +1934,20 @@ def parse_comment(node, post_id, blog=None, parent_id=None):
     # И это тоже парсинг коммента. Не надо юзать эту функцию.
     body = None
     try:
+        info = node.xpath('ul[@class="comment-info"]')
+        if len(info) == 0:
+            info = node.xpath('div[@class="comment-path"]/ul[@class="comment-info"]')[0]
+        else:
+            info = info[0]
+
+        comment_id = int(info.xpath('li[@class="comment-link"]/a')[0].get('href').rsplit("/", 1)[-1])
+
         unread = "comment-new" in node.get("class", "")
         deleted = "comment-deleted" in node.get("class", "")
 
         # TODO: заюзать
         is_author = "comment-author" in node.get("class", "")
         is_self = "comment-self" in node.get("class", "")
-
-        info = node.xpath('ul[@class="comment-info"]')
-        if len(info) == 0:
-            info = node.xpath('div[@class="comment-path"]/ul[@class="comment-info"]')[0]
-        else:
-            info = info[0]
 
         body = node.xpath('div[@class="comment-content"][1]/div')[0]
         raw_body = None
@@ -1961,7 +1967,6 @@ def parse_comment(node, post_id, blog=None, parent_id=None):
         tm = info.findall("li")[1].find("time").get('datetime')
         tm = time.strptime(tm[:-6], "%Y-%m-%dT%H:%M:%S")
 
-        comment_id = int(info.xpath('li[@class="comment-link"]/a')[0].get('href').rsplit("/", 1)[-1])
         post_title = None
         try:
             link = info.findall("li")
