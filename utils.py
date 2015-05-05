@@ -22,7 +22,7 @@ block_elems = ("div", "p", "blockquote", "section", "ul", "li", "h1", "h2", "h3"
 youtube_regex = re.compile(r'youtube.com\/embed\/(.{10,15})((\?)|($))')
 
 #: Регулярка для парсинга ссылки на аватарку — из неё можно узнать много полезного!
-ava_regex = re.compile(r"\/uploads\/images\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/avatar_([0-9]+)x([0-9]+)\.(...)(\?([0-9]+))?")
+ava_regex = re.compile(r"\/images\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/avatar_([0-9]+)x([0-9]+)\.(...)(\?([0-9]+))?")
 
 
 def parse_html(data, encoding='utf-8'):

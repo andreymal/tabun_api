@@ -534,7 +534,7 @@ class User:
                 timeout = self.timeout
 
             try:
-                return (self.opener.open if redir else self.noredir.open)(url, timeout=timeout)
+                return (self.opener.open if redir else self.noredir.open)(url, timeout=timeout or self.timeout)
             except KeyboardInterrupt:
                 raise
             except urllib2.HTTPError as exc:
@@ -1653,6 +1653,8 @@ def parse_post(item):
             if link and '/blog/' in link:
                 blog = link[:-1]
                 blog = blog[blog.rfind('/', 1) + 1:]
+        else:
+            raise ValueError('Cannot get blog from post "%s"' % title.text_content())
 
         # достаём номер поста из блока с рейтингом
         vote_elem = header.xpath('div/div[@class="topic-info-vote"]/div')
