@@ -21,7 +21,7 @@ halfclosed = ("borderline", "shipping", "erpg", "gak", "RPG", "roliplay", "tears
 #: Заголовки для HTTP-запросов. Возможно, стоит менять user-agent.
 http_headers = {
     "connection": "close",
-    "user-agent": "tabun_api/0.6.0; Linux/2.6",
+    "user-agent": "tabun_api/0.6.1; Linux/2.6",
 }
 
 #: Регулярка для парсинга ссылки на пост.
@@ -39,7 +39,10 @@ class NoRedirect(urllib2.HTTPRedirectHandler):
 
 
 class TabunError(Exception):
-    """Общее для библиотеки исключение. Содержит атрибут code с всякими разными циферками для разных типов исключения, обычно совпадает с HTTP-кодом ошибки при запросе. А в args[0] или текст, или снова код ошибки."""
+    """Общее для библиотеки исключение.
+    Содержит атрибут code с всякими разными циферками для разных типов исключения, обычно совпадает с HTTP-кодом ошибки при запросе.
+    А в args[0] или текст, или снова код ошибки.
+    """
     def __init__(self, msg=None, code=0, data=None):
         self.code = int(code)
         self.message = unicode(msg) if msg else unicode(code)
@@ -65,9 +68,9 @@ class Post:
                  short=False, private=False, blog_name=None, poll=None, favourite=0, favourited=False,
                  download=None, raw_body=None):
         self.time = time
-        self.blog = str(blog) if blog else None
+        self.blog = unicode(blog) if blog else None
         self.post_id = int(post_id)
-        self.author = str(author)
+        self.author = unicode(author)
         self.title = unicode(title)
         self.draft = bool(draft)
         self.vote_count = int(vote_count) if vote_count is not None else None
@@ -88,7 +91,7 @@ class Post:
         self.body, self.raw_body = utils.normalize_body(body, raw_body, cls='topic-content text')
 
     def __repr__(self):
-        return "<post " + ((self.blog + "/") if self.blog else "personal ") + str(self.post_id) + ">"
+        return "<post " + ((self.blog.encode('utf-8') + "/") if self.blog else "personal ") + str(self.post_id) + ">"
 
     def __str__(self):
         return self.__repr__()
@@ -115,10 +118,10 @@ class Comment:
                  post_title=None, unread=False, deleted=False, favourite=None, favourited=False,
                  raw_body=None):
         self.time = time
-        self.blog = str(blog) if blog else None
+        self.blog = unicode(blog) if blog else None
         self.post_id = int(post_id) if post_id else None
         self.comment_id = int(comment_id)
-        self.author = str(author) if author else None
+        self.author = unicode(author) if author else None
         self.vote = int(vote) if vote is not None else None
         self.unread = bool(unread)
         if parent_id:
@@ -137,7 +140,7 @@ class Comment:
 
     def __repr__(self):
         return "<" + ("deleted " if self.deleted else "") + "comment " + \
-            (self.blog + "/" + str(self.post_id) + "/" if self.blog and self.post_id else "") + \
+            ((self.blog.encode('utf-8') + "/" + str(self.post_id) + "/") if self.blog and self.post_id else "") + \
             str(self.comment_id) + ">"
 
     def __str__(self):
@@ -153,7 +156,7 @@ class Blog:
                  description=None, admins=None, moderators=None, vote_count=-1, posts_count=-1,
                  created=None, raw_description=None):
         self.blog_id = int(blog_id)
-        self.blog = str(blog)
+        self.blog = unicode(blog)
         self.name = unicode(name)
         self.creator = str(creator)
         self.readers = int(readers)
@@ -168,7 +171,7 @@ class Blog:
         self.description, self.raw_description = utils.normalize_body(description, raw_description)
 
     def __repr__(self):
-        return "<blog " + self.blog + ">"
+        return "<blog " + self.blog.encode('utf-8') + ">"
 
     def __str__(self):
         return self.__repr__()
@@ -180,10 +183,10 @@ class Blog:
 class StreamItem:
     """Элемент «Прямого эфира»."""
     def __init__(self, blog, blog_title, title, author, comment_id, comments_count):
-        self.blog = str(blog) if blog else None
+        self.blog = unicode(blog) if blog else None
         self.blog_title = unicode(blog_title)
         self.title = unicode(title)
-        self.author = str(author)
+        self.author = unicode(author)
         self.comment_id = int(comment_id)
         self.comments_count = int(comments_count)
 
@@ -200,7 +203,7 @@ class UserInfo:
                  gender=None, birthday=None, registered=None, last_activity=None,
                  description=None, blogs=None, raw_description=None):
         self.user_id = int(user_id)
-        self.username = str(username)
+        self.username = unicode(username)
         self.realname = unicode(realname) if realname else None
         self.skill = float(skill)
         self.rating = float(rating)
@@ -219,7 +222,7 @@ class UserInfo:
         self.description, self.raw_description = utils.normalize_body(description, raw_description)
 
     def __repr__(self):
-        return "<userinfo " + self.username + ">"
+        return "<userinfo " + self.username.encode('utf-8') + ">"
 
     def __str__(self):
         return self.__repr__()
@@ -242,11 +245,11 @@ class TalkItem:
     """Личное сообщение."""
     def __init__(self, talk_id, recipients, unread, title, date, body=None, author=None, comments=[], raw_body=None):
         self.talk_id = int(talk_id)
-        self.recipients = map(str, recipients)
+        self.recipients = [unicode(x) for x in recipients]
         self.unread = bool(unread)
         self.title = unicode(title)
         self.date = date
-        self.author = str(author) if author else None
+        self.author = unicode(author) if author else None
         self.comments = comments if comments else []
 
         self.body, self.raw_body = utils.normalize_body(body, raw_body)
@@ -287,8 +290,8 @@ class ActivityItem:
 
         self.post_id = int(post_id) if post_id is not None else None
         self.comment_id = int(comment_id) if comment_id is not None else None
-        self.blog = str(blog) if blog is not None else None
-        self.username = str(username) if username is not None else None
+        self.blog = unicode(blog) if blog is not None else None
+        self.username = unicode(username) if username is not None else None
         self.title = unicode(title) if title is not None else None
         self.data = unicode(data) if data is not None else None
         self.id = int(id) if id is not None else None
@@ -397,9 +400,8 @@ class User:
                 if self.phpsessid:
                     self.phpsessid = self.phpsessid.value
             if not self.key:
-                self.key = cook.get("key")
-                if self.key:
-                    self.key = self.key.value
+                ckey = cook.get("key")
+                self.key = ckey.value if ckey else None
             pos = data.find("var LIVESTREET_SECURITY_KEY =")
             if pos > 0:
                 ls_key = data[pos:]
@@ -407,16 +409,15 @@ class User:
                 self.security_ls_key = ls_key[:ls_key.find("'")]
 
             if self.security_ls_key == 'LIVESTREET_SECURITY_KEY':  # security fix by Random
-                self.security_ls_key = cook.get("LIVESTREET_SECURITY_KEY")
-                if self.security_ls_key:
-                    self.security_ls_key = self.security_ls_key.value
+                csecurity_ls_key = cook.get("LIVESTREET_SECURITY_KEY")
+                self.security_ls_key = csecurity_ls_key.value if csecurity_ls_key else None
 
             self.update_userinfo(data)
 
         if login and passwd:
             self.login(login, passwd)
         elif login and self.phpsessid and not self.username:
-            self.username = str(login)
+            self.username = unicode(login)
 
         self.last_query_time = 0
         self.talk_count = 0
@@ -483,9 +484,8 @@ class User:
 
         cook = BaseCookie()
         cook.load(resp.headers.get("set-cookie", ""))
-        self.key = cook.get("key")
-        if self.key:
-            self.key = self.key.value
+        ckey = cook.get("key")
+        self.key = ckey.value if ckey else None
 
     def check_login(self):
         """Генерирует исключение, если нет печеньки PHPSESSID или security_ls_key."""
@@ -764,7 +764,7 @@ class User:
 
         f = raw_data.find("<rss")
         if f < 250 and f >= 0:
-            node = utils.lxml.etree.fromstring(raw_data)
+            node = utils.lxml.etree.fromstring(raw_data)  # pylint: disable=no-member
             channel = node.find("channel")
             if channel is None:
                 raise TabunError("No RSS channel")
@@ -796,7 +796,9 @@ class User:
         return posts
 
     def get_post(self, post_id, blog=None, raw_data=None):
-        """Возвращает пост по номеру. Рекомендуется указать url-имя блога, чтобы избежать перенаправления и лишнего запроса. Если поста нет - кидается исключением TabunError("No post"). В случае проблем с парсингом может вернуть None."""
+        """Возвращает пост по номеру. Рекомендуется указать url-имя блога, чтобы избежать перенаправления и лишнего запроса.
+        Если поста нет - кидается исключением TabunError("No post"). В случае проблем с парсингом может вернуть None.
+        """
         if blog and blog != 'blog':
             url = "/blog/" + str(blog) + "/" + str(post_id) + ".html"
         else:
@@ -881,7 +883,7 @@ class User:
             if not link:
                 continue
 
-            blog = link[:link.rfind('/')].encode("utf-8")
+            blog = link[:link.rfind('/')]
             blog = blog[blog.rfind('/') + 1:]
 
             name = unicode(a.text)
@@ -900,8 +902,9 @@ class User:
 
     def get_blog(self, blog, raw_data=None):
         """Возвращает информацию о блоге. Функция не доделана."""
+        blog = blog.encode('utf-8') if isinstance(blog, unicode) else str(blog)
         if not raw_data:
-            req = self.urlopen("/blog/" + str(blog).replace("/", "") + "/")
+            req = self.urlopen("/blog/" + blog.replace("/", "").replace("?", "") + "/")
             raw_data = req.read()
             del req
         data = utils.find_substring(raw_data, '<div class="blog-top">', '<div class="nav-menu-wrapper">', with_end=False)
@@ -964,7 +967,9 @@ class User:
         return post[0] if post else None, comments
 
     def get_comments_from(self, post_id, comment_id=0, typ="blog"):
-        """Возвращает комментарии к посту, начиная с определённого номера комментария. На сайте используется для подгрузки новых комментариев. Тип - blog (пост) или talk (личные сообщения)."""
+        """Возвращает комментарии к посту, начиная с определённого номера комментария. На сайте используется для подгрузки новых комментариев.
+        Тип - blog (пост) или talk (личные сообщения).
+        """
         self.check_login()
         post_id = int(post_id)
         comment_id = int(comment_id) if comment_id else 0
@@ -1017,11 +1022,11 @@ class User:
             p = item.find("p")
             a, blog_a = p.findall("a")[:2]
 
-            author = a.text_content().encode("utf-8")
+            author = a.text_content()
             if blog_a.get('href', '').endswith('/created/topics/'):
                 blog = None
             else:
-                blog = blog_a.get('href', '')[:-1].rsplit("/", 1)[-1].encode("utf-8")
+                blog = blog_a.get('href', '')[:-1].rsplit("/", 1)[-1]
             blog_title = blog_a.text_content()
 
             comment_id = int(item.find("a").get('href', '').rsplit("/", 1)[-1])
@@ -1050,7 +1055,7 @@ class User:
             a = p.find("a")
             topic_a = item.findall("a")[1]
 
-            author = a.text_content().encode("utf-8")
+            author = a.text_content()
             title = topic_a.text_content().strip()
             blog, post_id = parse_post_url(topic_a.get('href', ''))
             comments_count = int(item.find("span").text_content())
@@ -1063,7 +1068,9 @@ class User:
         return items
 
     def get_short_blogs_list(self, raw_data=None):
-        """Возвращает список объектов Blogs, но у которого указаны только blog_id, имя и закрытость. Зато, в отличие от get_blogs_list, возвращаеются сразу все-все блоги."""
+        """Возвращает список объектов Blogs, но у которого указаны только blog_id, имя и закрытость.
+        Зато, в отличие от get_blogs_list, возвращаются сразу все-все блоги.
+        """
         if not raw_data:
             raw_data = self.urlopen("/index/newall/").read()
 
@@ -1084,7 +1091,7 @@ class User:
 
             a = item.find("a")
 
-            blog = str(a.get('href'))[:-1]
+            blog = a.get('href')[:-1]
             blog = blog[blog.rfind("/") + 1:]
 
             name = unicode(a.text)
@@ -1143,8 +1150,9 @@ class User:
         return peoples
 
     def get_profile(self, username=None, raw_data=None):
+        username = username.encode('utf-8') if isinstance(username, unicode) else str(username)
         if not raw_data:
-            raw_data = self.urlopen("/profile/" + str(username)).read()
+            raw_data = self.urlopen("/profile/" + username).read()
 
         data = utils.find_substring(raw_data, '<div id="content"', '<!-- /content ', extend=True, with_end=False)
         if not data:
@@ -1156,7 +1164,7 @@ class User:
 
         profile = node.xpath('div[@class="profile"]')[0]
 
-        username = str(profile.xpath('h2[@itemprop="nickname"]/text()')[0])
+        username = profile.xpath('h2[@itemprop="nickname"]/text()')[0]
         realname = profile.xpath('p[@class="user-name"]/text()')
 
         skill = float(profile.xpath('div[@class="strength"]/div[1]/text()')[0])
@@ -1415,13 +1423,15 @@ class User:
 
     def invite(self, blog_id, username):
         """Отправляет инвайт в блог с указанным номером указанному пользователю (или пользователям, если указать несколько через запятую).
-        Возвращает словарь, который содержит пары юзернейм-текст ошибки в случае, если кому-то инвайт не отправился. Если всё хорошо, то словарь пустой."""
+        Возвращает словарь, который содержит пары юзернейм-текст ошибки в случае, если кому-то инвайт не отправился. Если всё хорошо, то словарь пустой.
+        """
         self.check_login()
 
         blog_id = int(blog_id if blog_id else 0)
+        username = username.encode('utf-8') if isinstance(username, unicode) else str(username)
 
         fields = {
-            "users": str(username),
+            "users": username,
             "idBlog": str(blog_id),
             'security_ls_key': self.security_ls_key,
         }
@@ -1483,7 +1493,7 @@ class User:
         recipients = map(lambda x: x.text.strip().encode("utf-8"), item.xpath('div[@class="talk-search talk-recipients"]/header/a'))
 
         footer = item.find("footer")
-        author = str(footer.xpath('ul/li[@class="topic-info-author"]/a[2]/text()')[0].strip())
+        author = footer.xpath('ul/li[@class="topic-info-author"]/a[2]/text()')[0].strip()
         date = footer.xpath('ul/li[@class="topic-info-date"]/time')[0]
         date = time.strptime(date.get("datetime")[:-6], "%Y-%m-%dT%H:%M:%S")
 
@@ -1623,7 +1633,7 @@ def parse_activity(item):
     else:
         return
 
-    username = item.xpath('p[@class="info"]/a/strong/text()[1]')[0].encode("utf-8")
+    username = item.xpath('p[@class="info"]/a/strong/text()[1]')[0]
     date = item.xpath('p[@class="info"]/span[@class="date"]')[0].get('title')
     if not date:
         return
@@ -1668,7 +1678,7 @@ def parse_post(item):
     author = header.xpath('div/a[@rel="author"]/text()[1]')
     if len(author) == 0:
         return
-    author = str(author[0])
+    author = author[0]
 
     title = title.text_content().strip()
     private = bool(header.xpath('div/a[@class="topic-blog private-blog"]'))
@@ -2054,7 +2064,7 @@ def parse_talk_item(node):
     checkbox, recs, title, date = node.findall("td")
     recipients = []
     for x in recs.findall("a"):
-        recipients.append(str(x.text.strip()))
+        recipients.append(x.text.strip())
     unread = bool(title.xpath('a/strong'))
     talk_id = title.find("a").get('href')[:-1]
     talk_id = int(talk_id[talk_id.rfind("/") + 1:])
@@ -2066,7 +2076,7 @@ def parse_talk_item(node):
 
 
 def parse_post_url(link):
-    """Выдирает блог и номер поста из ссылки. Или возвращает (None,None), если выдрать не удалось."""
+    """Выдирает блог и номер поста из ссылки. Или возвращает (None, None), если выдрать не удалось."""
     if not link:
         return None, None
     m = post_url_regex.search(link)

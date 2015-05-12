@@ -198,7 +198,7 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=Tr
 
 def node2string(node):
     """Переводит html-элемент обратно в строку."""
-    return lxml.etree.tostring(node, method="html", encoding="utf-8")
+    return lxml.etree.tostring(node, method="html", encoding="utf-8")  # pylint: disable=no-member
 
 
 def mon2num(s):
@@ -449,7 +449,8 @@ def parse_avatar_url(url):
 def normalize_body(body=None, raw_body=None, cls='text'):
     """Кодирует lxml-элемент в исходник html или наоборот декодирует исходник в lxml-элемент."""
     if body is not None and raw_body is None:
-        raw_body = lxml.etree.tostring(body, method="xml", encoding="utf-8").replace('&#13;', '\r').decode('utf-8')
+        raw_body = lxml.etree.tostring(body, method="xml", encoding="utf-8")  # pylint: disable=no-member
+        raw_body = raw_body.replace('&#13;', '\r').decode('utf-8')
         raw_body = raw_body[raw_body.find(">") + 1:raw_body.rfind("</")]  # <div class="text">body</div>
 
         # Занимаемся подгонкой под оригинальный исходник
