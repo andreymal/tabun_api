@@ -244,7 +244,14 @@ def find_images(body, spoiler_title=True, no_other=False):
                     continue
             if "<" in src:
                 continue
-            if no_other and (".gif" in src.lower() or "smile" in src.lower()):
+            if no_other and (
+                ".gif" in src.lower() or
+                "smile" in src.lower() or
+                ("/avatar_" in src and '/images/' in src) or
+                src.endswith('1_Prev.png') or src.endswith('2_Clear.png') or
+                src.endswith('3_VK.png') or src.endswith('4_New.png') or
+                src.endswith('5_Next.png')  # АБД
+            ):
                 continue
 
             if not spoiler_title and img.getparent() is not None and img.getparent().get("class") == "spoiler-title":
@@ -356,7 +363,7 @@ def download(url, maxmem=20 * 1024 * 1024, timeout=5, waitout=15):
     while 1:
         if len(data) > maxmem:
             raise IOError("Too big")
-        tmp = req.read(128 * 1024)
+        tmp = req.read(64 * 1024)
         if not tmp:
             break
         data += tmp
@@ -368,7 +375,10 @@ def download(url, maxmem=20 * 1024 * 1024, timeout=5, waitout=15):
 
 
 def find_good_image(urls, maxmem=20 * 1024 * 1024):
-    """Ищет годную картинку из предложенного списка ссылок и возвращает ссылку и скачанные данные картинки (файл). Такой простенький фильтр смайликов и элементов оформления поста по размеру. Требует PIL. Не грузит картинки размером больше maxmem байт, дабы не вылететь от нехватки памяти."""
+    """Ищет годную картинку из предложенного списка ссылок и возвращает ссылку и скачанные данные картинки (файл).
+    Такой простенький фильтр смайликов и элементов оформления поста по размеру. Требует PIL.
+    Не грузит картинки размером больше maxmem байт, дабы не вылететь от нехватки памяти.
+    """
     try:
         import Image
     except ImportError:
@@ -377,8 +387,14 @@ def find_good_image(urls, maxmem=20 * 1024 * 1024):
 
     good_image = None, None
     for url in urls:
+        if url.find('//dl.dropboxusercontent.com/') in (5, 6):
+            waitout = 60
+        elif url.find('//dl.dropbox.com/') in (5, 6):
+            waitout = 60
+        else:
+            waitout = 15
         try:
-            data = download(url, maxmem)
+            data = download(url, maxmem, waitout=waitout)
         except IOError:
             continue
 
