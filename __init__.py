@@ -534,7 +534,7 @@ class User:
                 timeout = self.timeout
 
             try:
-                return (self.opener.open if redir else self.noredir.open)(url, timeout=timeout or self.timeout)
+                return (self.opener.open if redir else self.noredir.open)(url, timeout=timeout)
             except KeyboardInterrupt:
                 raise
             except urllib2.HTTPError as exc:
@@ -990,7 +990,7 @@ class User:
 
         comms = {}
         for comm in data['aComments']:
-            node = utils.parse_html_fragment(utils.escape_comment_contents(comm['html']))
+            node = utils.parse_html_fragment(utils.escape_comment_contents(comm['html'].encode('utf-8')))
             pcomm = parse_comment(node[0], post_id, None, comm['idParent'])
             if pcomm:
                 comms[pcomm.comment_id] = pcomm

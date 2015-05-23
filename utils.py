@@ -472,6 +472,10 @@ def normalize_body(body=None, raw_body=None, cls='text'):
 
 def escape_topic_contents(data, may_be_short=False):
     """Экранирует содержимое постов для защиты от поехавшей вёрстки и багов lxml."""
+    if not isinstance(data, str):
+        # u'\xa0'.strip() => u''
+        # '\xa0'.strip() => '\xa0' — придерживаюсь этого варианта
+        raise ValueError('data should be bytes')
     f1 = 0
     f2 = 0
     last_end = 0
@@ -533,6 +537,8 @@ def escape_topic_contents(data, may_be_short=False):
 
 def escape_comment_contents(data):
     """Экранирует содержимое комментов."""
+    if not isinstance(data, str):
+        raise ValueError('data should be bytes')
     f1 = 0
     f2 = 0
     last_end = 0
