@@ -61,7 +61,7 @@ class TabunResultError(TabunError):
     pass
 
 
-class Post:
+class Post(object):
     """Пост."""
     def __init__(self, time, blog, post_id, author, title, draft,
                  vote_count, vote_total, body, tags, comments_count=None, comments_new_count=None,
@@ -100,7 +100,7 @@ class Post:
         return self.__repr__().decode('utf-8', 'replace')
 
 
-class Download:
+class Download(object):
     """Прикрепленный к посту файл (в новом Табуне) или ссылка (в старом Табуне)."""
     def __init__(self, type, post_id, filename, count, filesize=None):
         self.type = str(type)
@@ -112,7 +112,7 @@ class Download:
         self.count = int(count)
 
 
-class Comment:
+class Comment(object):
     """Коммент. Возможно, удалённый, поэтому следите, чтобы значения не были None!"""
     def __init__(self, time, blog, post_id, comment_id, author, body, vote, parent_id=None,
                  post_title=None, unread=False, deleted=False, favourite=None, favourited=False,
@@ -150,7 +150,7 @@ class Comment:
         return self.__repr__().decode('utf-8', 'replace')
 
 
-class Blog:
+class Blog(object):
     """Блог."""
     def __init__(self, blog_id, blog, name, creator, readers=0, rating=0.0, closed=False,
                  description=None, admins=None, moderators=None, vote_count=-1, posts_count=-1,
@@ -180,7 +180,7 @@ class Blog:
         return self.__repr__().decode('utf-8', 'replace')
 
 
-class StreamItem:
+class StreamItem(object):
     """Элемент «Прямого эфира»."""
     def __init__(self, blog, blog_title, title, author, comment_id, comments_count):
         self.blog = unicode(blog) if blog else None
@@ -197,7 +197,7 @@ class StreamItem:
         return self.__repr__()
 
 
-class UserInfo:
+class UserInfo(object):
     """Информация о броняше."""
     def __init__(self, user_id, username, realname, skill, rating, userpic=None, foto=None,
                  gender=None, birthday=None, registered=None, last_activity=None,
@@ -231,7 +231,7 @@ class UserInfo:
         return self.__repr__().decode('utf-8', 'replace')
 
 
-class Poll:
+class Poll(object):
     """Опрос. Список items содержит кортежи (название ответа, процент проголосовавших, число проголосовавших)."""
     def __init__(self, total, notvoted, items):
         self.total = int(total)
@@ -241,7 +241,7 @@ class Poll:
             self.items.append((unicode(x[0]), float(x[1]), int(x[2])))
 
 
-class TalkItem:
+class TalkItem(object):
     """Личное сообщение."""
     def __init__(self, talk_id, recipients, unread, title, date, body=None, author=None, comments=[], raw_body=None):
         self.talk_id = int(talk_id)
@@ -266,7 +266,7 @@ class TalkItem:
 
 class ActivityItem:
     """Событие со страницы /stream/."""
-    WALL_ADD = 0  # Просто чтобы было :)
+    WALL_ADD = 0  # Просто чтобы было (object):)
     POST_ADD = 1
     COMMENT_ADD = 2
     BLOG_ADD = 3
@@ -319,7 +319,7 @@ class ActivityItem:
         return not self.__eq__(other)
 
 
-class User:
+class User(object):
     """Через божественные объекты класса User осуществляется всё взаимодействие с Табуном. Почти все функции могут кидаться исключением TabunResultError с текстом ошибки (который на сайте обычно показывается во всплывашке в углу).
 
     Допустимые комбинации параметров (в квадратных скобках опциональные):
@@ -354,8 +354,8 @@ class User:
     key = None
     timeout = 20
     talk_unread = 0
-    skill = 0.0
-    rating = 0.0
+    skill = None
+    rating = None
     query_interval = 0
 
     def __init__(self, login=None, passwd=None, phpsessid=None, security_ls_key=None, key=None, proxy=None):
@@ -426,6 +426,14 @@ class User:
         """Парсит имя пользователя, рейтинг и число сообщений и записывает в объект. Возвращает имя пользователя."""
         userinfo = utils.find_substring(raw_data, '<div class="dropdown-user"', "<nav", with_end=False)
         if not userinfo:
+            auth_panel = utils.find_substring(raw_data, '<ul class="auth"', '<nav', with_end=False)
+            if auth_panel and 'Войти' in auth_panel:
+                self.username = None
+                self.talk_count = 0
+                self.skill = None
+                self.rating = None
+            else:
+                print("Warning: update_userinfo received unknown data")
             return
 
         node = utils.parse_html_fragment(userinfo)[0]
@@ -433,8 +441,8 @@ class User:
         if not dd_user:
             self.username = None
             self.talk_count = 0
-            self.skill = 0.0
-            self.rating = 0.0
+            self.skill = None
+            self.rating = None
             return
         dd_user = dd_user[0]
 
@@ -443,8 +451,8 @@ class User:
             self.username = str(username[0])
         else:
             self.talk_count = 0
-            self.skill = 0.0
-            self.rating = 0.0
+            self.skill = None
+            self.rating = None
             return
 
         talk_count = dd_user.xpath('ul/li[@class="item-messages"]/a[@class="new-messages"]/text()')
