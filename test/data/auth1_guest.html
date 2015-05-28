@@ -1,0 +1,71 @@
+<body class=" ls-user-role-guest ls-user-role-not-admin ls-template-synio width-fixed">
+    
+    
+    
+                <div class="modal modal-login" id="window_login_form">
+        <header class="modal-header">
+            <a href="#" class="close jqmClose"></a>
+        </header>
+        
+        
+        <script type="text/javascript">
+            jQuery(function($){
+                $('#popup-login-form').bind('submit',function(){
+                    ls.user.login('popup-login-form');
+                    return false;
+                });
+                $('#popup-login-form-submit').attr('disabled',false);
+            });
+        </script>
+        
+        <div class="modal-content">
+            <ul class="nav nav-pills nav-pills-tabs">
+                <li class="active js-block-popup-login-item" data-type="login"><a href="#">Войти</a></li>
+                                    <li><a href="http://tabun.everypony.ru/registration/">Регистрация</a></li>
+                                <li class="js-block-popup-login-item" data-type="reminder"><a href="#">Восстановление пароля</a></li>
+            </ul>
+            
+            
+            <div class="tab-content js-block-popup-login-content" data-type="login">
+                
+                <form action="http://tabun.everypony.ru/login/" method="post" id="popup-login-form">
+                    
+
+                    <p><input type="text" name="login" id="popup-login" placeholder="Логин или эл. почта" class="input-text input-width-full"></p>
+                    
+                    <p><input type="password" name="password" id="popup-password" placeholder="Пароль" class="input-text input-width-300" style="width: 322px">
+                    <button type="submit"  name="submit_login" class="button button-primary" id="popup-login-form-submit" disabled="disabled">Войти</button></p>
+                    
+                    <label class="remember-label"><input type="checkbox" name="remember" class="input-checkbox" checked /> Запомнить меня</label>
+
+                    <small class="validate-error-hide validate-error-login"></small>
+                    
+
+                    <input type="hidden" name="return-path" value="http://tabun.everypony.ru/blog/borderline/4">
+                </form>
+                
+            </div>
+
+
+                        
+            
+            <div data-type="reminder" class="tab-content js-block-popup-login-content" style="display:none;">
+                <script type="text/javascript">
+                    jQuery(document).ready(function($){
+                        $('#popup-reminder-form').bind('submit',function(){
+                            ls.user.reminder('popup-reminder-form');
+                            return false;
+                        });
+                        $('#popup-reminder-form-submit').attr('disabled',false);
+                    });
+                </script>
+                <form action="http://tabun.everypony.ru/login/reminder/" method="POST" id="popup-reminder-form">
+                    <p>
+                    <input type="text" name="mail" placeholder="Ваш e-mail" id="popup-reminder-mail" class="input-text input-width-300" />
+                    <small class="validate-error-hide validate-error-reminder"></small></p>
+
+                    <button type="submit" name="submit_reminder" class="button button-primary" id="popup-reminder-form-submit" disabled="disabled">Получить ссылку на изменение пароля</button>
+                </form>
+            </div>
+        </div>
+    </div>

@@ -13,7 +13,7 @@ from threading import RLock
 
 from . import utils
 
-__version__ = '0.6.1'
+__version__ = '0.6.2'
 
 #: Адрес Табуна. Именно на указанный здесь адрес направляются запросы.
 http_host = "http://tabun.everypony.ru"
@@ -586,7 +586,7 @@ class User(object):
         self.check_login()
         blog_id = int(blog_id if blog_id else 0)
 
-        if isinstance(tags, (tuple, list)):
+        if not isinstance(tags, basestring):
             tags = u", ".join(tags)
 
         fields = {
@@ -1451,6 +1451,32 @@ class User(object):
 
         return users
 
+    def add_talk(self, talk_users, title, body):
+        """Отправляет новое личное сообщение пользователям. Возвращает id созданой беседы."""
+        if isinstance(talk_users, basestring):
+            talk_users = [unicode(x.strip()) for x in talk_users.split(',')]
+
+        fields = {
+            'security_ls_key': self.security_ls_key,
+            'talk_users': ', '.join(talk_users),
+            'talk_title': unicode(title).encode("utf-8"),
+            'talk_text': unicode(body).encode("utf-8"),
+            'submit_talk_add': 'Отправить'
+        }
+
+        result = self.send_form('/talk/add/', fields, redir=False)
+        data = result.read()
+        errors = utils.find_substring(data, '<ul class="system-message-error">', '</ul>')
+        if errors and ':' in errors:
+            errors = utils.parse_html_fragment(errors)[0]
+            errors = '; '.join(x.text_content().split(u'Ошибка:', 1)[-1].strip() for x in errors.findall('li'))
+            raise TabunResultError(errors)
+
+        link = result.headers.get('location')
+        if '/talk/read/' in link:
+            return int(link.rstrip('/').rsplit('/', 1)[-1])
+
+
     def get_talk_list(self, raw_data=None):
         """Возвращает список объектов Talk с личными сообщениями."""
         self.check_login()
@@ -1493,7 +1519,7 @@ class User(object):
             return
         body = body[0]
 
-        recipients = map(lambda x: x.text.strip().encode("utf-8"), item.xpath('div[@class="talk-search talk-recipients"]/header/a'))
+        recipients = map(lambda x: x.text.strip().encode("utf-8"), item.xpath('div[@class="talk-search talk-recipients"]/header/a[@class!="link-dotted"]'))
 
         footer = item.find("footer")
         author = footer.xpath('ul/li[@class="topic-info-author"]/a[2]/text()')[0].strip()

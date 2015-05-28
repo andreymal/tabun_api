@@ -1,15 +1,15 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 
-from setuptools import setup, find_packages
+from setuptools import setup
 
 setup(
     name='tabun_api',
-    version='0.6.1',
+    version='0.6.2',
     description='Tabun Client Library',
     author='andreymal',
     license='MIT',
     url='https://github.com/andreymal/tabun_api',
-    packages=find_packages(),
+    packages=['tabun_api'],
     install_requires=['lxml>=3.3']
 )
