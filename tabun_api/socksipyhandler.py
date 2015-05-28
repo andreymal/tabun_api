@@ -22,7 +22,7 @@ class SocksiPyConnection(httplib.HTTPConnection):
         if isinstance(self.timeout, float):
             self.sock.settimeout(self.timeout)
         self.sock.connect((self.host, self.port))
-            
+
 class SocksiPyHandler(urllib2.HTTPHandler):
     def __init__(self, *args, **kwargs):
         self.args = args

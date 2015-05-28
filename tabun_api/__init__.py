@@ -4,13 +4,16 @@
 import os
 import re
 import time
-from . import utils
 import urllib2
 import httplib
 from socket import timeout as socket_timeout
 from json import JSONDecoder
 from Cookie import BaseCookie
 from threading import RLock
+
+from . import utils
+
+__version__ = '0.6.1'
 
 #: Адрес Табуна. Именно на указанный здесь адрес направляются запросы.
 http_host = "http://tabun.everypony.ru"
@@ -21,7 +24,7 @@ halfclosed = ("borderline", "shipping", "erpg", "gak", "RPG", "roliplay", "tears
 #: Заголовки для HTTP-запросов. Возможно, стоит менять user-agent.
 http_headers = {
     "connection": "close",
-    "user-agent": "tabun_api/0.6.1; Linux/2.6",
+    "user-agent": "tabun_api/%s; Linux/2.6" % __version__
 }
 
 #: Регулярка для парсинга ссылки на пост.
@@ -266,7 +269,7 @@ class TalkItem(object):
 
 class ActivityItem:
     """Событие со страницы /stream/."""
-    WALL_ADD = 0  # Просто чтобы было (object):)
+    WALL_ADD = 0  # Просто чтобы было :)
     POST_ADD = 1
     COMMENT_ADD = 2
     BLOG_ADD = 3
@@ -357,6 +360,7 @@ class User(object):
     skill = None
     rating = None
     query_interval = 0
+    proxy = None
 
     def __init__(self, login=None, passwd=None, phpsessid=None, security_ls_key=None, key=None, proxy=None):
         self.jd = JSONDecoder()
@@ -365,17 +369,21 @@ class User(object):
         handlers = []
 
         if proxy is None and os.getenv('TABUN_API_PROXY') and os.getenv('TABUN_API_PROXY').count(',') == 2:
-            proxy = os.getenv('TABUN_API_PROXY').split(',')
+            proxy = os.getenv('TABUN_API_PROXY').split(',')[:2]
+        elif proxy:
+            proxy = proxy.split(',') if isinstance(proxy, basestring) else list(proxy)[:2]
 
         if proxy:
             if proxy[0] not in ('socks4', 'socks5'):
                 raise NotImplementedError('I can use only socks proxies now')
+            proxy[2] = int(proxy[2])
             import socks
             from socksipyhandler import SocksiPyHandler
             if proxy[0] == 'socks5':
-                handlers.append(SocksiPyHandler(socks.PROXY_TYPE_SOCKS5, proxy[1], int(proxy[2])))
+                handlers.append(SocksiPyHandler(socks.PROXY_TYPE_SOCKS5, proxy[1], proxy[2]))
             elif proxy[0] == 'socks4':
-                handlers.append(SocksiPyHandler(socks.PROXY_TYPE_SOCKS4, proxy[1], int(proxy[2])))
+                handlers.append(SocksiPyHandler(socks.PROXY_TYPE_SOCKS4, proxy[1], proxy[2]))
+            self.proxy = proxy
 
         # for thread safety
         self.opener = urllib2.build_opener(*handlers)
@@ -387,6 +395,8 @@ class User(object):
             self.key = str(key)
         if self.phpsessid and security_ls_key:
             self.security_ls_key = str(security_ls_key)
+            if login:
+                self.username = unicode(login)
             return
 
         if not self.phpsessid or not security_ls_key:
@@ -416,8 +426,6 @@ class User(object):
 
         if login and passwd:
             self.login(login, passwd)
-        elif login and self.phpsessid and not self.username:
-            self.username = unicode(login)
 
         self.last_query_time = 0
         self.talk_count = 0
@@ -448,7 +456,7 @@ class User(object):
 
         username = dd_user.xpath('a[2]/text()[1]')
         if username and username[0]:
-            self.username = str(username[0])
+            self.username = username[0]
         else:
             self.talk_count = 0
             self.skill = None
@@ -476,7 +484,9 @@ class User(object):
 
     def login(self, login, password, return_path=None, remember=True):
         """Логинится и записывает печеньку key в случае успеха. Параметр return_path нафиг не нужен, remember - галочка «Запомнить меня»."""
-        query = "login=" + urllib2.quote(login) + "&password=" + urllib2.quote(password) + "&remember=" + ("on" if remember else "off")
+        login = unicode(login)
+        password = unicode(password)
+        query = "login=" + urllib2.quote(login.encode('utf-8')) + "&password=" + urllib2.quote(password.encode('utf-8')) + "&remember=" + ("on" if remember else "off")
         query += "&return-path=" + urllib2.quote(return_path if return_path else http_host + "/")
         if self.security_ls_key:
             query += "&security_ls_key=" + urllib2.quote(self.security_ls_key)
@@ -488,7 +498,7 @@ class User(object):
         data = self.jd.decode(data)
         if data.get('bStateError'):
             raise TabunResultError(data.get("sMsg", u""))
-        self.username = str(login)
+        self.username = login
 
         cook = BaseCookie()
         cook.load(resp.headers.get("set-cookie", ""))
@@ -500,15 +510,16 @@ class User(object):
         if not self.phpsessid or not self.security_ls_key:
             raise TabunError("Not logined")
 
-    def urlopen(self, url, data=None, headers={}, redir=True, nowait=False, timeout=None):
+    def urlopen(self, url, data=None, headers={}, redir=True, nowait=False, with_cookies=True, timeout=None):
         """Отправляет HTTP-запрос и возвращает результат urllib2.urlopen (объект urllib.addinfourl).
         Если указан параметр data, то отправляется POST-запрос.
         В качестве URL может быть путь с доменом (http://tabun.everypony.ru/), без домена (/index/newall/) или объект urllib2.Request.
         Если redir установлен в False, то не будет осуществляться переход по перенаправлению (HTTP-коды 3xx).
+        К запросу добавлется печенька PHPSESSID; with_cookies=False отключает это.
         По умолчанию соблюдает между запросами временной интервал query_interval (который по умолчанию 0); nowait=True отправляет запрос немедленно.
         Может кидаться исключением TabunError."""
         if not isinstance(url, urllib2.Request):
-            if url[0] == "/":
+            if url.startswith('/'):
                 url = http_host + url
             url = urllib2.Request(url, data)
 
@@ -526,7 +537,7 @@ class User(object):
 
             self.last_query_time = time.time()
 
-            if self.phpsessid:
+            if with_cookies and self.phpsessid:
                 url.add_header('cookie', "PHPSESSID=%s; key=%s; LIVESTREET_SECURITY_KEY=%s" % (
                     self.phpsessid, self.key, self.security_ls_key
                 ))
@@ -602,7 +613,7 @@ class User(object):
         except TabunError:
             if not check_if_error or not self.username:
                 raise
-            url = '/topic/saved/' if draft else '/profile/' + self.username + '/created/topics/'
+            url = '/topic/saved/' if draft else '/profile/' + urllib2.quote(self.username.encode('utf-8')) + '/created/topics/'
 
             try:
                 posts = self.get_posts(url)
@@ -702,11 +713,11 @@ class User(object):
 
     def toggle_blog_subscribe(self, blog_id):
         """Подписывается на блог/отписывается от блога и возвращает состояние: True - подписан, False - не подписан."""
-        self.check_login()
         return self.ajax('/blog/ajaxblogjoin/', {'idBlog': int(blog_id)})['bState']
 
     def ajax(self, url, fields={}, files=(), headers={}, throw_if_error=True):
         """Отправляет ajax-запрос и возвращает распарсенный json-ответ. Или кидается исключением TabunResultError в случае ошибки."""
+        self.check_login()
         headers['x-requested-with'] = 'XMLHttpRequest'
         if self.security_ls_key:
             fields['security_ls_key'] = self.security_ls_key
@@ -724,8 +735,6 @@ class User(object):
 
     def comment(self, post_id, text, reply=0, typ="blog"):
         """Отправляет коммент и возвращает его номер. Тип - blog (посты) или talk (личные сообщения)"""
-        self.check_login()
-
         fields = {
             'comment_text': unicode(text),
             'reply': int(reply),
@@ -978,7 +987,6 @@ class User(object):
         """Возвращает комментарии к посту, начиная с определённого номера комментария. На сайте используется для подгрузки новых комментариев.
         Тип - blog (пост) или talk (личные сообщения).
         """
-        self.check_login()
         post_id = int(post_id)
         comment_id = int(comment_id) if comment_id else 0
 
@@ -1049,7 +1057,6 @@ class User(object):
 
     def get_stream_topics(self):
         """Возвращает список последних постов (без самого содержимого постов, только автор, дата, заголовки и число комментариев)."""
-        self.check_login()
         data = self.ajax('/ajax/stream/topic/')
         node = utils.parse_html_fragment(data['sText'])
         if not node:
@@ -1252,7 +1259,6 @@ class User(object):
 
     def poll_answer(self, post_id, answer=-1):
         """Проголосовать в опросе. -1 - воздержаться. Возвращает новый объект Poll."""
-        self.check_login()
         if answer < -1:
             answer = -1
         if post_id < 0:
@@ -1269,8 +1275,6 @@ class User(object):
 
     def vote(self, post_id, value=0):
         """Ставит плюсик (1) или минусик (-1) или ничего (0) посту и возвращает его рейтинг."""
-        self.check_login()
-
         fields = {
             "idTopic": int(post_id),
             "value": int(value)
@@ -1280,8 +1284,6 @@ class User(object):
 
     def vote_comment(self, comment_id, value):
         """Ставит плюсик (1) или минусик (-1) комменту и возвращает его рейтинг."""
-        self.check_login()
-
         fields = {
             "idComment": int(comment_id),
             "value": int(value)
@@ -1291,8 +1293,6 @@ class User(object):
 
     def vote_user(self, user_id, value):
         """Ставит плюсик (1) или минусик (-1) пользователю и возвращает его рейтинг."""
-        self.check_login()
-
         fields = {
             "idUser": int(user_id),
             "value": int(value)
@@ -1302,8 +1302,6 @@ class User(object):
 
     def vote_blog(self, blog_id, value):
         """Ставит плюсик (1) или минусик (-1) блогу и возвращает его рейтинг."""
-        self.check_login()
-
         fields = {
             "idBlog": int(blog_id),
             "value": int(value)
@@ -1313,7 +1311,6 @@ class User(object):
 
     def favourite_topic(self, post_id, type=True):
         """Добавляет (type=True) пост в избранное или убирает (type=False) оттуда. Возвращает новое число пользователей, добавивших пост в избранное."""
-        self.check_login()
         fields = {
             "idTopic": int(post_id),
             "type": "1" if type else "0"
@@ -1323,7 +1320,6 @@ class User(object):
 
     def favourite_comment(self, comment_id, type=True):
         """Добавляет (type=True) коммент в избранное или убирает (type=False) оттуда. Возвращает новое число пользователей, добавивших коммент в избранное."""
-        self.check_login()
         fields = {
             "idComment": int(comment_id),
             "type": "1" if type else "0"
@@ -1333,7 +1329,6 @@ class User(object):
 
     def edit_comment(self, comment_id, text):
         """Редактирует комментарий и возвращает новое тело комментария."""
-        self.check_login()
         fields = {
             "commentId": int(comment_id),
             "text": text.encode("utf-8")
