@@ -3,12 +3,13 @@
 
 # pylint: disable=W0611, W0613, W0621, E1101
 
-import pytest
+import cgi
 
+import pytest
 import tabun_api as api
 
 import testutil
-from testutil import UserTest, set_mock, as_guest, user
+from testutil import UserTest, intercept, set_mock, as_guest, user
 
 
 def test_user_preloaded_cookies(set_mock):
@@ -76,6 +77,17 @@ def test_userinfo_authorized(user):
     assert user.username == 'test'
     assert user.rating == 666.66
     assert user.skill == 777.77
+
+
+def test_login_request(set_mock, intercept, as_guest, user):
+    set_mock({'/login/ajax-login': 'ajax_login_ok.json'})
+    @intercept('/login/ajax-login')
+    def login(url, data, headers):
+        data = cgi.parse_qs(data)
+        assert data.get('login') == ['test']
+        assert data.get('password') == ['123456']
+        assert data.get('security_ls_key') == [user.security_ls_key]
+    user.login('test', '123456')
 
 
 def test_login_ok(set_mock, as_guest, user):

@@ -28,6 +28,7 @@ templates = {
     'FOOTER': 'footer.html'
 }
 
+interceptors = {}
 current_mocks = {}
 
 mocks = {
@@ -40,6 +41,19 @@ def set_mock():
         yield load_mocks
     finally:
         clear_mock()
+
+
+@pytest.yield_fixture(scope='function')
+def intercept():
+    def dfunc(url):
+        def decorator(f):
+            interceptors[url] = f
+            return f
+        return decorator
+    try:
+        yield dfunc
+    finally:
+        interceptors.clear()
 
 
 @pytest.yield_fixture(scope='function')
@@ -64,11 +78,10 @@ def load_mocks(new_mocks):
 
 
 def clear_mock():
-    global current_mocks
-    current_mocks = {}
+    current_mocks.clear()
 
 
-def load_file(name, ignorekeys=()):
+def load_file(name, ignorekeys=(), template=True):
     # Загружаем файл или достаём из кэша
     path = os.path.join(data_dir, name)
     if name in file_cache:
@@ -76,6 +89,9 @@ def load_file(name, ignorekeys=()):
     else:
         data = open(path, 'rb').read()
         file_cache[name] = data
+
+    if not template:
+        return data
 
     # Для этих шаблонов имеется два режима — неавторизованного и авторизованного пользователя
     for metakey, key in [('%AUTH1%', 'AUTH1_'), ('%AUTH2%', 'AUTH2_')]:
@@ -138,11 +154,17 @@ def build_response(req_url, result_path, optparams=None):
 
 
 class UserTest(api.User):
-    def urlopen(self, *args, **kwargs):
+    def urlopen(self, url, data=None, headers={}, redir=True, nowait=False, with_cookies=True, timeout=None):
         # Нормализуем url для поиска
-        req_url = args[0].get_full_url() if isinstance(args[0], urllib2.Request) else args[0]
+        req_url = url.get_full_url() if isinstance(url, urllib2.Request) else url
         if req_url.startswith('/'):
             req_url = api.http_host + req_url
+
+        # Перехват запроса при необходимости
+        for url, func in interceptors.items():
+            if req_url == url or req_url == api.http_host + url:
+                func(url, data, headers)
+                break
 
         # Ищем ответ на запрос
         for url, (result_path, optparams) in current_mocks.items() + mocks.items():

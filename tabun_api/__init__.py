@@ -1814,7 +1814,7 @@ def parse_post(item):
         icon = a.find('i')
         if icon is None:
             continue
-        if icon.get('class') == 'icon-synio-comments-green-filled':
+        if icon.get('class') in ('icon-synio-comments-green-filled', 'icon-synio-comments-blue'):
             span = a.findall('span')
             comments_count = int(span[0].text.strip())
             if len(span) > 1:
