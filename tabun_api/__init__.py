@@ -369,7 +369,7 @@ class User(object):
         handlers = []
 
         if proxy is None and os.getenv('TABUN_API_PROXY') and os.getenv('TABUN_API_PROXY').count(',') == 2:
-            proxy = os.getenv('TABUN_API_PROXY').split(',')[:2]
+            proxy = os.getenv('TABUN_API_PROXY').split(',')[:3]
         elif proxy:
             proxy = proxy.split(',') if isinstance(proxy, basestring) else list(proxy)[:2]
 
@@ -573,12 +573,9 @@ class User(object):
     def send_form(self, url, fields=(), files=(), headers={}, redir=True):
         """Формирует multipart/form-data запрос и отправляет его через функцию urlopen."""
         content_type, data = utils.encode_multipart_formdata(fields, files)
-        if not isinstance(url, urllib2.Request):
-            if url[0] == "/":
-                url = http_host + url
-            url = urllib2.Request(url, data)
-        url.add_header('content-type', content_type)
-        return self.urlopen(url, None, headers, redir)
+        headers = headers.copy()
+        headers['content-type'] = content_type
+        return self.urlopen(url, data, headers, redir)
 
     def add_post(self, blog_id, title, body, tags, draft=False, check_if_error=False):
         """Отправляет пост и возвращает имя блога с номером поста в случае удачи или (None,None) в случае неудачи.
@@ -719,8 +716,7 @@ class User(object):
         """Отправляет ajax-запрос и возвращает распарсенный json-ответ. Или кидается исключением TabunResultError в случае ошибки."""
         self.check_login()
         headers['x-requested-with'] = 'XMLHttpRequest'
-        if self.security_ls_key:
-            fields['security_ls_key'] = self.security_ls_key
+        fields['security_ls_key'] = self.security_ls_key
         data = self.send_form(url, fields, files, headers=headers).read()
 
         try:
@@ -816,15 +812,28 @@ class User(object):
         """Возвращает пост по номеру. Рекомендуется указать url-имя блога, чтобы избежать перенаправления и лишнего запроса.
         Если поста нет - кидается исключением TabunError("No post"). В случае проблем с парсингом может вернуть None.
         """
-        if blog and blog != 'blog':
+        if blog:
             url = "/blog/" + str(blog) + "/" + str(post_id) + ".html"
         else:
             url = "/blog/" + str(post_id) + ".html"
 
+        if not raw_data:
+            req = self.urlopen(url)
+            url = req.url
+            raw_data = req.read()
+
         posts = self.get_posts(url, raw_data=raw_data)
         if not posts:
-            return None
-        return posts[0]
+            return
+
+        post = posts[0]
+
+        comments_count = utils.find_substring(raw_data, '<div class="comments" id="comments"', '</h3>')
+        if comments_count:
+            comments_count = utils.find_substring(raw_data, '<span id="count-comments">', '</span>', with_start=False, with_end=False)
+            post.comments_count = int(comments_count.strip())
+            post.comments_new_count = 0
+        return post
 
     def get_comments(self, url="/comments/", raw_data=None):
         """Возвращает словарь id-комментарий."""
@@ -1734,7 +1743,7 @@ def parse_post(item):
     body = body[0]
 
     if body.get('data-escaped') == '1':
-        # всё почищего в utils
+        # всё почищено в utils
         raw_body = body.text
         is_short = body.get('data-short') == '1'
         # TODO: cut_text

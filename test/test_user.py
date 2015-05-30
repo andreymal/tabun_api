@@ -137,8 +137,35 @@ def test_logout_auto(set_mock, as_guest, user):
 
 def test_init_proxy_ok():
     assert UserTest(proxy='socks5,localhost,9999').proxy == ['socks5', 'localhost', 9999]
+    assert UserTest(proxy='socks4,localhost,9999').proxy == ['socks4', 'localhost', 9999]
 
+
+def test_init_proxy_from_setenv():
+    import os
+    old_getenv = os.getenv
+    def getenv(*args, **kwargs):
+        if args and args[0] == 'TABUN_API_PROXY':
+            return 'socks5,localhost,8888'
+        return old_getenv(*args, **kwargs)
+    os.getenv = getenv
+    try:
+        assert UserTest().proxy == ['socks5', 'localhost', 8888]
+    finally:
+        os.getenv = old_getenv
 
 def test_init_proxy_unknown():
     with pytest.raises(NotImplementedError):
         UserTest(proxy='blablabla,localhost,9999')
+
+
+def test_check_login(user):
+    user.security_ls_key = None
+    with pytest.raises(api.TabunError):
+        user.check_login()
+
+
+def test_ajax_hacking_attemp(set_mock, user):
+    set_mock({'/ajax/': (None, {'data': 'Hacking attemp!'})})
+    with pytest.raises(api.TabunResultError) as excinfo:
+        user.ajax('/ajax/', {'a': 5})
+    assert excinfo.value.message == u'Hacking attemp!'

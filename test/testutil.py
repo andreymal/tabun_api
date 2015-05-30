@@ -32,7 +32,9 @@ interceptors = {}
 current_mocks = {}
 
 mocks = {
-    '/': ('index.html', None)
+    '/': ('index.html', None),
+    '/blog/132085.html': ('132085.html', None),
+    '/comments/': ('comments.html', None)
 }
 
 @pytest.yield_fixture(scope='function')
@@ -129,7 +131,7 @@ def build_response(req_url, result_path, optparams=None):
         params.update(optparams)
 
     # Само содержимое подделываемого ответа на HTTP-запрос
-    fp = StringIO(load_file(result_path))
+    fp = StringIO(load_file(result_path) if result_path else params.get('data', ''))
 
     # Собираем HTTP-заголовки
     raw_headers = ''

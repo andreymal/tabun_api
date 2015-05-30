@@ -1,0 +1,28 @@
+[
+    {
+        "comment_id": 9445595,
+        "post_id": 132092,
+        "parent_id": 9445428,
+        "time": "2015-05-30 21:22:27",
+        "author": "Endor",
+        "blog": "news",
+        "vote": 0,
+        "unread": false,
+        "deleted": 0,
+        "favourite": 0,
+        "favourited": false
+    },
+    {
+        "comment_id": 9445361,
+        "post_id": 132092,
+        "parent_id": null,
+        "time": "2015-05-30 21:00:23",
+        "author": "Gitzo",
+        "blog": "news",
+        "vote": 6,
+        "unread": false,
+        "deleted": 0,
+        "favourite": 1,
+        "favourited": true
+    }
+]
