@@ -1,6 +1,8 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 
+from __future__ import print_function
+
 import os
 import re
 import time
@@ -876,9 +878,9 @@ class User(object):
                     if c:
                         comms[c.comment_id] = c
                     else:
-                        print "Warning: cannot parse deleted comment", sect.get("id")
+                        print("Warning: cannot parse deleted comment %s" % sect.get("id"))
                 else:
-                    print "Warning: unknown comment format", sect.get("id")
+                    print("Warning: unknown comment format %s" % sect.get("id"))
 
         return comms
 
@@ -1020,7 +1022,7 @@ class User(object):
             if pcomm:
                 comms[pcomm.comment_id] = pcomm
             else:
-                print "Warning: cannot parse ajax comment from", post_id
+                print("Warning: cannot parse ajax comment from %s" % post_id)
 
         return comms
 
@@ -2083,7 +2085,7 @@ def parse_deleted_comment(node, post_id, blog=None):
     unread = "comment-new" in node.get("class", "")
     deleted = "comment-deleted" in node.get("class", "")
     if not deleted:
-        print "Warning: deleted comment %d is not deleted! Please report to andreymal." % comment_id
+        print("Warning: deleted comment %d is not deleted! Please report to andreymal." % comment_id)
     body = None
     nick = None
     tm = None
@@ -2092,7 +2094,6 @@ def parse_deleted_comment(node, post_id, blog=None):
     parent_wrapper = node.getparent().getparent()
     if parent_wrapper is not None and parent_wrapper.tag == "div" and parent_wrapper.get("id", "").startswith("comment_wrapper_id_"):
         parent_id = int(parent_wrapper.get("id").rsplit("_", 1)[-1])
-        print "parent", comment_id, parent_id
     else:
         parent_id = None
     return Comment(tm, blog, post_id, comment_id, nick, body, vote, parent_id, post_title, unread, deleted)
