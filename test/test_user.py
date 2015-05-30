@@ -3,6 +3,8 @@
 
 # pylint: disable=W0611, W0613, W0621, E1101
 
+from __future__ import unicode_literals
+
 import cgi
 
 import pytest
@@ -168,4 +170,23 @@ def test_ajax_hacking_attemp(set_mock, user):
     set_mock({'/ajax/': (None, {'data': 'Hacking attemp!'})})
     with pytest.raises(api.TabunResultError) as excinfo:
         user.ajax('/ajax/', {'a': 5})
-    assert excinfo.value.message == u'Hacking attemp!'
+    assert excinfo.value.message == 'Hacking attemp!'
+
+
+def test_login_hacking_attemp(set_mock, user):
+    set_mock({'/login/ajax-login': (None, {'data': 'Hacking attemp!'})})
+    with pytest.raises(api.TabunResultError) as excinfo:
+        user.login('test', '123456')
+    assert excinfo.value.message == 'Hacking attemp!'
+
+
+def test_build_request_internal(user):
+    req = user.build_request('/blog/2.html')
+    assert req.get_full_url() == b'http://tabun.everypony.ru/blog/2.html'
+    assert 'PHPSESSID=abcdef9876543210abcdef9876543210' in req.headers['Cookie']
+
+
+def test_build_request_external(user):
+    req = user.build_request(b'https://imgur.com/', with_cookies=False)
+    assert req.get_full_url() == b'https://imgur.com/'
+    assert 'Cookie' not in req.headers.keys()

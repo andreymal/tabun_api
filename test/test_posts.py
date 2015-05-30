@@ -3,6 +3,8 @@
 
 # pylint: disable=W0611, W0613, W0621, E1101
 
+from __future__ import unicode_literals
+
 import cgi
 import time
 import json
@@ -44,14 +46,14 @@ def test_get_posts_types_ok(user):
 def test_get_post_ok(user):
     post = user.get_post(132085)
     assert post.post_id == 132085
-    assert post.author == u'test'
+    assert post.author == 'test'
     assert post.private == False
     assert post.draft == True
     assert time.strftime("%Y-%m-%d %H:%M:%S", post.time) == "2015-05-30 19:14:04"
 
-    assert post.title == u'Тест'
-    assert post.raw_body == u'<strong>Раз</strong><br/>\n<h4>Два</h4>И ломаем вёрстку <img src="http://ya.ru/" alt="'
-    assert post.tags == [u"тег1", u"тег2"]
+    assert post.title == 'Тест'
+    assert post.raw_body == '<strong>Раз</strong><br/>\n<h4>Два</h4>И ломаем вёрстку <img src="http://ya.ru/" alt="'
+    assert post.tags == ["тег1", "тег2"]
     assert post.comments_count == 5
     assert post.comments_new_count == 0
 
@@ -66,9 +68,9 @@ def test_get_post_other_blog_2(set_mock, user):
 
 
 @pytest.mark.parametrize("blog_id,blog,result_url,draft,tags", [
-    (6, 'news', 'http://tabun.everypony.ru/blog/news/1.html', False, [u'Т2', u'Т3']),
-    (6, 'news', 'http://tabun.everypony.ru/blog/news/1.html', False, [u'Т2, Т3']),
-    (None, None, 'http://tabun.everypony.ru/blog/1.html', True, [u'Т2', u'Т3'])
+    (6, 'news', 'http://tabun.everypony.ru/blog/news/1.html', False, ['Т2', 'Т3']),
+    (6, 'news', 'http://tabun.everypony.ru/blog/news/1.html', False, ['Т2, Т3']),
+    (None, None, 'http://tabun.everypony.ru/blog/1.html', True, ['Т2', 'Т3'])
 ])
 def test_add_post_ok(intercept, set_mock, user, blog_id, blog, result_url, draft, tags):
     set_mock({
@@ -85,22 +87,22 @@ def test_add_post_ok(intercept, set_mock, user, blog_id, blog, result_url, draft
 
         assert data.get('blog_id') == [str(blog_id if blog_id is not None else 0)]
         assert data.get('security_ls_key') == ['0123456789abcdef0123456789abcdef']
-        assert data.get('topic_title') == [u'Т0'.encode('utf-8')]
-        assert data.get('topic_text') == [u'Б1'.encode('utf-8')]
-        assert data.get('topic_tags') == [u'Т2, Т3'.encode('utf-8')]
+        assert data.get('topic_title') == ['Т0'.encode('utf-8')]
+        assert data.get('topic_text') == ['Б1'.encode('utf-8')]
+        assert data.get('topic_tags') == ['Т2, Т3'.encode('utf-8')]
         if draft:
-            assert data.get('submit_topic_save') == [u'Сохранить в черновиках'.encode('utf-8')]
+            assert data.get('submit_topic_save') == ['Сохранить в черновиках'.encode('utf-8')]
         else:
-            assert data.get('submit_topic_publish') == [u'Опубликовать'.encode('utf-8')]
+            assert data.get('submit_topic_publish') == ['Опубликовать'.encode('utf-8')]
 
-    result = user.add_post(blog_id, u'Т0', u'Б1', tags, draft)
+    result = user.add_post(blog_id, 'Т0', 'Б1', tags, draft)
     assert result == (blog, 1)
 
 
 def test_add_post_error(intercept, set_mock, user):
     set_mock({'/topic/add/': 'topic_add_error.html'})
     with pytest.raises(api.TabunResultError) as excinfo:
-        user.add_post(None, u'', u'', [])
-    assert excinfo.value.message == u'Поле Заголовок слишком короткое (минимально допустимо 2 символов)'
+        user.add_post(None, '', '', [])
+    assert excinfo.value.message == 'Поле Заголовок слишком короткое (минимально допустимо 2 символов)'
 
 # TODO: rss

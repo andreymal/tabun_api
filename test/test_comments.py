@@ -3,6 +3,8 @@
 
 # pylint: disable=W0611, W0613, W0621, E1101
 
+from __future__ import unicode_literals
+
 import cgi
 import time
 import json
@@ -71,8 +73,8 @@ def test_add_comment_ok(intercept, set_mock, user):
     assert user.comment(1, u'тест', reply=0) == 1
 
 def test_add_comment_fail(set_mock, user):
-    err = u"Текст комментария должен быть от 2 до 3000 символов и не содержать разного рода каку"
+    err = "Текст комментария должен быть от 2 до 3000 символов и не содержать разного рода каку"
     set_mock({'/blog/ajaxaddcomment/': (None, {'data': (u'{"sMsgTitle": "Ошибка", "sMsg": "%s", "bStateError": true}' % err).encode('utf-8')})})
     with pytest.raises(api.TabunResultError) as excinfo:
-        user.comment(1, u'')
+        user.comment(1, '')
     assert excinfo.value.message == err

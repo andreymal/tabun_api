@@ -1,7 +1,7 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 
-from __future__ import print_function
+from __future__ import print_function, unicode_literals
 
 import os
 import re
@@ -33,7 +33,7 @@ http_headers = {
 post_url_regex = re.compile(r"/blog/(([A-z0-9_\-\.]{1,})/)?([0-9]{1,}).html")
 
 #: Регулярка для парсинга прикреплённых файлов.
-post_file_regex = re.compile(ur'^Скачать \"(.+)" \(([0-9]*(\.[0-9]*)?) (Кб|Мб)\)$')
+post_file_regex = re.compile(r'^Скачать \"(.+)" \(([0-9]*(\.[0-9]*)?) (Кб|Мб)\)$')
 
 
 class NoRedirect(urllib2.HTTPRedirectHandler):
@@ -96,7 +96,7 @@ class Post(object):
         self.body, self.raw_body = utils.normalize_body(body, raw_body, cls='topic-content text')
 
     def __repr__(self):
-        return "<post " + ((self.blog.encode('utf-8') + "/") if self.blog else "personal ") + str(self.post_id) + ">"
+        return ("<post " + ((self.blog + "/") if self.blog else "personal ") + unicode(self.post_id) + ">").encode('utf-8')
 
     def __str__(self):
         return self.__repr__()
@@ -144,9 +144,9 @@ class Comment(object):
         self.body, self.raw_body = utils.normalize_body(body, raw_body)
 
     def __repr__(self):
-        return "<" + ("deleted " if self.deleted else "") + "comment " + \
-            ((self.blog.encode('utf-8') + "/" + str(self.post_id) + "/") if self.blog and self.post_id else "") + \
-            str(self.comment_id) + ">"
+        return ("<" + ("deleted " if self.deleted else "") + "comment " + \
+            ((self.blog + "/" + unicode(self.post_id) + "/") if self.blog and self.post_id else "") + \
+            unicode(self.comment_id) + ">").encode('utf-8')
 
     def __str__(self):
         return self.__repr__()
@@ -176,7 +176,7 @@ class Blog(object):
         self.description, self.raw_description = utils.normalize_body(description, raw_description)
 
     def __repr__(self):
-        return "<blog " + self.blog.encode('utf-8') + ">"
+        return ("<blog " + self.blog + ">").encode('utf-8')
 
     def __str__(self):
         return self.__repr__()
@@ -196,10 +196,13 @@ class StreamItem(object):
         self.comments_count = int(comments_count)
 
     def __repr__(self):
-        return "<stream_item " + self.blog + "/" + str(self.comment_id) + ">"
+        return ("<stream_item " + ((self.blog + "/") if self.blog else '') + unicode(self.comment_id) + ">").encode('utf-8')
 
     def __str__(self):
         return self.__repr__()
+
+    def __unicode__(self):
+        return self.__repr__().decode('utf-8')
 
 
 class UserInfo(object):
@@ -214,7 +217,7 @@ class UserInfo(object):
         self.rating = float(rating)
         self.userpic = str(userpic) if userpic else None
         self.foto = unicode(foto) if foto else None
-        self.gender = ('M' if gender == 'M' else 'F') if gender else None
+        self.gender = gender if gender in ('M', 'F') else None
         self.birthday = birthday
         self.registered = registered
         self.last_activity = last_activity
@@ -227,7 +230,7 @@ class UserInfo(object):
         self.description, self.raw_description = utils.normalize_body(description, raw_description)
 
     def __repr__(self):
-        return "<userinfo " + self.username.encode('utf-8') + ">"
+        return ("<userinfo " + self.username + ">").encode('utf-8')
 
     def __str__(self):
         return self.__repr__()
@@ -302,7 +305,7 @@ class ActivityItem:
         self.id = int(id) if id is not None else None
 
     def __str__(self):
-        return "<activity " + str(self.type) + " " + self.username + ">"
+        return ("<activity " + unicode(self.type) + " " + self.username + ">").encode('utf-8')
 
     def __repr__(self):
         return self.__str__()
@@ -414,13 +417,13 @@ class User(object):
             if not self.key:
                 ckey = cook.get("key")
                 self.key = ckey.value if ckey else None
-            pos = data.find("var LIVESTREET_SECURITY_KEY =")
+            pos = data.find(b"var LIVESTREET_SECURITY_KEY =")
             if pos > 0:
                 ls_key = data[pos:]
-                ls_key = ls_key[ls_key.find("'") + 1:]
-                self.security_ls_key = ls_key[:ls_key.find("'")]
+                ls_key = ls_key[ls_key.find(b"'") + 1:]
+                self.security_ls_key = ls_key[:ls_key.find(b"'")].decode('utf-8', 'replace')
 
-            if self.security_ls_key == 'LIVESTREET_SECURITY_KEY':  # security fix by Random
+            if self.security_ls_key == b'LIVESTREET_SECURITY_KEY':  # security fix by Random
                 csecurity_ls_key = cook.get("LIVESTREET_SECURITY_KEY")
                 self.security_ls_key = csecurity_ls_key.value if csecurity_ls_key else None
 
@@ -434,10 +437,10 @@ class User(object):
 
     def update_userinfo(self, raw_data):
         """Парсит имя пользователя, рейтинг и число сообщений и записывает в объект. Возвращает имя пользователя."""
-        userinfo = utils.find_substring(raw_data, '<div class="dropdown-user"', "<nav", with_end=False)
+        userinfo = utils.find_substring(raw_data, b'<div class="dropdown-user"', b"<nav", with_end=False)
         if not userinfo:
-            auth_panel = utils.find_substring(raw_data, '<ul class="auth"', '<nav', with_end=False)
-            if auth_panel and 'Войти' in auth_panel:
+            auth_panel = utils.find_substring(raw_data, b'<ul class="auth"', b'<nav', with_end=False)
+            if auth_panel and 'Войти'.encode('utf-8') in auth_panel:
                 self.username = None
                 self.talk_count = 0
                 self.skill = None
@@ -499,7 +502,7 @@ class User(object):
             raise TabunResultError(data.decode("utf-8", "replace"))
         data = self.jd.decode(data)
         if data.get('bStateError'):
-            raise TabunResultError(data.get("sMsg", u""))
+            raise TabunResultError(data.get("sMsg", ""))
         self.username = login
 
         cook = BaseCookie()
@@ -512,18 +515,48 @@ class User(object):
         if not self.phpsessid or not self.security_ls_key:
             raise TabunError("Not logined")
 
-    def urlopen(self, url, data=None, headers={}, redir=True, nowait=False, with_cookies=True, timeout=None):
-        """Отправляет HTTP-запрос и возвращает результат urllib2.urlopen (объект urllib.addinfourl).
-        Если указан параметр data, то отправляется POST-запрос.
-        В качестве URL может быть путь с доменом (http://tabun.everypony.ru/), без домена (/index/newall/) или объект urllib2.Request.
-        Если redir установлен в False, то не будет осуществляться переход по перенаправлению (HTTP-коды 3xx).
-        К запросу добавлется печенька PHPSESSID; with_cookies=False отключает это.
-        По умолчанию соблюдает между запросами временной интервал query_interval (который по умолчанию 0); nowait=True отправляет запрос немедленно.
-        Может кидаться исключением TabunError."""
+    def build_request(self, url, data=None, headers={}, with_cookies=True):
+        """Собирает и возвращает объект urllib2.Request. Используется в методе urlopen."""
+
+        if isinstance(url, unicode):
+            url = url.encode('utf-8')
         if not isinstance(url, urllib2.Request):
-            if url.startswith('/'):
-                url = http_host + url
-            url = urllib2.Request(url, data)
+            if url.startswith(b'/'):
+                url = http_host.encode('utf-8') + url
+            url = urllib2.Request(url)
+        if data is not None:
+            url.add_data(data.encode('utf-8') if isinstance(data, unicode) else data)
+
+
+        if with_cookies and self.phpsessid:
+            url.add_header(b'cookie', b"PHPSESSID=%s; key=%s; LIVESTREET_SECURITY_KEY=%s" % (
+                self.phpsessid.encode('utf-8'),
+                self.key.encode('utf-8') if self.key else b'None',
+                self.security_ls_key.encode('utf-8') if self.security_ls_key else b'None'
+            ))
+
+        for header, value in http_headers.items():
+            if isinstance(header, unicode):
+                header = header.encode('utf-8')
+            if isinstance(value, unicode):
+                value = value.encode('utf-8')
+            url.add_header(header, value)
+        if headers:
+            for header, value in headers.items():
+                if isinstance(header, unicode):
+                    header = header.encode('utf-8')
+                if isinstance(value, unicode):
+                    value = value.encode('utf-8')
+                if header and value:
+                    url.add_header(header, value)
+
+        return url
+
+    def send_request(self, request, redir=True, nowait=False, timeout=None):
+        """Отправляет запрос (строку со ссылкой или urllib2.Request).
+        Возвращает результат urllib2.urlopen (объект urllib.addinfourl).
+        Используется в методе urlopen.
+        """
 
         # FIXME: ну чего так некрасиво-то получилось?
         self.lock.acquire()
@@ -539,23 +572,11 @@ class User(object):
 
             self.last_query_time = time.time()
 
-            if with_cookies and self.phpsessid:
-                url.add_header('cookie', "PHPSESSID=%s; key=%s; LIVESTREET_SECURITY_KEY=%s" % (
-                    self.phpsessid, self.key, self.security_ls_key
-                ))
-
-            for header, value in http_headers.items():
-                url.add_header(header, value)
-            if headers:
-                for header, value in headers.items():
-                    if header and value:
-                        url.add_header(header, value)
-
             if timeout is None:
                 timeout = self.timeout
 
             try:
-                return (self.opener.open if redir else self.noredir.open)(url, timeout=timeout)
+                return (self.opener.open if redir else self.noredir.open)(request, timeout=timeout)
             except KeyboardInterrupt:
                 raise
             except urllib2.HTTPError as exc:
@@ -572,12 +593,42 @@ class User(object):
         finally:
             self.lock.release()
 
+    def urlopen(self, url, data=None, headers={}, redir=True, nowait=False, with_cookies=True, timeout=None):
+        """Отправляет HTTP-запрос и возвращает результат urllib2.urlopen (объект urllib.addinfourl).
+        Если указан параметр data, то отправляется POST-запрос.
+        В качестве URL может быть путь с доменом (http://tabun.everypony.ru/), без домена (/index/newall/) или объект urllib2.Request.
+        Если redir установлен в False, то не будет осуществляться переход по перенаправлению (HTTP-коды 3xx).
+        К запросу добавлется печенька PHPSESSID; with_cookies=False отключает это.
+        По умолчанию соблюдает между запросами временной интервал query_interval (который по умолчанию 0); nowait=True отправляет запрос немедленно.
+        Может кидаться исключением TabunError."""
+        
+        req = self.build_request(url, data, headers, with_cookies)
+        return self.send_request(req, redir, nowait, timeout)
+
     def send_form(self, url, fields=(), files=(), headers={}, redir=True):
         """Формирует multipart/form-data запрос и отправляет его через функцию urlopen."""
         content_type, data = utils.encode_multipart_formdata(fields, files)
         headers = headers.copy()
         headers['content-type'] = content_type
         return self.urlopen(url, data, headers, redir)
+
+
+    def ajax(self, url, fields={}, files=(), headers={}, throw_if_error=True):
+        """Отправляет ajax-запрос и возвращает распарсенный json-ответ. Или кидается исключением TabunResultError в случае ошибки."""
+        self.check_login()
+        headers['x-requested-with'] = 'XMLHttpRequest'
+        fields['security_ls_key'] = self.security_ls_key
+        data = self.send_form(url, fields, files, headers=headers).read()
+
+        try:
+            data = self.jd.decode(data)
+        except:
+            raise TabunResultError(data.decode("utf-8", "replace"))
+
+        if throw_if_error and data['bStateError']:
+            raise TabunResultError(data['sMsg'], data=data)
+
+        return data
 
     def add_post(self, blog_id, title, body, tags, draft=False, check_if_error=False):
         """Отправляет пост и возвращает имя блога с номером поста в случае удачи или (None,None) в случае неудачи.
@@ -586,15 +637,15 @@ class User(object):
         blog_id = int(blog_id if blog_id else 0)
 
         if not isinstance(tags, basestring):
-            tags = u", ".join(tags)
+            tags = ", ".join(tags)
 
         fields = {
             'topic_type': 'topic',
             'security_ls_key': self.security_ls_key,
             'blog_id': str(blog_id),
-            'topic_title': unicode(title).encode("utf-8"),
-            'topic_text': unicode(body).encode("utf-8"),
-            'topic_tags': unicode(tags).encode("utf-8")
+            'topic_title': unicode(title),
+            'topic_text': unicode(body),
+            'topic_tags': unicode(tags)
         }
         if draft:
             fields['submit_topic_save'] = "Сохранить в черновиках"
@@ -604,15 +655,15 @@ class User(object):
         try:
             result = self.send_form('/topic/add/', fields, redir=False)
             data = result.read()
-            error = utils.find_substring(data, '<ul class="system-message-error">', '</ul>', with_start=False, with_end=False)
-            if error and ':' in error:
+            error = utils.find_substring(data, b'<ul class="system-message-error">', b'</ul>', with_start=False, with_end=False)
+            if error and b':' in error:
                 error = utils.find_substring(error.decode('utf-8', 'replace'), ':', '</li>', extend=True, with_start=False, with_end=False).strip()
                 raise TabunResultError(error)
             link = result.headers.get('location')
         except TabunError:
             if not check_if_error or not self.username:
                 raise
-            url = '/topic/saved/' if draft else '/profile/' + urllib2.quote(self.username.encode('utf-8')) + '/created/topics/'
+            url = '/topic/saved/' if draft else '/profile/' + urllib2.quote(self.username.encode('utf-8')).decode('utf-8') + '/created/topics/'
 
             try:
                 posts = self.get_posts(url)
@@ -634,11 +685,11 @@ class User(object):
 
         fields = {
             'security_ls_key': self.security_ls_key,
-            "blog_title": unicode(title).encode("utf-8"),
-            "blog_url": unicode(url).encode("utf-8"),
+            "blog_title": unicode(title),
+            "blog_url": unicode(url),
             "blog_type": "close" if closed else "open",
-            "blog_description": unicode(description).encode("utf-8"),
-            "blog_limit_rating_topic": str(int(rating_limit)),
+            "blog_description": unicode(description),
+            "blog_limit_rating_topic": unicode(int(rating_limit)),
             "submit_blog_add": "Сохранить"
         }
 
@@ -655,16 +706,16 @@ class User(object):
 
         fields = {
             'security_ls_key': self.security_ls_key,
-            "blog_title": unicode(title).encode("utf-8"),
+            "blog_title": unicode(title),
             "blog_url": "",
             "blog_type": "close" if closed else "open",
-            "blog_description": unicode(description).encode("utf-8"),
-            "blog_limit_rating_topic": str(int(rating_limit)),
+            "blog_description": unicode(description),
+            "blog_limit_rating_topic": unicode(int(rating_limit)),
             "avatar_delete": "",
             "submit_blog_add": "Сохранить"
         }
 
-        link = self.send_form('/blog/edit/' + str(int(blog_id)) + '/', fields, redir=False).headers.get('location')
+        link = self.send_form('/blog/edit/' + unicode(int(blog_id)) + '/', fields, redir=False).headers.get('location')
         if not link:
             return
         if link[-1] == '/':
@@ -675,7 +726,7 @@ class User(object):
         """Удаляет блог и возвращает True/False в случае удачи/неудачи."""
         self.check_login()
         return self.urlopen(
-            url='/blog/delete/' + str(int(blog_id)) + '/?security_ls_key=' + self.security_ls_key,
+            url='/blog/delete/' + unicode(int(blog_id)) + '/?security_ls_key=' + self.security_ls_key,
             headers={"referer": http_host + "/"},
             redir=False
         ).getcode() / 100 == 3
@@ -688,9 +739,9 @@ class User(object):
             'topic_type': 'topic',
             'security_ls_key': self.security_ls_key,
             'blog_id': str(blog_id),
-            'topic_title': unicode(title).encode("utf-8"),
-            'topic_text': unicode(body).encode("utf-8"),
-            'topic_tags': unicode(tags).encode("utf-8")
+            'topic_title': unicode(title),
+            'topic_text': unicode(body),
+            'topic_tags': unicode(tags)
         }
 
         data = self.send_form('/ajax/preview/topic/', fields, (), headers={'x-requested-with': 'XMLHttpRequest'}).read()
@@ -705,31 +756,14 @@ class User(object):
         """Удаляет пост и возвращает True/False в случае удачи/неудачи."""
         self.check_login()
         return self.urlopen(
-            url='/topic/delete/' + str(int(post_id)) + '/?security_ls_key=' + self.security_ls_key,
-            headers={"referer": http_host + "/blog/" + str(post_id) + ".html"},
+            url='/topic/delete/' + unicode(int(post_id)) + '/?security_ls_key=' + self.security_ls_key,
+            headers={"referer": http_host + "/blog/" + unicode(post_id) + ".html"},
             redir=False
         ).getcode() / 100 == 3
 
     def toggle_blog_subscribe(self, blog_id):
-        """Подписывается на блог/отписывается от блога и возвращает состояние: True - подписан, False - не подписан."""
+        """Подписывается на блог/отписывается от блога и возвращает новое состояние: True - подписан, False - не подписан."""
         return self.ajax('/blog/ajaxblogjoin/', {'idBlog': int(blog_id)})['bState']
-
-    def ajax(self, url, fields={}, files=(), headers={}, throw_if_error=True):
-        """Отправляет ajax-запрос и возвращает распарсенный json-ответ. Или кидается исключением TabunResultError в случае ошибки."""
-        self.check_login()
-        headers['x-requested-with'] = 'XMLHttpRequest'
-        fields['security_ls_key'] = self.security_ls_key
-        data = self.send_form(url, fields, files, headers=headers).read()
-
-        try:
-            data = self.jd.decode(data)
-        except:
-            raise TabunResultError(data.decode("utf-8", "replace"))
-
-        if throw_if_error and data['bStateError']:
-            raise TabunResultError(data['sMsg'], data=data)
-
-        return data
 
     def comment(self, post_id, text, reply=0, typ="blog"):
         """Отправляет коммент и возвращает его номер. Тип - blog (посты) или talk (личные сообщения)"""
@@ -752,7 +786,7 @@ class User(object):
         if section < 0:
             return []
         section2 = raw_data.find('<section class="block block-type-stream">', section + 1)
-        if section2 < raw_data.find(u'Дискорд советует', section):
+        if section2 < raw_data.find('Дискорд советует', section):
             section = section2
         del section2
 
@@ -777,7 +811,7 @@ class User(object):
 
         posts = []
 
-        f = raw_data.find("<rss")
+        f = raw_data.find(b"<rss")
         if f < 250 and f >= 0:
             node = utils.lxml.etree.fromstring(raw_data)  # pylint: disable=no-member
             channel = node.find("channel")
@@ -794,13 +828,14 @@ class User(object):
 
             return posts
 
-        data = utils.find_substring(raw_data, "<article ", "</article> <!-- /.topic -->", extend=True)
+        data = utils.find_substring(raw_data, b"<article ", b"</article> <!-- /.topic -->", extend=True)
         if not data:
             raise TabunError("No post")
 
         can_be_short = not url.split('?', 1)[0].endswith('.html')
         escaped_data = utils.escape_comment_contents(utils.escape_topic_contents(data, can_be_short))
-        items = filter(lambda x: not isinstance(x, basestring) and x.tag == "article", utils.parse_html_fragment(escaped_data))
+        # items = filter(lambda x: not isinstance(x, basestring) and x.tag == "article", utils.parse_html_fragment(escaped_data))
+        items = [x for x in utils.parse_html_fragment(escaped_data) if not isinstance(x, basestring) and x.tag == "article"]
         items.reverse()
 
         for item in items:
@@ -815,9 +850,9 @@ class User(object):
         Если поста нет - кидается исключением TabunError("No post"). В случае проблем с парсингом может вернуть None.
         """
         if blog:
-            url = "/blog/" + str(blog) + "/" + str(post_id) + ".html"
+            url = "/blog/" + unicode(blog) + "/" + unicode(post_id) + ".html"
         else:
-            url = "/blog/" + str(post_id) + ".html"
+            url = "/blog/" + unicode(post_id) + ".html"
 
         if not raw_data:
             req = self.urlopen(url)
@@ -830,9 +865,9 @@ class User(object):
 
         post = posts[0]
 
-        comments_count = utils.find_substring(raw_data, '<div class="comments" id="comments"', '</h3>')
+        comments_count = utils.find_substring(raw_data, b'<div class="comments" id="comments"', b'</h3>')
         if comments_count:
-            comments_count = utils.find_substring(raw_data, '<span id="count-comments">', '</span>', with_start=False, with_end=False)
+            comments_count = utils.find_substring(raw_data, b'<span id="count-comments">', b'</span>', with_start=False, with_end=False)
             post.comments_count = int(comments_count.strip())
             post.comments_new_count = 0
         return post
@@ -846,7 +881,7 @@ class User(object):
             del req
         blog, post_id = parse_post_url(url)
 
-        raw_data = utils.find_substring(raw_data, '<div class="comments', '<!-- /content -->', extend=True, with_end=False)
+        raw_data = utils.find_substring(raw_data, b'<div class="comments', b'<!-- /content -->', extend=True, with_end=False)
         if not raw_data:
             return {}
         escaped_data = utils.escape_comment_contents(utils.escape_topic_contents(raw_data, True))
@@ -887,10 +922,12 @@ class User(object):
     def get_blogs_list(self, page=1, order_by="blog_rating", order_way="desc", url=None):
         """Возвращает список объектов Blog."""
         if not url:
-            url = "/blogs/" + ("page" + str(page) + "/" if page > 1 else "") + "?order=" + str(order_by) + "&order_way=" + str(order_way)
+            url = "/blogs/" + (("page" + unicode(page) + "/") if page > 1 else "")
+            url += "?order=" + unicode(order_by)
+            url += "&order_way=" + unicode(order_way)
 
         data = self.urlopen(url).read()
-        data = utils.find_substring(data, '<table class="table table-blogs', '</table>')
+        data = utils.find_substring(data, b'<table class="table table-blogs', b'</table>')
         node = utils.parse_html_fragment(data)
         if not node:
             return []
@@ -932,12 +969,12 @@ class User(object):
         """Возвращает информацию о блоге. Функция не доделана."""
         blog = blog.encode('utf-8') if isinstance(blog, unicode) else str(blog)
         if not raw_data:
-            req = self.urlopen("/blog/" + blog.replace("/", "").replace("?", "") + "/")
+            req = self.urlopen("/blog/" + unicode(blog) + "/")
             raw_data = req.read()
             del req
-        data = utils.find_substring(raw_data, '<div class="blog-top">', '<div class="nav-menu-wrapper">', with_end=False)
+        data = utils.find_substring(raw_data, b'<div class="blog-top">', b'<div class="nav-menu-wrapper">', with_end=False)
 
-        node = utils.parse_html_fragment('<div>' + data + '</div>')
+        node = utils.parse_html_fragment(b'<div>' + data + b'</div>')
         if not node:
             return
 
@@ -949,7 +986,7 @@ class User(object):
         closed = len(blog_top.xpath('h2/i[@class="icon-synio-topic-private"]')) > 0
 
         vote_item = blog_top.xpath('div/div[@class="vote-item vote-count"]')[0]
-        vote_count = int(vote_item.get("title", u"0").rsplit(" ", 1)[-1])
+        vote_count = int(vote_item.get("title", "0").rsplit(" ", 1)[-1])
         blog_id = int(vote_item.find("span").get("id").rsplit("_", 1)[-1])
         vote_total = vote_item.find("span").text
         if vote_total[0] == "+":
@@ -972,7 +1009,7 @@ class User(object):
         arr = admins
         for user in content.xpath('span[@class="user-avatar"]'):
             t = user.getprevious().getprevious().text
-            if t and u"Модераторы" in t:
+            if t and "Модераторы" in t:
                 arr = moderators
             arr.append(user.text_content().strip())
 
@@ -984,7 +1021,7 @@ class User(object):
         """Возвращает пост и список комментов. По сути просто вызывает функции get_posts и get_comments."""
         post_id = int(post_id)
         if not raw_data:
-            req = self.urlopen("/blog/" + (blog + "/" if blog else "") + str(post_id) + ".html")
+            req = self.urlopen("/blog/" + (unicode(blog) + "/" if blog else "") + str(post_id) + ".html")
             url = req.url
             raw_data = req.read()
             del req
@@ -992,7 +1029,7 @@ class User(object):
         post = self.get_posts(url=url, raw_data=raw_data)
         comments = self.get_comments(url=url, raw_data=raw_data)
 
-        return post[0] if post else None, comments
+        return (post[0] if post else None), comments
 
     def get_comments_from(self, post_id, comment_id=0, typ="blog"):
         """Возвращает комментарии к посту, начиная с определённого номера комментария. На сайте используется для подгрузки новых комментариев.
@@ -1007,9 +1044,9 @@ class User(object):
             data = self.ajax(url, {'idCommentLast': comment_id, 'idTarget': post_id, 'typeTarget': 'topic'})
         except TabunResultError as exc:
             if exc.data and exc.data.get('sMsg') in (
-                u"Истекло время для редактирование комментариев",
-                u"Не хватает прав для редактирования коментариев",
-                u"Запрещено редактировать, коментарии с ответами"
+                "Истекло время для редактирование комментариев",
+                "Не хватает прав для редактирования коментариев",
+                "Запрещено редактировать, коментарии с ответами"
             ):
                 data = exc.data
             else:
@@ -1034,7 +1071,7 @@ class User(object):
             "security_ls_key=" + urllib2.quote(self.security_ls_key)
         ).read()
 
-        data = self.jd.decode(data)
+        data = self.jd.decode(data.decode('utf-8', 'replace'))
         if data['bStateError']:
             raise TabunResultError(data['sMsg'])
 
@@ -1100,7 +1137,7 @@ class User(object):
         if not raw_data:
             raw_data = self.urlopen("/index/newall/").read()
 
-        raw_data = utils.find_substring(raw_data, '<div class="block-content" id="block-blog-list"', "</ul>")
+        raw_data = utils.find_substring(raw_data, b'<div class="block-content" id="block-blog-list"', b"</ul>")
         if not raw_data:
             return []
 
@@ -1131,10 +1168,12 @@ class User(object):
     def get_people_list(self, page=1, order_by="user_rating", order_way="desc", url=None):
         """Возвращает список броняш - объекты UserInfo."""
         if not url:
-            url = "/people/" + ("index/page" + str(page) + "/" if page > 1 else "") + "?order=" + str(order_by) + "&order_way=" + str(order_way)
+            url = "/people/" + ("index/page" + unicode(page) + "/" if page > 1 else "")
+            url += "?order=" + unicode(order_by)
+            url += "&order_way=" + unicode(order_way)
 
         data = self.urlopen(url).read()
-        data = utils.find_substring(data, '<table class="table table-users', '</table>')
+        data = utils.find_substring(data, b'<table class="table table-users', b'</table>')
         if not data:
             return []
         node = utils.parse_html_fragment(data)
@@ -1176,11 +1215,10 @@ class User(object):
         return peoples
 
     def get_profile(self, username=None, raw_data=None):
-        username = username.encode('utf-8') if isinstance(username, unicode) else str(username)
         if not raw_data:
-            raw_data = self.urlopen("/profile/" + username).read()
+            raw_data = self.urlopen("/profile/" + unicode(username)).read()
 
-        data = utils.find_substring(raw_data, '<div id="content"', '<!-- /content ', extend=True, with_end=False)
+        data = utils.find_substring(raw_data, b'<div id="content"', b'<!-- /content ', extend=True, with_end=False)
         if not data:
             return
         node = utils.parse_html_fragment(data)
@@ -1217,43 +1255,43 @@ class User(object):
         for ul in uls:
             name = ul.find('span').text.strip()
             value = ul.find('strong')
-            if name == u'Дата рождения:':
+            if name == 'Дата рождения:':
                 birthday = time.strptime(utils.mon2num(value.text), '%d %m %Y')
-            elif name == u'Зарегистрирован:':
+            elif name == 'Зарегистрирован:':
                 try:
                     registered = time.strptime(utils.mon2num(value.text), '%d %m %Y, %H:%M')
                 except ValueError:
                     if username != 'guest':
                         raise
-            elif name == u'Последний визит:':
+            elif name == 'Последний визит:':
                 last_activity = time.strptime(utils.mon2num(value.text), '%d %m %Y, %H:%M')
-            elif name == u'Пол:':
-                gender = 'M' if value.text.strip() == u'мужской' else 'F'
+            elif name == 'Пол:':
+                gender = 'M' if value.text.strip() == 'мужской' else 'F'
 
-            elif name in (u'Создал:', u'Администрирует:', u'Модерирует:', u'Состоит в:'):
+            elif name in ('Создал:', 'Администрирует:', 'Модерирует:', 'Состоит в:'):
                 blist = []
                 for b in value.findall('a'):
                     link = b.get('href', '')[:-1]
                     if link:
                         blist.append((link[link.rfind('/') + 1:], b.text_content()))
 
-                if name == u'Создал:':
+                if name == 'Создал:':
                     blogs['owner'] = blist
-                elif name == u'Администрирует:':
+                elif name == 'Администрирует:':
                     blogs['admin'] = blist
-                elif name == u'Модерирует:':
+                elif name == 'Модерирует:':
                     blogs['moderator'] = blist
-                elif name == u'Состоит в:':
+                elif name == 'Состоит в:':
                     blogs['member'] = blist
 
         description = node.xpath('div[@class="profile-info-about"]/div[@class="text"]')
 
         if registered is None:
-            # забагованная учётка Tailsik208 (была когда-то)
+            # забагованная учётка Tailsik208 со смайликом >_< (была когда-то)
             registered = time.gmtime(0)
             description = []
 
-        foto = raw_data.find('id="foto-img"')
+        foto = raw_data.find(b'id="foto-img"')
         if foto >= 0:
             foto = raw_data[raw_data.rfind('<img', 0, foto):]
             foto = foto[:foto.find('</a>')]
@@ -1346,19 +1384,20 @@ class User(object):
         }
 
         data = self.ajax('/role_ajax/savecomment/', fields)
+        # TODO: raw_body
         return utils.parse_html_fragment('<div class="text">' + data['sText'] + '</div>')[0]
 
     def get_editable_post(self, post_id, raw_data=None):
         """Возвращает blog_id, заголовок, исходный код поста, список тегов и галочку закрытия комментариев (True/False)."""
         if not raw_data:
-            req = self.urlopen("/topic/edit/" + str(int(post_id)) + "/")
+            req = self.urlopen("/topic/edit/" + unicode(int(post_id)) + "/")
             raw_data = req.read()
             del req
 
         raw_data = utils.find_substring(
             raw_data,
-            '<form action="" method="POST" enctype="multipart/form-data" id="form-topic-add"',
-            '<div class="topic-preview"',
+            b'<form action="" method="POST" enctype="multipart/form-data" id="form-topic-add"',
+            b'<div class="topic-preview"',
             extend=True, with_end=False
         )
 
@@ -1377,23 +1416,23 @@ class User(object):
         if not ok:
             blog_id = 0
 
-        title = form.xpath('p/input[@id="topic_title"]')[0].get("value", u"")
+        title = form.xpath('p/input[@id="topic_title"]')[0].get("value", "")
         body = form.xpath("textarea")[0].text
-        tags = form.xpath('p/input[@id="topic_tags"]')[0].get("value", u"").split(",")
+        tags = form.xpath('p/input[@id="topic_tags"]')[0].get("value", "").split(",")
         forbid_comment = bool(form.xpath('p/label/input[@id="topic_forbid_comment"]')[0].get("checked"))
         return blog_id, title, body, tags, forbid_comment
 
     def get_editable_blog(self, blog_id, raw_data=None):
         """Возвращает заголовок блога, URL, тип (True - закрытый, False - открытый), описание и ограничение рейтинга."""
         if not raw_data:
-            req = self.urlopen("/blog/edit/" + str(int(blog_id)) + "/")
+            req = self.urlopen("/blog/edit/" + unicode(int(blog_id)) + "/")
             raw_data = req.read()
             del req
 
         raw_data = utils.find_substring(
             raw_data,
-            '<form method="post" enctype="multipart/form-data" class="wrapper-content">',
-            '</form>'
+            b'<form method="post" enctype="multipart/form-data" class="wrapper-content">',
+            b'</form>'
         )
 
         if not raw_data:
@@ -1417,22 +1456,22 @@ class User(object):
         blog_id = int(blog_id if blog_id else 0)
 
         if isinstance(tags, (tuple, list)):
-            tags = u", ".join(tags)
+            tags = ", ".join(tags)
 
         fields = {
             'topic_type': 'topic',
             'security_ls_key': self.security_ls_key,
             'blog_id': str(blog_id),
-            'topic_title': unicode(title).encode("utf-8"),
-            'topic_text': unicode(body).encode("utf-8"),
-            'topic_tags': unicode(tags).encode("utf-8")
+            'topic_title': unicode(title),
+            'topic_text': unicode(body),
+            'topic_tags': unicode(tags)
         }
         if draft:
             fields['submit_topic_save'] = "Сохранить в черновиках"
         else:
             fields['submit_topic_publish'] = "Опубликовать"
 
-        link = self.send_form('/topic/edit/' + str(int(post_id)) + '/', fields, redir=False).headers.get('location')
+        link = self.send_form('/topic/edit/' + unicode(int(post_id)) + '/', fields, redir=False).headers.get('location')
         return parse_post_url(link)
 
     def invite(self, blog_id, username):
@@ -1441,12 +1480,9 @@ class User(object):
         """
         self.check_login()
 
-        blog_id = int(blog_id if blog_id else 0)
-        username = username.encode('utf-8') if isinstance(username, unicode) else str(username)
-
         fields = {
-            "users": username,
-            "idBlog": str(blog_id),
+            "users": unicode(username),
+            "idBlog": unicode(int(blog_id) if blog_id else 0),
             'security_ls_key': self.security_ls_key,
         }
 
@@ -1470,17 +1506,17 @@ class User(object):
         fields = {
             'security_ls_key': self.security_ls_key,
             'talk_users': ', '.join(talk_users),
-            'talk_title': unicode(title).encode("utf-8"),
-            'talk_text': unicode(body).encode("utf-8"),
+            'talk_title': unicode(title),
+            'talk_text': unicode(body),
             'submit_talk_add': 'Отправить'
         }
 
         result = self.send_form('/talk/add/', fields, redir=False)
         data = result.read()
-        errors = utils.find_substring(data, '<ul class="system-message-error">', '</ul>')
+        errors = utils.find_substring(data, b'<ul class="system-message-error">', b'</ul>')
         if errors and ':' in errors:
             errors = utils.parse_html_fragment(errors)[0]
-            errors = '; '.join(x.text_content().split(u'Ошибка:', 1)[-1].strip() for x in errors.findall('li'))
+            errors = '; '.join(x.text_content().split('Ошибка:', 1)[-1].strip() for x in errors.findall('li'))
             raise TabunResultError(errors)
 
         link = result.headers.get('location')
@@ -1496,7 +1532,7 @@ class User(object):
             raw_data = req.read()
             del req
 
-        raw_data = utils.find_substring(raw_data, '<table ', '</table>')
+        raw_data = utils.find_substring(raw_data, b'<table ', b'</table>')
         if not raw_data:
             return []
 
@@ -1515,11 +1551,11 @@ class User(object):
         """Возвращает объект Talk беседы с переданным номером."""
         self.check_login()
         if not raw_data:
-            req = self.urlopen("/talk/read/" + str(int(talk_id)) + "/")
+            req = self.urlopen("/talk/read/" + unicode(int(talk_id)) + "/")
             raw_data = req.read()
             del req
 
-        data = utils.find_substring(raw_data, "<article ", "</article>", extend=True)
+        data = utils.find_substring(raw_data, b"<article ", b"</article>", extend=True)
         if not data:
             return
 
@@ -1548,18 +1584,18 @@ class User(object):
             raw_data = req.read()
             del req
 
-        raw_data = utils.find_substring(raw_data, '<ul class="stream-list', '<!-- /content', with_end=False)
+        raw_data = utils.find_substring(raw_data, b'<ul class="stream-list', b'<!-- /content', with_end=False)
         if not raw_data:
             return []
-        node = utils.parse_html_fragment(raw_data[:raw_data.rfind('</ul>')])
+        node = utils.parse_html_fragment(raw_data[:raw_data.rfind(b'</ul>')])
         if not node:
             return []
         node = node[0]
 
-        inp = '<input type="hidden" id="stream_last_id" value="'
+        inp = b'<input type="hidden" id="stream_last_id" value="'
         if raw_data.rfind(inp) > 0:
             last_id = raw_data[raw_data.rfind(inp) + len(inp):]
-            last_id = int(last_id[:last_id.find('"')])
+            last_id = int(last_id[:last_id.find(b'"')])
         else:
             last_id = -1
 
@@ -1767,7 +1803,7 @@ def parse_post(item):
                 body.text = body.text.lstrip()
         body.tail = ""
 
-        nextbtn = body.xpath(u'a[@title="Читать дальше"][1]')
+        nextbtn = body.xpath('a[@title="Читать дальше"][1]')
         is_short = len(nextbtn) > 0
         if is_short:
             body.remove(nextbtn[-1])
@@ -1810,7 +1846,7 @@ def parse_post(item):
     favourite = utils.find_substring(fav[0][1].text, '>', '</', with_start=False, with_end=False).strip()
     try:
         favourite = int(favourite) if favourite else 0
-    except:
+    except ValueError:
         favourite = None
     favourited = fav[0].find('i')
     favourited = favourited is not None and 'active' in favourited.get('class', '')
@@ -1849,13 +1885,13 @@ def parse_post(item):
         if dlink is not None and dlink.get('href'):
             m = post_file_regex.match(dlink.text.strip())
             dlink = dlink.get('href')
-            if u'/file/go/' in dlink and m:
+            if '/file/go/' in dlink and m:
                 m = m.groups()
                 dname = m[0]
                 dsize = float(m[1])
-                if m[3] == u'Кб':
+                if m[3] == 'Кб':
                     dsize *= 1024
-                elif m[3] == u'Мб':
+                elif m[3] == 'Мб':
                     dsize *= 1024 * 1024
 
         download = Download("file", post_id, dname, download_count, dsize)
@@ -1904,7 +1940,7 @@ def parse_poll(poll):
 
 def parse_discord(li):
     body = '<div class="topic-content text">'
-    body += li.get('title', u'').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    body += li.get('title', '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
     body += '</div>'
     body = utils.parse_html_fragment(body)[0]
     p = li.find('p')
@@ -1920,7 +1956,7 @@ def parse_discord(li):
 
 def parse_rss_post(item):
     # Парсинг rss. Не надо юзать эту функцию.
-    link = str(item.find("link").text)
+    link = unicode(item.find("link").text)
 
     title = unicode(item.find("title").text)
     if title is None:
@@ -1941,16 +1977,16 @@ def parse_rss_post(item):
 
     post_time = item.find("pubDate")
     if post_time is not None and post_time.text is not None:
-        post_time = time.strptime(str(post_time.text).split(" ", 1)[-1][:-6], "%d %b %Y %H:%M:%S")
+        post_time = time.strptime(unicode(post_time.text).split(" ", 1)[-1][:-6], "%d %b %Y %H:%M:%S")
     else:
         post_time = time.localtime()
 
     node = item.find("description").text
     if not node:
         return
-    node = utils.parse_html_fragment(u"<div class='topic-content text'>" + node + '</div>')[0]
+    node = utils.parse_html_fragment("<div class='topic-content text'>" + node + '</div>')[0]
 
-    nextbtn = node.xpath(u'a[@title="Читать дальше"][1]')
+    nextbtn = node.xpath('a[@title="Читать дальше"][1]')
     if len(nextbtn) > 0:
         node.remove(nextbtn[0])
 

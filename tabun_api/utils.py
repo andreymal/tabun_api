@@ -1,6 +1,8 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 
+from __future__ import unicode_literals
+
 import re
 import time
 import random
@@ -14,7 +16,7 @@ import lxml.etree
 # import html5lib
 
 #: Месяцы, для парсинга даты.
-mons = (u'января', u'февраля', u'марта', u'апреля', u'мая', u'июня', u'июля', u'августа', u'сентября', u'октября', u'ноября', u'декабря')
+mons = ('января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря')
 
 #: Блочные элементы, для красивого вывода в htmlToString.
 block_elems = ("div", "p", "blockquote", "section", "ul", "li", "h1", "h2", "h3", "h4", "h5", "h6")
@@ -60,11 +62,11 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=Tr
     if isinstance(node, basestring):
         return unicode(node)
 
-    data = u""
+    data = ""
     newlines = 0
 
     if node.text:
-        ndata = node.text.replace(u"\n", u" ")
+        ndata = node.text.replace("\n", " ")
         if newlines:
             ndata = ndata.lstrip()
         data += ndata
@@ -75,14 +77,14 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=Tr
     prev_after = None
     for item in node.iterchildren():
         if prev_text:
-            ndata = prev_text.replace(u"\n", u" ")
+            ndata = prev_text.replace("\n", " ")
             if newlines:
                 ndata = ndata.lstrip()
             data += ndata
             if ndata:
                 newlines = 0
         if prev_after:
-            ndata = prev_after.replace(u"\n", u" ")
+            ndata = prev_after.replace("\n", " ")
             if newlines:
                 ndata = ndata.lstrip()
             data += ndata
@@ -97,18 +99,18 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=Tr
 
         if item.tag == "br":
             if newlines < 2:
-                data += u"\n"
+                data += "\n"
                 newlines += 1
         elif item.tag == "hr":
             if hr_lines:
-                data += u"\n=====\n"
+                data += "\n=====\n"
             else:
-                data += u"\n"
+                data += "\n"
             newlines = 1
         elif fancy and item.get('class') == 'spoiler-title':
             prev_text = None
             continue
-        elif fancy and item.tag == 'a' and item.get('title') == u"Читать дальше":
+        elif fancy and item.tag == 'a' and item.get('title') == "Читать дальше":
             prev_text = None
             continue
         elif not with_cutted and item.tag == "a" and item.get("rel") == "nofollow" and not item.text_content() and not item.getchildren():
@@ -123,7 +125,7 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=Tr
                 addr = addr[:-1]
 
             stop = False
-            for c in (u"/", u"?", u"&", u"(", u",", u")", u"|"):
+            for c in ("/", "?", "&", "(", ",", ")", "|"):
                 if c in addr:
                     stop = True
                     break
@@ -132,7 +134,7 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=Tr
                 prev_text = None
                 continue
 
-            for typ in (u"wall", u"photo", u"page", u"video", u"topic", u"app", u"album"):
+            for typ in ("wall", "photo", "page", "video", "topic", "app", "album", "note"):
                 if addr.find(typ) == 0:
                     stop = True
                     break
@@ -151,9 +153,9 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=Tr
 
         else:
             if item.tag in ("li", ):
-                data += u"• "
+                data += "• "
             elif data and item.tag in block_elems and not newlines:
-                data += u"\n"
+                data += "\n"
                 newlines = 1
 
             if prev_text:
@@ -165,10 +167,10 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=Tr
             if item.tag == "s":  # зачёркивание
                 tmp1 = ""
                 for x in tmp:
-                    tmp1 += x + u'\u0336'
+                    tmp1 += x + '\u0336'
                 # tmp1 = "<s>" + tmp1 + "</s>"
             elif item.tag == "blockquote":  # цитата
-                tmp1 = u" «" + tmp + u"»\n"
+                tmp1 = " «" + tmp + "»\n"
                 newlines = 1
             else:
                 tmp1 = tmp
@@ -176,18 +178,18 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=Tr
             data += tmp1
 
             if item.tag in block_elems and not newlines:
-                data += u"\n"
+                data += "\n"
                 newlines = 1
 
     if prev_text:
-        ndata = prev_text.replace(u"\n", u" ")
+        ndata = prev_text.replace("\n", " ")
         if newlines:
             ndata = ndata.lstrip()
         data += ndata
         if ndata:
             newlines = 0
     if prev_after:
-        ndata = prev_after.replace(u"\n", u" ")
+        ndata = prev_after.replace("\n", " ")
         if newlines:
             ndata = ndata.lstrip()
         data += ndata
@@ -205,7 +207,7 @@ def node2string(node):
 def mon2num(s):
     """Переводит названия месяцев в числа, чтобы строку можно было скормить в strftime."""
     for i in range(len(mons)):
-        s = s.replace(mons[i], str(i + 1))
+        s = s.replace(mons[i], unicode(i + 1))
     return s
 
 
@@ -241,7 +243,7 @@ def find_images(body, spoiler_title=True, no_other=False):
                 src = img.get("href")
                 if not src:
                     continue
-                if src[-4:].lower() not in (u'jpeg', u'.jpg', u'.png'):
+                if src[-4:].lower() not in ('jpeg', '.jpg', '.png'):
                     continue
             if "<" in src:
                 continue
@@ -285,34 +287,37 @@ def encode_multipart_formdata(fields, files):
     """
     if isinstance(fields, dict):
         fields = fields.items()
-    BOUNDARY = '----------' + md5(str(int(time.time())) + str(random.randrange(1000))).hexdigest()
+    BOUNDARY = b'----------' + md5(str(int(time.time())) + str(random.randrange(1000))).hexdigest()
     L = []
+
     for (key, value) in fields:
         key = key.encode("utf-8") if isinstance(key, unicode) else str(key)
         value = value.encode("utf-8") if isinstance(value, unicode) else str(value)
-        L.append('--' + BOUNDARY)
-        L.append('Content-Disposition: form-data; name="%s"' % key)
-        L.append('')
+        L.append(b'--' + BOUNDARY)
+        L.append(b'Content-Disposition: form-data; name="%s"' % key)
+        L.append(b'')
         L.append(value)
+
     for (key, filename, value) in files:
         key = key.encode("utf-8") if isinstance(key, unicode) else str(key)
         filename = filename.encode("utf-8") if isinstance(filename, unicode) else str(filename)
         value = value.encode("utf-8") if isinstance(value, unicode) else str(value)
-        L.append('--' + BOUNDARY)
-        L.append('Content-Disposition: form-data; name="%s"; filename="%s"' % (key, filename))
-        L.append('Content-Type: %s' % get_content_type(filename))
-        L.append('')
+        L.append(b'--' + BOUNDARY)
+        L.append(b'Content-Disposition: form-data; name="%s"; filename="%s"' % (key, filename))
+        L.append(b'Content-Type: %s' % get_content_type(filename).encode('utf-8'))
+        L.append(b'')
         L.append(value)
-    L.append('--' + BOUNDARY + '--')
-    L.append('')
-    body = '\r\n'.join(L)
-    content_type = 'multipart/form-data; boundary=%s' % BOUNDARY
+
+    L.append(b'--' + BOUNDARY + b'--')
+    L.append(b'')
+    body = b'\r\n'.join(L)
+    content_type = 'multipart/form-data; boundary=%s' % BOUNDARY.decode('utf-8')
     return content_type, body
 
 
 def get_content_type(filename):
     """return mimetypes.guess_type(filename)[0] or 'application/octet-stream'"""
-    return mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+    return unicode(mimetypes.guess_type(filename)[0] or 'application/octet-stream')
 
 
 def send_form(url, fields, files, timeout=None, headers=None):
@@ -338,7 +343,9 @@ def send_form(url, fields, files, timeout=None, headers=None):
 
 
 def find_substring(s, start, end, extend=False, with_start=True, with_end=True):
-    """Возвращает подстроку, находящуюся между кусками строки start и end, или None, если не нашлось. При extend=True кусок строки end ищется с конца (rfind)."""
+    """Возвращает подстроку, находящуюся между кусками строки start и end, или None, если не нашлось.
+    При extend=True кусок строки end ищется с конца (rfind).
+    """
     f1 = s.find(start)
     if f1 < 0:
         return
@@ -350,15 +357,16 @@ def find_substring(s, start, end, extend=False, with_start=True, with_end=True):
 
 def download(url, maxmem=20 * 1024 * 1024, timeout=5, waitout=15):
     """Скачивает данные по урлу. Имеет защиту от переполнения памяти и слишком долгого ожидания, чтобы всякие боты тут не висли. В случае чего кидает IOError."""
+    url = unicode(url)
     if url.startswith('//'):
         url = 'http:' + url
-    req = urllib2.urlopen(url.encode("utf-8") if isinstance(url, unicode) else url, timeout=timeout)
+    req = urllib2.urlopen(url.encode("utf-8"), timeout=timeout)
 
     size = req.headers.get('content-length')
     if size and size.isdigit() and int(size) > maxmem:
         raise IOError("Too big")
 
-    data = ''
+    data = b''
     start_dwnl = time.time()
 
     while 1:
@@ -388,6 +396,7 @@ def find_good_image(urls, maxmem=20 * 1024 * 1024):
 
     good_image = None, None
     for url in urls:
+        url = unicode(url)
         if url.find('//dl.dropboxusercontent.com/') in (5, 6):
             waitout = 60
         elif url.find('//dl.dropbox.com/') in (5, 6):
@@ -451,7 +460,7 @@ def normalize_body(body=None, raw_body=None, cls='text'):
     """Кодирует lxml-элемент в исходник html или наоборот декодирует исходник в lxml-элемент."""
     if body is not None and raw_body is None:
         raw_body = lxml.etree.tostring(body, method="xml", encoding="utf-8")  # pylint: disable=no-member
-        raw_body = raw_body.replace('&#13;', '\r').decode('utf-8')
+        raw_body = raw_body.replace(b'&#13;', b'\r').decode('utf-8')
         raw_body = raw_body[raw_body.find(">") + 1:raw_body.rfind("</")]  # <div class="text">body</div>
 
         # Занимаемся подгонкой под оригинальный исходник
@@ -483,57 +492,57 @@ def escape_topic_contents(data, may_be_short=False):
     buf = []
     while True:
         # определяем границы тела очередного поста
-        f1 = data.find('<div class="topic-content text">', last_end)
+        f1 = data.find(b'<div class="topic-content text">', last_end)
         if f1 < 0:
             break
-        f2 = data.find('<footer', f1)
+        f2 = data.find(b'<footer', f1)
         if f2 < 0:
             break
-        f2 = data.rfind('</div>', f1, f2)
+        f2 = data.rfind(b'</div>', f1, f2)
         if f2 < 0:
             break
 
         # старые топики-ссылки
-        if data.rfind('<div class="topic-url"', f1, f2) > 0:
-            f2 = data.rfind('</div>', f1, data.rfind('<div class="topic-url"', f1, f2))
+        if data.rfind(b'<div class="topic-url"', f1, f2) > 0:
+            f2 = data.rfind(b'</div>', f1, data.rfind(b'<div class="topic-url"', f1, f2))
             if f2 < 0:
                 break
 
         # топики-файлы
-        if data.rfind('<div class="download"', f1, f2) > 0:
-            f2 = data.rfind('</div>', f1, data.rfind('<div class="download"', f1, f2))
+        if data.rfind(b'<div class="download"', f1, f2) > 0:
+            f2 = data.rfind(b'</div>', f1, data.rfind(b'<div class="download"', f1, f2))
             if f2 < 0:
                 break
 
         # выясняем, есть кат или нет
-        body = data[data.find('>', f1) + 1:f2].strip()
+        body = data[data.find(b'>', f1) + 1:f2].strip()
         short = None
         if may_be_short:
-            fa = body.rfind('title="Читать дальше">')
+            fa = body.rfind('title="Читать дальше">'.encode('utf-8'))
             if fa > 0:
-                fa2 = body.find('</a>', fa)
+                fa2 = body.find(b'</a>', fa)
                 if fa2 > 0 and fa2 == len(body) - 4:
-                    short = body[body.find(">", fa) + 1:fa2].strip()
-                    body = body[:body.rfind('<', 0, fa)].rstrip()
+                    short = body[body.find(b">", fa) + 1:fa2].strip()
+                    body = body[:body.rfind(b'<', 0, fa)].rstrip()
 
         # выпиливаем header при его наличии
-        if body.startswith('<header'):
-            body = body[body.find('</header>') + 9:].lstrip()
+        if body.startswith(b'<header'):
+            body = body[body.find(b'</header>') + 9:].lstrip()
 
         # экранируем тело
-        body = body.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+        body = body.replace(b'&', b'&amp;').replace(b'<', b'&lt;').replace(b'>', b'&gt;').replace(b'"', b'&quot;')
 
         # собираем страницу обратно
         buf.extend((
             data[last_end:f1],
-            '<div class="topic-content text" data-escaped="1" data-short="%s" data-short-text="%s">' % (1 if short is not None else 0, short if short is not None else ''),
+            b'<div class="topic-content text" data-escaped="1" data-short="%s" data-short-text="%s">' % (1 if short is not None else 0, short if short is not None else b''),
             body,
-            '</div>'
+            b'</div>'
         ))
         last_end = f2 + 6
 
     buf.append(data[last_end:])
-    return ''.join(buf)
+    return b''.join(buf)
 
 
 def escape_comment_contents(data):
@@ -546,39 +555,39 @@ def escape_comment_contents(data):
     buf = []
     while True:
         # определяем границы очередного коммента
-        f1 = data.find('class="comment-content">', last_end)
+        f1 = data.find(b'class="comment-content">', last_end)
         if f1 >= 0:
-            f = data.find('<div class=" text">', f1, f1 + 150)
+            f = data.find(b'<div class=" text">', f1, f1 + 150)
             if f < 0:
-                f1 = data.find('<div class="text">', f1, f1 + 150)
+                f1 = data.find(b'<div class="text">', f1, f1 + 150)
             else:
                 f1 = f
             del f
         if f1 < 0:
             break
-        f2 = data.find('<div id="info_edit_', f1)
+        f2 = data.find(b'<div id="info_edit_', f1)
         if f2 < 0:
-            f2 = data.find('<div class="comment-path', f1)
+            f2 = data.find(b'<div class="comment-path', f1)
         if f2 < 0:
             break
-        f2 = data.rfind('</div>', f1, f2)
+        f2 = data.rfind(b'</div>', f1, f2)
         if f2 >= 0:
-            f2 = data.rfind('</div>', f1, f2)
+            f2 = data.rfind(b'</div>', f1, f2)
         if f2 < 0:
             break
 
         # экранируем тело
-        body = data[data.find('>', f1) + 1:f2].strip()
-        body = body.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+        body = data[data.find(b'>', f1) + 1:f2].strip()
+        body = body.replace(b'&', b'&amp;').replace(b'<', b'&lt;').replace(b'>', b'&gt;').replace(b'"', b'&quot;')
 
         # собираем страницу обратно
         buf.extend((
             data[last_end:f1],
-            '<div class="text" data-escaped="1">',
+            b'<div class="text" data-escaped="1">',
             body,
-            '</div>'
+            b'</div>'
         ))
         last_end = f2 + 6
 
     buf.append(data[last_end:])
-    return ''.join(buf)
+    return b''.join(buf)

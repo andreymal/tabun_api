@@ -1,9 +1,11 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 
+from __future__ import unicode_literals
+
 import os
 import urllib2
-from StringIO import StringIO
+from StringIO import StringIO as BytesIO
 from httplib import HTTPMessage
 
 import pytest
@@ -76,7 +78,7 @@ def user():
 def load_mocks(new_mocks):
     global current_mocks
     for key, value in new_mocks.items():
-        current_mocks[key] = ((value, None) if isinstance(value, str) else value)
+        current_mocks[key] = ((value, None) if isinstance(value, basestring) else value)
 
 
 def clear_mock():
@@ -96,15 +98,15 @@ def load_file(name, ignorekeys=(), template=True):
         return data
 
     # Для этих шаблонов имеется два режима — неавторизованного и авторизованного пользователя
-    for metakey, key in [('%AUTH1%', 'AUTH1_'), ('%AUTH2%', 'AUTH2_')]:
+    for metakey, key in [(b'%AUTH1%', b'AUTH1_'), (b'%AUTH2%', b'AUTH2_')]:
         if metakey not in ignorekeys and metakey in data:
-            key = (key + 'GUEST') if guest_mode else (key + 'AUTHORIZED')
+            key = (key + b'GUEST') if guest_mode else (key + b'AUTHORIZED')
             tname = templates[key]
             data = data.replace(metakey, load_file(tname, ignorekeys + (key,)))
 
     # Пародируем шаблонизатор и включаем другие файлы в шаблон
     for key, tname in templates.items():
-        key = '%' + key + '%'
+        key = b'%' + key.encode('utf-8') + b'%'
         if key not in ignorekeys and key in data:
             data = data.replace(key, load_file(tname, ignorekeys + (key,)))
 
@@ -131,7 +133,7 @@ def build_response(req_url, result_path, optparams=None):
         params.update(optparams)
 
     # Само содержимое подделываемого ответа на HTTP-запрос
-    fp = StringIO(load_file(result_path) if result_path else params.get('data', ''))
+    fp = BytesIO(load_file(result_path) if result_path else params.get('data', ''))
 
     # Собираем HTTP-заголовки
     raw_headers = ''
@@ -142,7 +144,7 @@ def build_response(req_url, result_path, optparams=None):
         else:
             raw_headers += value
         raw_headers += '\r\n'
-    headers = HTTPMessage(StringIO(raw_headers))
+    headers = HTTPMessage(BytesIO(raw_headers.encode('utf-8')))
 
     # Для некоторых ошибок нужно сгенерировать исключение
     if (params['status'] >= 500 or params['status'] in (404,)) and not params.get('noexc'):
@@ -157,6 +159,10 @@ def build_response(req_url, result_path, optparams=None):
 
 class UserTest(api.User):
     def urlopen(self, url, data=None, headers={}, redir=True, nowait=False, with_cookies=True, timeout=None):
+        # TODO: заменить эту функцию на send_request
+        # собираем urllib2.Request для проверки, что там ничего не упадёт
+        self.build_request(url, data, headers, with_cookies)
+
         # Нормализуем url для поиска
         req_url = url.get_full_url() if isinstance(url, urllib2.Request) else url
         if req_url.startswith('/'):
