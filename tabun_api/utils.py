@@ -334,8 +334,12 @@ def send_form(url, fields, files, timeout=None, headers=None):
         headers = headers.items()
     if headers:
         for header, value in headers:
+            if isinstance(header, unicode):
+                header = header.encode('utf-8')
+            if isinstance(value, unicode):
+                value = value.encode('utf-8')
             url.add_header(header, value)
-    url.add_header('content-type', content_type)
+    url.add_header(b'content-type', content_type.encode('utf-8'))
     if timeout is None:
         return urllib2.urlopen(url, data)
     else:

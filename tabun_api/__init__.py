@@ -515,7 +515,7 @@ class User(object):
         if not self.phpsessid or not self.security_ls_key:
             raise TabunError("Not logined")
 
-    def build_request(self, url, data=None, headers={}, with_cookies=True):
+    def build_request(self, url, data=None, headers=None, with_cookies=True):
         """Собирает и возвращает объект urllib2.Request. Используется в методе urlopen."""
 
         if isinstance(url, unicode):
@@ -593,7 +593,7 @@ class User(object):
         finally:
             self.lock.release()
 
-    def urlopen(self, url, data=None, headers={}, redir=True, nowait=False, with_cookies=True, timeout=None):
+    def urlopen(self, url, data=None, headers=None, redir=True, nowait=False, with_cookies=True, timeout=None):
         """Отправляет HTTP-запрос и возвращает результат urllib2.urlopen (объект urllib.addinfourl).
         Если указан параметр data, то отправляется POST-запрос.
         В качестве URL может быть путь с доменом (http://tabun.everypony.ru/), без домена (/index/newall/) или объект urllib2.Request.
@@ -1293,8 +1293,8 @@ class User(object):
 
         foto = raw_data.find(b'id="foto-img"')
         if foto >= 0:
-            foto = raw_data[raw_data.rfind('<img', 0, foto):]
-            foto = foto[:foto.find('</a>')]
+            foto = raw_data[raw_data.rfind(b'<img', 0, foto):]
+            foto = foto[:foto.find(b'</a>')]
         else:
             foto = None
 
