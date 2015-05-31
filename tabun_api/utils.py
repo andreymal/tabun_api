@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 from __future__ import unicode_literals
@@ -6,7 +6,6 @@ from __future__ import unicode_literals
 import re
 import time
 import random
-import urllib2
 import mimetypes
 from hashlib import md5
 
@@ -14,6 +13,8 @@ import lxml
 import lxml.html
 import lxml.etree
 # import html5lib
+
+from .compat import text, text_types, binary, urequest, PY2
 
 #: Месяцы, для парсинга даты.
 mons = ('января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря')
@@ -30,9 +31,9 @@ ava_regex = re.compile(r"\/images\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9
 
 def parse_html(data, encoding='utf-8'):
     """Парсит HTML-код и возвращает lxml.etree-элемент."""
-    # if isinstance(data, unicode): encoding = None
+    # if isinstance(data, text): encoding = None
     # doc = html5lib.parse(data, treebuilder="lxml", namespaceHTMLElements=False, encoding=encoding)
-    if isinstance(data, str):
+    if isinstance(data, binary):
         data = data.decode(encoding, "replace")
     doc = lxml.html.fromstring(data)
     return doc
@@ -40,9 +41,9 @@ def parse_html(data, encoding='utf-8'):
 
 def parse_html_fragment(data, encoding='utf-8'):
     """Парсит кусок HTML-кода и возвращает список lxml.etree-элементов и строк."""
-    # if isinstance(data, unicode): encoding = None
+    # if isinstance(data, text): encoding = None
     # doc = html5lib.parseFragment(data, treebuilder="lxml", namespaceHTMLElements=False, encoding=encoding)
-    if isinstance(data, str):
+    if isinstance(data, binary):
         data = data.decode(encoding, "replace")
     doc = lxml.html.fragments_fromstring(data)
     return doc
@@ -59,8 +60,8 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=Tr
     * disable_links: если True, то будут проигнорированы ссылки, текст которых совпадает с самой ссылкой
     """
 
-    if isinstance(node, basestring):
-        return unicode(node)
+    if isinstance(node, text_types):
+        return text(node)
 
     data = ""
     newlines = 0
@@ -207,7 +208,7 @@ def node2string(node):
 def mon2num(s):
     """Переводит названия месяцев в числа, чтобы строку можно было скормить в strftime."""
     for i in range(len(mons)):
-        s = s.replace(mons[i], unicode(i + 1))
+        s = s.replace(mons[i], text(i + 1))
     return s
 
 
@@ -287,21 +288,29 @@ def encode_multipart_formdata(fields, files):
     """
     if isinstance(fields, dict):
         fields = fields.items()
-    BOUNDARY = b'----------' + md5(str(int(time.time())) + str(random.randrange(1000))).hexdigest()
+    BOUNDARY = b'----------' + md5((text(int(time.time())) + text(random.randrange(1000))).encode('utf-8')).hexdigest().encode('utf-8')
     L = []
 
     for (key, value) in fields:
-        key = key.encode("utf-8") if isinstance(key, unicode) else str(key)
-        value = value.encode("utf-8") if isinstance(value, unicode) else str(value)
+        key = text(key).encode('utf-8')
+        if isinstance(value, text):
+            value = value.encode('utf-8')
+        elif isinstance(value, (int, float, complex)):
+            value = text(value).encode('utf-8')
+        elif not isinstance(value, binary):
+            raise ValueError('Value should be bytes, not %s' % type(value))
         L.append(b'--' + BOUNDARY)
-        L.append(b'Content-Disposition: form-data; name="%s"' % key)
+        L.append(('Content-Disposition: form-data; name="%s"' % key.decode('utf-8')).encode('utf-8'))
         L.append(b'')
         L.append(value)
 
     for (key, filename, value) in files:
-        key = key.encode("utf-8") if isinstance(key, unicode) else str(key)
-        filename = filename.encode("utf-8") if isinstance(filename, unicode) else str(filename)
-        value = value.encode("utf-8") if isinstance(value, unicode) else str(value)
+        key = text(key).encode('utf-8')
+        filename = text(filename).encode('utf-8')
+        if isinstance(value, text):
+            value = value.encode('utf-8')
+        elif not isinstance(value, binary):
+            raise ValueError('Value should be bytes, not %s' % type(value))
         L.append(b'--' + BOUNDARY)
         L.append(b'Content-Disposition: form-data; name="%s"; filename="%s"' % (key, filename))
         L.append(b'Content-Type: %s' % get_content_type(filename).encode('utf-8'))
@@ -317,7 +326,7 @@ def encode_multipart_formdata(fields, files):
 
 def get_content_type(filename):
     """return mimetypes.guess_type(filename)[0] or 'application/octet-stream'"""
-    return unicode(mimetypes.guess_type(filename)[0] or 'application/octet-stream')
+    return text(mimetypes.guess_type(filename)[0] or 'application/octet-stream')
 
 
 def send_form(url, fields, files, timeout=None, headers=None):
@@ -328,22 +337,22 @@ def send_form(url, fields, files, timeout=None, headers=None):
     * headers - дополнительные HTTP-заголовки
     """
     content_type, data = encode_multipart_formdata(fields, files)
-    if not isinstance(url, urllib2.Request):
-        url = urllib2.Request(url)
+    if not isinstance(url, urequest.Request):
+        url = urequest.Request(url)
     if isinstance(headers, dict):
         headers = headers.items()
     if headers:
         for header, value in headers:
-            if isinstance(header, unicode):
+            if isinstance(header, text):
                 header = header.encode('utf-8')
-            if isinstance(value, unicode):
+            if isinstance(value, text):
                 value = value.encode('utf-8')
             url.add_header(header, value)
     url.add_header(b'content-type', content_type.encode('utf-8'))
     if timeout is None:
-        return urllib2.urlopen(url, data)
+        return urequest.urlopen(url, data)
     else:
-        return urllib2.urlopen(url, data, timeout)
+        return urequest.urlopen(url, data, timeout)
 
 
 def find_substring(s, start, end, extend=False, with_start=True, with_end=True):
@@ -361,10 +370,10 @@ def find_substring(s, start, end, extend=False, with_start=True, with_end=True):
 
 def download(url, maxmem=20 * 1024 * 1024, timeout=5, waitout=15):
     """Скачивает данные по урлу. Имеет защиту от переполнения памяти и слишком долгого ожидания, чтобы всякие боты тут не висли. В случае чего кидает IOError."""
-    url = unicode(url)
+    url = text(url)
     if url.startswith('//'):
         url = 'http:' + url
-    req = urllib2.urlopen(url.encode("utf-8"), timeout=timeout)
+    req = urequest.urlopen(url.encode("utf-8") if PY2 else url, timeout=timeout)
 
     size = req.headers.get('content-length')
     if size and size.isdigit() and int(size) > maxmem:
@@ -396,11 +405,11 @@ def find_good_image(urls, maxmem=20 * 1024 * 1024):
         import Image
     except ImportError:
         from PIL import Image
-    from StringIO import StringIO
+    from io import BytesIO
 
     good_image = None, None
     for url in urls:
-        url = unicode(url)
+        url = text(url)
         if url.find('//dl.dropboxusercontent.com/') in (5, 6):
             waitout = 60
         elif url.find('//dl.dropbox.com/') in (5, 6):
@@ -413,7 +422,7 @@ def find_good_image(urls, maxmem=20 * 1024 * 1024):
             continue
 
         try:
-            img = Image.open(StringIO(data))
+            img = Image.open(BytesIO(data))
         except:
             continue
 
@@ -481,12 +490,12 @@ def normalize_body(body=None, raw_body=None, cls='text'):
     elif raw_body is not None and body is None:
         body = parse_html_fragment(('<div class="%s">' % cls) + raw_body + '</div>')[0]
 
-    return body, unicode(raw_body) if raw_body is not None else None
+    return body, text(raw_body) if raw_body is not None else None
 
 
 def escape_topic_contents(data, may_be_short=False):
     """Экранирует содержимое постов для защиты от поехавшей вёрстки и багов lxml."""
-    if not isinstance(data, str):
+    if not isinstance(data, binary):
         # u'\xa0'.strip() => u''
         # '\xa0'.strip() => '\xa0' — придерживаюсь этого варианта
         raise ValueError('data should be bytes')
@@ -539,7 +548,9 @@ def escape_topic_contents(data, may_be_short=False):
         # собираем страницу обратно
         buf.extend((
             data[last_end:f1],
-            b'<div class="topic-content text" data-escaped="1" data-short="%s" data-short-text="%s">' % (1 if short is not None else 0, short if short is not None else b''),
+            ('<div class="topic-content text" data-escaped="1" data-short="%s" data-short-text="%s">' % (
+                1 if short is not None else 0, short.decode('utf-8') if short is not None else ''
+            )).encode('utf-8'),
             body,
             b'</div>'
         ))
@@ -551,7 +562,7 @@ def escape_topic_contents(data, may_be_short=False):
 
 def escape_comment_contents(data):
     """Экранирует содержимое комментов."""
-    if not isinstance(data, str):
+    if not isinstance(data, binary):
         raise ValueError('data should be bytes')
     f1 = 0
     f2 = 0

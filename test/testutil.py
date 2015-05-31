@@ -1,16 +1,23 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 from __future__ import unicode_literals
 
 import os
-import urllib2
-from StringIO import StringIO as BytesIO
-from httplib import HTTPMessage
+import cgi
+from io import BytesIO
 
 import pytest
 
 import tabun_api as api
+from tabun_api.compat import urequest, text, text_types, binary, PY2
+
+if PY2:
+    from httplib import HTTPMessage
+    def parse_headers(fp):
+        return HTTPMessage(fp)
+else:
+    from http.client import parse_headers
 
 guest_mode = False
 
@@ -31,6 +38,7 @@ templates = {
 }
 
 interceptors = {}
+form_interceptors = {}
 current_mocks = {}
 
 mocks = {
@@ -61,6 +69,19 @@ def intercept():
 
 
 @pytest.yield_fixture(scope='function')
+def form_intercept():
+    def dfunc(url):
+        def decorator(f):
+            form_interceptors[url] = f
+            return f
+        return decorator
+    try:
+        yield dfunc
+    finally:
+        form_interceptors.clear()
+
+
+@pytest.yield_fixture(scope='function')
 def as_guest():
     global guest_mode
     guest_mode = True
@@ -78,7 +99,7 @@ def user():
 def load_mocks(new_mocks):
     global current_mocks
     for key, value in new_mocks.items():
-        current_mocks[key] = ((value, None) if isinstance(value, basestring) else value)
+        current_mocks[key] = ((value, None) if isinstance(value, text_types) else value)
 
 
 def clear_mock():
@@ -98,17 +119,18 @@ def load_file(name, ignorekeys=(), template=True):
         return data
 
     # Для этих шаблонов имеется два режима — неавторизованного и авторизованного пользователя
-    for metakey, key in [(b'%AUTH1%', b'AUTH1_'), (b'%AUTH2%', b'AUTH2_')]:
-        if metakey not in ignorekeys and metakey in data:
-            key = (key + b'GUEST') if guest_mode else (key + b'AUTHORIZED')
+    for metakey in ('AUTH1', 'AUTH2'):
+        bmetakey = b'%' + metakey.encode('utf-8') + b'%'
+        if metakey not in ignorekeys and bmetakey in data:
+            key = (metakey + '_GUEST') if guest_mode else (metakey + '_AUTHORIZED')
             tname = templates[key]
-            data = data.replace(metakey, load_file(tname, ignorekeys + (key,)))
+            data = data.replace(metakey.encode('utf-8'), load_file(tname, ignorekeys + (key,)))
 
     # Пародируем шаблонизатор и включаем другие файлы в шаблон
     for key, tname in templates.items():
-        key = b'%' + key.encode('utf-8') + b'%'
-        if key not in ignorekeys and key in data:
-            data = data.replace(key, load_file(tname, ignorekeys + (key,)))
+        bkey = b'%' + key.encode('utf-8') + b'%'
+        if key not in ignorekeys and bkey in data:
+            data = data.replace(bkey, load_file(tname, ignorekeys + (key,)))
 
     return data
 
@@ -133,7 +155,7 @@ def build_response(req_url, result_path, optparams=None):
         params.update(optparams)
 
     # Само содержимое подделываемого ответа на HTTP-запрос
-    fp = BytesIO(load_file(result_path) if result_path else params.get('data', ''))
+    fp = BytesIO(load_file(result_path) if result_path else params.get('data', b''))
 
     # Собираем HTTP-заголовки
     raw_headers = ''
@@ -144,14 +166,14 @@ def build_response(req_url, result_path, optparams=None):
         else:
             raw_headers += value
         raw_headers += '\r\n'
-    headers = HTTPMessage(BytesIO(raw_headers.encode('utf-8')))
+    headers = parse_headers(BytesIO(raw_headers.encode('utf-8')))
 
     # Для некоторых ошибок нужно сгенерировать исключение
     if (params['status'] >= 500 or params['status'] in (404,)) and not params.get('noexc'):
-        raise urllib2.HTTPError(params['url'], params['status'], params['status_msg'], headers, fp)
+        raise urequest.HTTPError(params['url'], params['status'], params['status_msg'], headers, fp)
 
     # Собираем ответ на HTTP-запрос
-    resp = urllib2.addinfourl(fp, headers, params['url'])
+    resp = urequest.addinfourl(fp, headers, params['url'])
     resp.code = params['status']
     resp.msg = params['status_msg']
     return resp
@@ -163,19 +185,32 @@ class UserTest(api.User):
         # собираем urllib2.Request для проверки, что там ничего не упадёт
         self.build_request(url, data, headers, with_cookies)
 
+        data = data.encode('utf-8') if isinstance(data, text) else data
+
         # Нормализуем url для поиска
-        req_url = url.get_full_url() if isinstance(url, urllib2.Request) else url
+        req_url = url.get_full_url() if isinstance(url, urequest.Request) else url
         if req_url.startswith('/'):
             req_url = api.http_host + req_url
 
         # Перехват запроса при необходимости
+        for url, func in form_interceptors.items():
+            if req_url == url or req_url == api.http_host + url:
+                ctype = headers['content-type'].decode('utf-8') if isinstance(headers['content-type'], binary) else headers['content-type']
+                if ctype.startswith('multipart/form-data;'):
+                    pdict = cgi.parse_header(headers['content-type'])[1]
+                    data = cgi.parse_multipart(BytesIO(data), {'boundary': pdict['boundary'].encode('utf-8')})
+                else:
+                    data = cgi.parse_qs(data.decode('utf-8'))
+                func(data, headers)
+                break
+
         for url, func in interceptors.items():
             if req_url == url or req_url == api.http_host + url:
-                func(url, data, headers)
+                func(data, headers)
                 break
 
         # Ищем ответ на запрос
-        for url, (result_path, optparams) in current_mocks.items() + mocks.items():
+        for url, (result_path, optparams) in list(current_mocks.items()) + list(mocks.items()):
             if url.startswith('/'):
                 url = api.http_host + url
             if req_url == url:

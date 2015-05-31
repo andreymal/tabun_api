@@ -1,19 +1,19 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 # pylint: disable=W0611, W0613, W0621, E1101
 
 from __future__ import unicode_literals
 
-import cgi
 import time
 import json
-from StringIO import StringIO
+from io import BytesIO
 
 import pytest
 import tabun_api as api
+from tabun_api.compat import text, binary
 
-from testutil import UserTest, load_file, intercept, set_mock, user
+from testutil import UserTest, load_file, form_intercept, set_mock, user
 
 
 @pytest.mark.parametrize("url,data_file,rev", [
@@ -45,36 +45,34 @@ def test_get_comments_types_ok(user):
     comments.update(user.get_comments('/blog/132085.html'))
     for comment_id, comment in comments.items():
         assert isinstance(comment_id, int)
-        assert comment.blog is None or isinstance(comment.blog, unicode)
+        assert comment.blog is None or isinstance(comment.blog, text)
         if comment.deleted:
             assert comment.author is None
             assert comment.raw_body is None
             assert comment.vote is None
         else:
-            assert isinstance(comment.author, unicode)
-            assert isinstance(comment.raw_body, unicode)
+            assert isinstance(comment.author, text)
+            assert isinstance(comment.raw_body, text)
             assert isinstance(comment.vote, int)
 
 
-def test_add_comment_ok(intercept, set_mock, user):
-    set_mock({'/blog/ajaxaddcomment/': (None, {'data': '{"sCommentId": 1, "sMsgTitle": "", "sMsg": "", "bStateError": false}'})})
-    @intercept('/blog/ajaxaddcomment/')
-    def add_comment(url, data, headers):
+def test_add_comment_ok(form_intercept, set_mock, user):
+    set_mock({'/blog/ajaxaddcomment/': (None, {'data': b'{"sCommentId": 1, "sMsgTitle": "", "sMsg": "", "bStateError": false}'})})
+    @form_intercept('/blog/ajaxaddcomment/')
+    def add_comment(data, headers):
         assert headers.get('content-type', '').startswith('multipart/form-data; boundary=-')
-        pdict = cgi.parse_header(headers['content-type'])[1]
-        data = cgi.parse_multipart(StringIO(data), pdict)
 
-        assert data.get('security_ls_key') == ['0123456789abcdef0123456789abcdef']
-        assert data.get('cmt_target_id') in (['1'], ['2'])
-        assert data.get('comment_text') == [u'тест'.encode('utf-8')]
-        assert data.get('reply') == (['0'] if data['cmt_target_id'][0] == '1' else ['1'])
+        assert data.get('security_ls_key') == [b'0123456789abcdef0123456789abcdef']
+        assert data.get('cmt_target_id') in ([b'1'], [b'2'])
+        assert data.get('comment_text') == ['тест'.encode('utf-8')]
+        assert data.get('reply') == ([b'0'] if data['cmt_target_id'][0] == b'1' else [b'1'])
 
-    assert user.comment(1, u'тест') == 1
-    assert user.comment(1, u'тест', reply=0) == 1
+    assert user.comment(1, 'тест') == 1
+    assert user.comment(1, 'тест', reply=0) == 1
 
 def test_add_comment_fail(set_mock, user):
     err = "Текст комментария должен быть от 2 до 3000 символов и не содержать разного рода каку"
-    set_mock({'/blog/ajaxaddcomment/': (None, {'data': (u'{"sMsgTitle": "Ошибка", "sMsg": "%s", "bStateError": true}' % err).encode('utf-8')})})
+    set_mock({'/blog/ajaxaddcomment/': (None, {'data': ('{"sMsgTitle": "Ошибка", "sMsg": "%s", "bStateError": true}' % err).encode('utf-8')})})
     with pytest.raises(api.TabunResultError) as excinfo:
         user.comment(1, '')
     assert excinfo.value.message == err

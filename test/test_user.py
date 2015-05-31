@@ -1,17 +1,16 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 # pylint: disable=W0611, W0613, W0621, E1101
 
 from __future__ import unicode_literals
 
-import cgi
-
 import pytest
 import tabun_api as api
+from tabun_api.compat import PY2
 
 import testutil
-from testutil import UserTest, intercept, set_mock, as_guest, user
+from testutil import UserTest, form_intercept, set_mock, as_guest, user
 
 
 def test_user_preloaded_cookies(set_mock):
@@ -81,11 +80,10 @@ def test_userinfo_authorized(user):
     assert user.skill == 777.77
 
 
-def test_login_request(set_mock, intercept, as_guest, user):
+def test_login_request(set_mock, form_intercept, as_guest, user):
     set_mock({'/login/ajax-login': 'ajax_login_ok.json'})
-    @intercept('/login/ajax-login')
-    def login(url, data, headers):
-        data = cgi.parse_qs(data)
+    @form_intercept('/login/ajax-login')
+    def login(data, headers):
         assert data.get('login') == ['test']
         assert data.get('password') == ['123456']
         assert data.get('security_ls_key') == [user.security_ls_key]
@@ -138,6 +136,10 @@ def test_logout_auto(set_mock, as_guest, user):
 
 
 def test_init_proxy_ok():
+    if not PY2:
+        with pytest.raises(NotImplementedError):
+            UserTest(proxy='socks5,localhost,9999')
+        return
     assert UserTest(proxy='socks5,localhost,9999').proxy == ['socks5', 'localhost', 9999]
     assert UserTest(proxy='socks4,localhost,9999').proxy == ['socks4', 'localhost', 9999]
 
@@ -150,7 +152,13 @@ def test_init_proxy_from_setenv():
             return 'socks5,localhost,8888'
         return old_getenv(*args, **kwargs)
     os.getenv = getenv
+
     try:
+        if not PY2:
+            with pytest.raises(NotImplementedError):
+                UserTest()
+            return
+
         assert UserTest().proxy == ['socks5', 'localhost', 8888]
     finally:
         os.getenv = old_getenv
@@ -167,14 +175,14 @@ def test_check_login(user):
 
 
 def test_ajax_hacking_attemp(set_mock, user):
-    set_mock({'/ajax/': (None, {'data': 'Hacking attemp!'})})
+    set_mock({'/ajax/': (None, {'data': b'Hacking attemp!'})})
     with pytest.raises(api.TabunResultError) as excinfo:
         user.ajax('/ajax/', {'a': 5})
     assert excinfo.value.message == 'Hacking attemp!'
 
 
 def test_login_hacking_attemp(set_mock, user):
-    set_mock({'/login/ajax-login': (None, {'data': 'Hacking attemp!'})})
+    set_mock({'/login/ajax-login': (None, {'data': b'Hacking attemp!'})})
     with pytest.raises(api.TabunResultError) as excinfo:
         user.login('test', '123456')
     assert excinfo.value.message == 'Hacking attemp!'
@@ -182,11 +190,17 @@ def test_login_hacking_attemp(set_mock, user):
 
 def test_build_request_internal(user):
     req = user.build_request('/blog/2.html')
-    assert req.get_full_url() == b'http://tabun.everypony.ru/blog/2.html'
-    assert 'PHPSESSID=abcdef9876543210abcdef9876543210' in req.headers['Cookie']
+    if PY2:
+        assert req.get_full_url() == b'http://tabun.everypony.ru/blog/2.html'
+    else:
+        assert req.get_full_url() == 'http://tabun.everypony.ru/blog/2.html'
+    assert b'PHPSESSID=abcdef9876543210abcdef9876543210' in req.headers[b'Cookie']
 
 
 def test_build_request_external(user):
     req = user.build_request(b'https://imgur.com/', with_cookies=False)
-    assert req.get_full_url() == b'https://imgur.com/'
+    if PY2:
+        assert req.get_full_url() == b'https://imgur.com/'
+    else:
+        assert req.get_full_url() == 'https://imgur.com/'
     assert 'Cookie' not in req.headers.keys()

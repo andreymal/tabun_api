@@ -1,19 +1,19 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 # pylint: disable=W0611, W0613, W0621, E1101
 
 from __future__ import unicode_literals
 
-import cgi
 import time
 import json
-from StringIO import StringIO
+from io import BytesIO
 
 import pytest
 import tabun_api as api
+from tabun_api.compat import text
 
-from testutil import UserTest, load_file, intercept, set_mock, user
+from testutil import UserTest, load_file, form_intercept, set_mock, user
 
 
 def test_get_posts_data_ok(user):
@@ -33,12 +33,12 @@ def test_get_posts_data_ok(user):
 def test_get_posts_types_ok(user):
     posts = reversed(user.get_posts('/'))
     for post in posts:
-        assert isinstance(post.author, unicode)
-        assert post.blog is None or isinstance(post.blog, unicode)
-        assert isinstance(post.blog_name, unicode)
-        assert isinstance(post.title, unicode)
-        assert isinstance(post.raw_body, unicode)
-        assert isinstance(post.tags[0], unicode)
+        assert isinstance(post.author, text)
+        assert post.blog is None or isinstance(post.blog, text)
+        assert isinstance(post.blog_name, text)
+        assert isinstance(post.title, text)
+        assert isinstance(post.raw_body, text)
+        assert isinstance(post.tags[0], text)
         assert isinstance(post.comments_count, int)
         assert isinstance(post.comments_new_count, int)
 
@@ -72,21 +72,17 @@ def test_get_post_other_blog_2(set_mock, user):
     (6, 'news', 'http://tabun.everypony.ru/blog/news/1.html', False, ['Т2, Т3']),
     (None, None, 'http://tabun.everypony.ru/blog/1.html', True, ['Т2', 'Т3'])
 ])
-def test_add_post_ok(intercept, set_mock, user, blog_id, blog, result_url, draft, tags):
+def test_add_post_ok(form_intercept, set_mock, user, blog_id, blog, result_url, draft, tags):
     set_mock({
         '/topic/add/': (None, {
             'headers': {'location': result_url},
             'status': 302, 'status_msg': 'Found'
         }
     )})
-    @intercept('/topic/add/')
-    def topic_add(url, data, headers):
-        assert headers.get('content-type', '').startswith('multipart/form-data; boundary=-')
-        pdict = cgi.parse_header(headers['content-type'])[1]
-        data = cgi.parse_multipart(StringIO(data), pdict)
-
-        assert data.get('blog_id') == [str(blog_id if blog_id is not None else 0)]
-        assert data.get('security_ls_key') == ['0123456789abcdef0123456789abcdef']
+    @form_intercept('/topic/add/')
+    def topic_add(data, headers):
+        assert data.get('blog_id') == [text(blog_id if blog_id is not None else 0).encode('utf-8')]
+        assert data.get('security_ls_key') == [b'0123456789abcdef0123456789abcdef']
         assert data.get('topic_title') == ['Т0'.encode('utf-8')]
         assert data.get('topic_text') == ['Б1'.encode('utf-8')]
         assert data.get('topic_tags') == ['Т2, Т3'.encode('utf-8')]
@@ -99,7 +95,7 @@ def test_add_post_ok(intercept, set_mock, user, blog_id, blog, result_url, draft
     assert result == (blog, 1)
 
 
-def test_add_post_error(intercept, set_mock, user):
+def test_add_post_error(set_mock, user):
     set_mock({'/topic/add/': 'topic_add_error.html'})
     with pytest.raises(api.TabunResultError) as excinfo:
         user.add_post(None, '', '', [])
