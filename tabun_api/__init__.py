@@ -471,6 +471,7 @@ class User(object):
         if username and username[0]:
             self.username = username[0]
         else:
+            self.username = None
             self.talk_count = 0
             self.skill = None
             self.rating = None
