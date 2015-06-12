@@ -104,6 +104,10 @@ class Post(object):
     def __unicode__(self):
         return self.__repr__().decode('utf-8', 'replace')
 
+    @property
+    def url(self):
+        return http_host + '/blog/' + ((self.blog + '/') if self.blog else '') + text(self.post_id) + '.html'
+
 
 class Download(object):
     """Прикрепленный к посту файл (в новом Табуне) или ссылка (в старом Табуне)."""
@@ -539,25 +543,21 @@ class User(object):
             url.data = data.encode('utf-8') if isinstance(data, text) else data
 
 
-        if with_cookies and self.phpsessid:
-            url.add_header(b'Cookie', ("PHPSESSID=%s; key=%s; LIVESTREET_SECURITY_KEY=%s" % (
-                self.phpsessid, self.key, self.security_ls_key
-            )).encode('utf-8'))
+        request_headers = dict(http_headers)
+        if headers:
+            request_headers.update(headers)
 
-        for header, value in http_headers.items():
-            if isinstance(header, text):
-                header = header.encode('utf-8')
+        if with_cookies and self.phpsessid:
+            request_headers['Cookie'] = ("PHPSESSID=%s; key=%s; LIVESTREET_SECURITY_KEY=%s" % (
+                self.phpsessid, self.key, self.security_ls_key
+            )).encode('utf-8')
+
+        for header, value in request_headers.items():
+            if not isinstance(header, str):  # py2 and py3
+                header = str(header)
             if isinstance(value, text):
                 value = value.encode('utf-8')
             url.add_header(header, value)
-        if headers:
-            for header, value in headers.items():
-                if isinstance(header, text):
-                    header = header.encode('utf-8')
-                if isinstance(value, text):
-                    value = value.encode('utf-8')
-                if header and value:
-                    url.add_header(header, value)
 
         return url
 

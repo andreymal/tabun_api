@@ -194,7 +194,7 @@ def test_build_request_internal(user):
         assert req.get_full_url() == b'http://tabun.everypony.ru/blog/2.html'
     else:
         assert req.get_full_url() == 'http://tabun.everypony.ru/blog/2.html'
-    assert b'PHPSESSID=abcdef9876543210abcdef9876543210' in req.headers[b'Cookie']
+    assert b'PHPSESSID=abcdef9876543210abcdef9876543210' in req.headers[str('Cookie')]
 
 
 def test_build_request_external(user):
@@ -203,4 +203,4 @@ def test_build_request_external(user):
         assert req.get_full_url() == b'https://imgur.com/'
     else:
         assert req.get_full_url() == 'https://imgur.com/'
-    assert 'Cookie' not in req.headers.keys()
+    assert str('Cookie') not in req.headers.keys()

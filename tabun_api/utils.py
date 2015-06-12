@@ -279,7 +279,7 @@ def find_images(body, spoiler_title=True, no_other=False):
 
 # copypasted from http://code.activestate.com/recipes/146306-http-client-to-post-using-multipartform-data/
 # and modified by andreymal
-def encode_multipart_formdata(fields, files):
+def encode_multipart_formdata(fields, files, boundary=None):
     """
     Возвращает (content_type, body), готовое для отправки HTTP-запроса
 
@@ -288,7 +288,10 @@ def encode_multipart_formdata(fields, files):
     """
     if isinstance(fields, dict):
         fields = fields.items()
-    BOUNDARY = b'----------' + md5((text(int(time.time())) + text(random.randrange(1000))).encode('utf-8')).hexdigest().encode('utf-8')
+    if boundary is None:
+        boundary = b'----------' + md5((text(int(time.time())) + text(random.randrange(1000))).encode('utf-8')).hexdigest().encode('utf-8')
+    elif isinstance(boundary, text):
+        boundary = boundary.encode('utf-8')
     L = []
 
     for (key, value) in fields:
@@ -299,7 +302,7 @@ def encode_multipart_formdata(fields, files):
             value = text(value).encode('utf-8')
         elif not isinstance(value, binary):
             raise ValueError('Value should be bytes, not %s' % type(value))
-        L.append(b'--' + BOUNDARY)
+        L.append(b'--' + boundary)
         L.append(('Content-Disposition: form-data; name="%s"' % key.decode('utf-8')).encode('utf-8'))
         L.append(b'')
         L.append(value)
@@ -311,16 +314,18 @@ def encode_multipart_formdata(fields, files):
             value = value.encode('utf-8')
         elif not isinstance(value, binary):
             raise ValueError('Value should be bytes, not %s' % type(value))
-        L.append(b'--' + BOUNDARY)
-        L.append(b'Content-Disposition: form-data; name="%s"; filename="%s"' % (key, filename))
-        L.append(b'Content-Type: %s' % get_content_type(filename).encode('utf-8'))
+        L.append(b'--' + boundary)
+        L.append((
+            'Content-Disposition: form-data; name="%s"; filename="%s"' % (key.decode('utf-8'), filename.decode('utf-8'))
+        ).encode('utf-8'))
+        L.append(('Content-Type: %s' % get_content_type(filename.decode('utf-8'))).encode('utf-8'))
         L.append(b'')
         L.append(value)
 
-    L.append(b'--' + BOUNDARY + b'--')
+    L.append(b'--' + boundary + b'--')
     L.append(b'')
     body = b'\r\n'.join(L)
-    content_type = 'multipart/form-data; boundary=%s' % BOUNDARY.decode('utf-8')
+    content_type = 'multipart/form-data; boundary=%s' % boundary.decode('utf-8')
     return content_type, body
 
 
@@ -337,22 +342,28 @@ def send_form(url, fields, files, timeout=None, headers=None):
     * headers - дополнительные HTTP-заголовки
     """
     content_type, data = encode_multipart_formdata(fields, files)
+
     if not isinstance(url, urequest.Request):
+        if PY2 and isinstance(url, text):
+            url = url.encode('utf-8')
         url = urequest.Request(url)
+
     if isinstance(headers, dict):
         headers = headers.items()
     if headers:
         for header, value in headers:
-            if isinstance(header, text):
-                header = header.encode('utf-8')
+            if not isinstance(header, str):  # py2 and py3
+                header = str(header)
             if isinstance(value, text):
                 value = value.encode('utf-8')
             url.add_header(header, value)
-    url.add_header(b'content-type', content_type.encode('utf-8'))
+    url.add_unredirected_header(str('Content-type'), content_type.encode('utf-8'))
+    url.data = data
+
     if timeout is None:
-        return urequest.urlopen(url, data)
+        return urequest.urlopen(url)
     else:
-        return urequest.urlopen(url, data, timeout)
+        return urequest.urlopen(url, timeout=timeout)
 
 
 def find_substring(s, start, end, extend=False, with_start=True, with_end=True):
