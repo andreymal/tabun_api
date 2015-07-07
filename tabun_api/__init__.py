@@ -688,6 +688,63 @@ class User(object):
         else:
             return parse_post_url(link)
 
+    def add_poll(self, blog_id, title, choices, body, tags, draft=False, check_if_error=False):
+        """Создает опрос и возвращает имя блога с номером поста в случае удачи или
+        (None, None)  случае неудачи.
+        Вариантов ответов не может быть более 20 штук! Иначе кидается исключение.
+        При check_if_error=True проверяет наличие поста по заголовку даже в случае ошибки (если, например, таймаут или 404, но пост, как иногда бывает, добавляется)."""
+        if len(choices) > 20:
+          raise TabunError("Can't have more than 20 choices in poll, but had %d" % len(choices))
+        
+        self.check_login()
+        blog_id = int(blog_id if blog_id else 0)
+        
+        if not isinstance(tags, text_types):
+            tags = ", ".join(tags)
+        
+        fields = [
+            ('topic_type', 'question'),
+            ('security_ls_key', self.security_ls_key),
+            ('blog_id', text(blog_id)),
+            ('topic_title', text(title)),
+            ('topic_text', text(body)),
+            ('topic_tags', text(tags))
+        ]
+        for choice in choices:
+            fields.append(('answer[]', choice))
+        
+        if draft:
+            fields.append(('submit_topic_save', "Сохранить в черновиках"))
+        else:
+            fields.append(('submit_topic_publish', "Опубликовать"))
+        
+        try:
+            result = self.send_form('/question/add/', fields, redir=False)
+            data = result.read()
+            error = utils.find_substring(data, b'<ul class="system-message-error">', b'</ul>', with_start=False, with_end=False)
+            if error and b':' in error:
+                error = utils.find_substring(error.decode('utf-8', 'replace'), ':', '</li>', extend=True, with_start=False, with_end=False).strip()
+                raise TabunResultError(error)
+            link = result.headers.get('location')
+        except TabunError:
+            if not check_if_error or not self.username:
+                raise
+            url = '/topic/saved/' if draft else '/profile/' + urequest.quote(self.username.encode('utf-8')).decode('utf-8') + '/created/topics/'
+
+            try:
+                posts = self.get_posts(url)
+            except:
+                posts = []
+            posts.reverse()
+
+            for post in posts[:2]:
+                if posts and post.title == text(title) and post.author == self.username:
+                    return post.blog, post.post_id
+
+            return None, None
+        else:
+            return parse_post_url(link)
+    
     def create_blog(self, title, url, description, rating_limit=0, closed=False):
         """Создаёт блог и возвращает его url-имя или None в случае неудачи."""
         self.check_login()
