@@ -162,7 +162,7 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=Tr
             if prev_text:
                 prev_text = None
 
-            tmp = htmlToString(item, fancy=fancy, vk_links=vk_links, hr_lines=hr_lines)
+            tmp = htmlToString(item, with_cutted=with_cutted, fancy=fancy, vk_links=vk_links, hr_lines=hr_lines)
             newlines = 0
 
             if item.tag == "s":  # зачёркивание
@@ -177,6 +177,11 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=Tr
                 tmp1 = tmp
 
             data += tmp1
+
+            if not with_cutted:
+                for item2 in item.iterchildren():
+                    if item2.tag == "a" and item2.get("rel") == "nofollow" and not item2.text_content() and not item2.getchildren():
+                        return data.strip()
 
             if item.tag in block_elems and not newlines:
                 data += "\n"
@@ -200,9 +205,9 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=Tr
     return data.strip()
 
 
-def node2string(node):
-    """Переводит html-элемент обратно в строку."""
-    return lxml.etree.tostring(node, method="html", encoding="utf-8")  # pylint: disable=no-member
+def node2string(node, encoding="utf-8"):
+    """Переводит html-элемент в байтовую строку."""
+    return lxml.etree.tostring(node, method="html", encoding=encoding)  # pylint: disable=no-member
 
 
 def mon2num(s):

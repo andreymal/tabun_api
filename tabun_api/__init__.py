@@ -148,9 +148,11 @@ class Comment(object):
         self.body, self.raw_body = utils.normalize_body(body, raw_body)
 
     def __repr__(self):
-        o = ("<" + ("deleted " if self.deleted else "") + "comment " + \
-            ((self.blog + "/" + text(self.post_id) + "/") if self.blog and self.post_id else "") + \
-            text(self.comment_id) + ">")
+        o = (
+            "<" + ("deleted " if self.deleted else "") + "comment " +
+            ((self.blog + "/" + text(self.post_id) + "/") if self.blog and self.post_id else "") +
+            text(self.comment_id) + ">"
+        )
         return o.encode('utf-8') if PY2 else o
 
     def __str__(self):
@@ -189,6 +191,10 @@ class Blog(object):
 
     def __unicode__(self):
         return self.__repr__().decode('utf-8', 'replace')
+
+    @property
+    def url(self):
+        return http_host + '/blog/' + self.blog + '/'
 
 
 class StreamItem(object):
@@ -542,7 +548,6 @@ class User(object):
         if data is not None:
             url.data = data.encode('utf-8') if isinstance(data, text) else data
 
-
         request_headers = dict(http_headers)
         if headers:
             request_headers.update(headers)
@@ -610,24 +615,24 @@ class User(object):
         К запросу добавлется печенька PHPSESSID; with_cookies=False отключает это.
         По умолчанию соблюдает между запросами временной интервал query_interval (который по умолчанию 0); nowait=True отправляет запрос немедленно.
         Может кидаться исключением TabunError."""
-        
+
         req = self.build_request(url, data, headers, with_cookies)
         return self.send_request(req, redir, nowait, timeout)
 
-    def send_form(self, url, fields=(), files=(), headers={}, redir=True):
+    def send_form(self, url, fields=(), files=(), headers=None, redir=True):
         """Формирует multipart/form-data запрос и отправляет его через функцию urlopen."""
         content_type, data = utils.encode_multipart_formdata(fields, files)
-        headers = headers.copy()
+        headers = dict(headers or ())
         headers['content-type'] = content_type
         return self.urlopen(url, data, headers, redir)
 
-
-    def ajax(self, url, fields={}, files=(), headers={}, throw_if_error=True):
+    def ajax(self, url, fields=None, files=(), headers=None, throw_if_error=True):
         """Отправляет ajax-запрос и возвращает распарсенный json-ответ. Или кидается исключением TabunResultError в случае ошибки."""
         self.check_login()
+        headers = dict(headers or ())
         headers['x-requested-with'] = 'XMLHttpRequest'
         fields['security_ls_key'] = self.security_ls_key
-        data = self.send_form(url, fields, files, headers=headers).read()
+        data = self.send_form(url, fields or {}, files, headers=headers).read()
 
         try:
             data = self.jd.decode(data.decode('utf-8'))
@@ -672,7 +677,7 @@ class User(object):
         except TabunError:
             if not check_if_error or not self.username:
                 raise
-            url = '/topic/saved/' if draft else '/profile/' + urequest.quote(self.username.encode('utf-8')).decode('utf-8') + '/created/topics/'
+            url = '/topic/saved/' if draft else '/profile/' + urequest.quote(self.username.encode('utf-8')) + '/created/topics/'
 
             try:
                 posts = self.get_posts(url)
@@ -694,14 +699,14 @@ class User(object):
         Вариантов ответов не может быть более 20 штук! Иначе кидается исключение.
         При check_if_error=True проверяет наличие поста по заголовку даже в случае ошибки (если, например, таймаут или 404, но пост, как иногда бывает, добавляется)."""
         if len(choices) > 20:
-          raise TabunError("Can't have more than 20 choices in poll, but had %d" % len(choices))
-        
+            raise TabunError("Can't have more than 20 choices in poll, but had %d" % len(choices))
+
         self.check_login()
         blog_id = int(blog_id if blog_id else 0)
-        
+
         if not isinstance(tags, text_types):
             tags = ", ".join(tags)
-        
+
         fields = [
             ('topic_type', 'question'),
             ('security_ls_key', self.security_ls_key),
@@ -712,12 +717,12 @@ class User(object):
         ]
         for choice in choices:
             fields.append(('answer[]', choice))
-        
+
         if draft:
             fields.append(('submit_topic_save', "Сохранить в черновиках"))
         else:
             fields.append(('submit_topic_publish', "Опубликовать"))
-        
+
         try:
             result = self.send_form('/question/add/', fields, redir=False)
             data = result.read()
@@ -729,7 +734,7 @@ class User(object):
         except TabunError:
             if not check_if_error or not self.username:
                 raise
-            url = '/topic/saved/' if draft else '/profile/' + urequest.quote(self.username.encode('utf-8')).decode('utf-8') + '/created/topics/'
+            url = '/topic/saved/' if draft else '/profile/' + urequest.quote(self.username.encode('utf-8')) + '/created/topics/'
 
             try:
                 posts = self.get_posts(url)
@@ -744,7 +749,7 @@ class User(object):
             return None, None
         else:
             return parse_post_url(link)
-    
+
     def create_blog(self, title, url, description, rating_limit=0, closed=False):
         """Создаёт блог и возвращает его url-имя или None в случае неудачи."""
         self.check_login()
@@ -1282,7 +1287,7 @@ class User(object):
 
     def get_profile(self, username=None, raw_data=None):
         if not raw_data:
-            raw_data = self.urlopen("/profile/" + text(username)).read()
+            raw_data = self.urlopen("/profile/" + urequest.quote(text(username).encode('utf-8'))).read()
 
         data = utils.find_substring(raw_data, b'<div id="content"', b'<!-- /content ', extend=True, with_end=False)
         if not data:
@@ -1588,7 +1593,6 @@ class User(object):
         link = result.headers.get('location')
         if '/talk/read/' in link:
             return int(link.rstrip('/').rsplit('/', 1)[-1])
-
 
     def get_talk_list(self, raw_data=None):
         """Возвращает список объектов Talk с личными сообщениями."""
