@@ -28,6 +28,11 @@ youtube_regex = re.compile(r'youtube.com\/embed\/(.{10,15})((\?)|($))')
 #: Регулярка для парсинга ссылки на аватарку — из неё можно узнать много полезного!
 ava_regex = re.compile(r"\/images\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/avatar_([0-9]+)x([0-9]+)\.(...)(\?([0-9]+))?")
 
+#: Регулярка для расшифровки почты, которую шифрует CloudFlare.
+cf_email = re.compile(r'<[A-z]+ class="__cf_email__".*? data-cfemail="([0-9a-f]+)".+?</script>', re.DOTALL)
+
+cf_email_b = re.compile(r'<[A-z]+ class="__cf_email__".*? data-cfemail="([0-9a-f]+)".+?</script>'.encode('utf-8'), re.DOTALL)
+
 
 def parse_html(data, encoding='utf-8'):
     """Парсит HTML-код и возвращает lxml.etree-элемент."""
@@ -483,6 +488,25 @@ def parse_avatar_url(url):
     num = int(g[10]) if g[10] is not None else None
 
     return user_id, date, size, ext, num
+
+
+def decode_cf_email(data):
+    key = int(data[0:2], 16)
+    use_bytes = not isinstance(data, text)
+    result = b''
+    for i in range(1, len(data) // 2):
+        b = int(data[i * 2:i * 2 + 2], 16) ^ key
+        if PY2:
+            result += chr(b)
+        else:
+            result += bytes([b])
+    return result if use_bytes else result.decode('utf-8')
+
+
+def replace_cloudflare_emails(data):
+    """Декодирует почты, которые зашифровал CloudFlare, в html-странице."""
+    r = cf_email if isinstance(data, text) else cf_email_b
+    return r.sub(lambda x: decode_cf_email(x.groups()[0]), data)
 
 
 def normalize_body(body=None, raw_body=None, cls='text'):

@@ -862,6 +862,7 @@ class User(object):
         del section2
 
         section = raw_data[section:raw_data.find('</section>', section + 1) + 10]
+        section = utils.replace_cloudflare_emails(section)
         section = utils.parse_html_fragment(section)
         if not section:
             return []
@@ -879,6 +880,7 @@ class User(object):
             req = self.urlopen(url)
             url = req.url
             raw_data = req.read()
+        raw_data = utils.replace_cloudflare_emails(raw_data)
 
         posts = []
 
@@ -929,6 +931,7 @@ class User(object):
             req = self.urlopen(url)
             url = req.url
             raw_data = req.read()
+        raw_data = utils.replace_cloudflare_emails(raw_data)
 
         posts = self.get_posts(url, raw_data=raw_data)
         if not posts:
@@ -955,6 +958,7 @@ class User(object):
         raw_data = utils.find_substring(raw_data, b'<div class="comments', b'<!-- /content -->', extend=True, with_end=False)
         if not raw_data:
             return {}
+        raw_data = utils.replace_cloudflare_emails(raw_data)
         escaped_data = utils.escape_comment_contents(utils.escape_topic_contents(raw_data, True))
         div = utils.parse_html_fragment(escaped_data)
         if not div:
@@ -1044,6 +1048,7 @@ class User(object):
             raw_data = req.read()
             del req
         data = utils.find_substring(raw_data, b'<div class="blog-top">', b'<div class="nav-menu-wrapper">', with_end=False)
+        data = utils.replace_cloudflare_emails(data)
 
         node = utils.parse_html_fragment(b'<div>' + data + b'</div>')
         if not node:
@@ -1212,6 +1217,7 @@ class User(object):
         if not raw_data:
             return []
 
+        raw_data = utils.replace_cloudflare_emails(raw_data)
         node = utils.parse_html_fragment(raw_data)[0]
         del raw_data
         node = node.find("ul")
@@ -1292,6 +1298,7 @@ class User(object):
         data = utils.find_substring(raw_data, b'<div id="content"', b'<!-- /content ', extend=True, with_end=False)
         if not data:
             return
+        data = utils.replace_cloudflare_emails(data)
         node = utils.parse_html_fragment(data)
         if not node:
             return
@@ -1472,6 +1479,7 @@ class User(object):
             extend=True, with_end=False
         )
 
+        raw_data = utils.replace_cloudflare_emails(raw_data)
         form = utils.parse_html_fragment(raw_data)
         if len(form) == 0:
             return None
@@ -1508,6 +1516,7 @@ class User(object):
 
         if not raw_data:
             return
+        raw_data = utils.replace_cloudflare_emails(raw_data)
         form = utils.parse_html_fragment(raw_data)
         if not form:
             return
@@ -1606,6 +1615,7 @@ class User(object):
         if not raw_data:
             return []
 
+        raw_data = utils.replace_cloudflare_emails(raw_data)
         node = utils.parse_html_fragment(raw_data)[0]
 
         elems = []
@@ -1629,6 +1639,7 @@ class User(object):
         if not data:
             return
 
+        data = utils.replace_cloudflare_emails(data)
         item = utils.parse_html_fragment(data)[0]
         title = item.find("header").find("h1").text
         body = item.xpath('div[@class="topic-content text"]')
@@ -1657,6 +1668,7 @@ class User(object):
         raw_data = utils.find_substring(raw_data, b'<ul class="stream-list', b'<!-- /content', with_end=False)
         if not raw_data:
             return []
+        raw_data = utils.replace_cloudflare_emails(raw_data)
         node = utils.parse_html_fragment(raw_data[:raw_data.rfind(b'</ul>')])
         if not node:
             return []
