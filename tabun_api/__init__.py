@@ -427,7 +427,8 @@ class User(object):
             data = resp.read(1024 * 25)
             resp.close()
             cook = BaseCookie()
-            cook.load(resp.headers.get("set-cookie", ""))
+            for x in resp.headers.get_all("set-cookie"):
+                cook.load(x)
             if not self.phpsessid:
                 self.phpsessid = cook.get("PHPSESSID")
                 if self.phpsessid:
