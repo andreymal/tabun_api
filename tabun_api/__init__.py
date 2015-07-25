@@ -428,9 +428,9 @@ class User(object):
             resp.close()
             cook = BaseCookie()
             if PY2:
-                cook.load(resp.headers.get("set-cookie"))
+                cook.load(resp.headers.get("set-cookie") or b'')
             else:
-                for x in resp.headers.get_all("set-cookie"):
+                for x in resp.headers.get_all("set-cookie") or ():
                     cook.load(x)
             if not self.phpsessid:
                 self.phpsessid = cook.get("PHPSESSID")
@@ -693,7 +693,7 @@ class User(object):
                 if posts and post.title == text(title) and post.author == self.username:
                     return post.blog, post.post_id
 
-            return None, None
+            raise
         else:
             return parse_post_url(link)
 
