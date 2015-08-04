@@ -598,6 +598,10 @@ class User(object):
             except KeyboardInterrupt:
                 raise
             except urequest.HTTPError as exc:
+                if exc.getcode() == 404:
+                    data = exc.read(8192)
+                    if b'//projects.everypony.ru/error/main.css' in data:
+                        raise TabunError('Static 404', -404)
                 raise TabunError(code=exc.getcode())
             except urequest.URLError as exc:
                 raise TabunError(exc.reason, -exc.reason.errno if exc.reason.errno else 0)
