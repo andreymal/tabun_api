@@ -433,7 +433,7 @@ class User(object):
                 for x in resp.headers.get_all("set-cookie") or ():
                     cook.load(x)
             if not self.phpsessid:
-                self.phpsessid = cook.get("PHPSESSID")
+                self.phpsessid = cook.get("TABUNSESSIONID")
                 if self.phpsessid:
                     self.phpsessid = self.phpsessid.value
             if not self.key:
@@ -557,7 +557,7 @@ class User(object):
             request_headers.update(headers)
 
         if with_cookies and self.phpsessid:
-            request_headers['Cookie'] = ("PHPSESSID=%s; key=%s; LIVESTREET_SECURITY_KEY=%s" % (
+            request_headers['Cookie'] = ("TABUNSESSIONID=%s; key=%s; LIVESTREET_SECURITY_KEY=%s" % (
                 self.phpsessid, self.key, self.security_ls_key
             )).encode('utf-8')
 
@@ -1933,7 +1933,8 @@ def parse_post(item):
         poll = parse_poll(poll[0])
 
     fav = footer.xpath('ul[@class="topic-info"]/li[@class="topic-info-favourite"]')
-    favourite = utils.find_substring(fav[0][1].text, '>', '</', with_start=False, with_end=False).strip()
+    # favourite = utils.find_substring(fav[0][1].text, '>', '</', with_start=False, with_end=False).strip()
+    favourite = 0
     try:
         favourite = int(favourite) if favourite else 0
     except ValueError:
@@ -2118,7 +2119,11 @@ def parse_comment(node, post_id, blog=None, parent_id=None):
         else:
             info = info[0]
 
-        comment_id = int(info.xpath('li[@class="comment-link"]/a')[0].get('href').rsplit("/", 1)[-1])
+        comment_id = info.xpath('li[@class="comment-link"]/a')[0].get('href')
+        if '#comment' in comment_id:
+            comment_id = int(comment_id.rsplit('#comment', 1)[-1])
+        else:
+            comment_id = int(comment_id.rstrip('/').rsplit('/', 1)[-1])
 
         unread = "comment-new" in node.get("class", "")
         deleted = "comment-deleted" in node.get("class", "")
