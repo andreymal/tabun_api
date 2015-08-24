@@ -26,7 +26,7 @@ block_elems = ("div", "p", "blockquote", "section", "ul", "li", "h1", "h2", "h3"
 youtube_regex = re.compile(r'youtube.com\/embed\/(.{10,15})((\?)|($))')
 
 #: Регулярка для парсинга ссылки на аватарку — из неё можно узнать много полезного!
-ava_regex = re.compile(r"\/images\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/avatar_([0-9]+)x([0-9]+)\.(...)(\?([0-9]+))?")
+ava_regex = re.compile(r"\/((images)|(storage))\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/avatar_([0-9]+)x([0-9]+)\.(...)(\?([0-9]+))?")
 
 #: Регулярка для расшифровки почты, которую шифрует CloudFlare.
 cf_email = re.compile(r'<[A-z]+ class="__cf_email__".*? data-cfemail="([0-9a-f]+)".+?</script>', re.DOTALL)
@@ -481,11 +481,11 @@ def parse_avatar_url(url):
     if not match:
         return None, None, None, None, None
     g = match.groups()
-    user_id = int(g[0] + g[1] + g[2])
-    date = g[3] + "-" + g[4] + "-" + g[5]
-    size = (int(g[6]), int(g[7]))
-    ext = g[8]
-    num = int(g[10]) if g[10] is not None else None
+    user_id = int(g[3] + g[4] + g[5])
+    date = g[6] + "-" + g[7] + "-" + g[8]
+    size = (int(g[9]), int(g[10]))
+    ext = g[11]
+    num = int(g[13]) if g[13] is not None else None
 
     return user_id, date, size, ext, num
 

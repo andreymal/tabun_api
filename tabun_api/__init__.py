@@ -14,7 +14,7 @@ from . import utils, compat
 from .compat import PY2, BaseCookie, urequest, text_types, text, binary
 
 
-__version__ = '0.6.2'
+__version__ = '0.6.3'
 
 #: Адрес Табуна. Именно на указанный здесь адрес направляются запросы.
 http_host = "http://tabun.everypony.ru"
@@ -265,7 +265,7 @@ class Poll(object):
 
 class TalkItem(object):
     """Личное сообщение."""
-    def __init__(self, talk_id, recipients, unread, title, date, body=None, author=None, comments=[], raw_body=None):
+    def __init__(self, talk_id, recipients, unread, title, date, body=None, author=None, comments=None, raw_body=None):
         self.talk_id = int(talk_id)
         self.recipients = [text(x) for x in recipients]
         self.unread = bool(unread)
@@ -287,7 +287,7 @@ class TalkItem(object):
         return self.__repr__().decode('utf-8', 'replace')
 
 
-class ActivityItem:
+class ActivityItem(object):
     """Событие со страницы /stream/."""
     WALL_ADD = 0  # Просто чтобы было :)
     POST_ADD = 1
@@ -362,6 +362,8 @@ class User(object):
     Конструктор также принимает кортеж proxy из трёх элементов (тип, хост, порт) для задания прокси-сервера. Сейчас поддерживаются только типы socks4 и socks5.
     Вместо передачи параметра можно установить переменную окружения TABUN_API_PROXY=тип,хост,порт — конструктор её подхватит.
 
+    Если нужно парсить не Табун (можно частично парсить другие Lisestreet-сайты с основанным на synio шаблоном), то можно передать http_host, чтобы не переопределяеть его во всём tabun_api.
+
     У класса также есть следующие поля:
 
     * username — имя пользователя или None
@@ -382,8 +384,11 @@ class User(object):
     rating = None
     query_interval = 0
     proxy = None
+    http_host = None
 
-    def __init__(self, login=None, passwd=None, phpsessid=None, security_ls_key=None, key=None, proxy=None):
+    def __init__(self, login=None, passwd=None, phpsessid=None, security_ls_key=None, key=None, proxy=None, http_host=None):
+        self.http_host = text(http_host).rstrip('/') if http_host else None
+
         self.jd = JSONDecoder()
         self.lock = RLock()
 
@@ -392,7 +397,7 @@ class User(object):
         if proxy is None and os.getenv('TABUN_API_PROXY') and os.getenv('TABUN_API_PROXY').count(',') == 2:
             proxy = os.getenv('TABUN_API_PROXY').split(',')[:3]
         elif proxy:
-            proxy = proxy.split(',') if isinstance(proxy, text_types) else list(proxy)[:2]
+            proxy = proxy.split(',') if isinstance(proxy, text_types) else list(proxy)[:3]
 
         if proxy:
             if not PY2:
@@ -517,7 +522,7 @@ class User(object):
         query = "login=" + urequest.quote(login.encode('utf-8'))
         query += "&password=" + urequest.quote(password.encode('utf-8'))
         query += "&remember=" + ("on" if remember else "off")
-        query += "&return-path=" + urequest.quote(return_path if return_path else http_host + "/")
+        query += "&return-path=" + urequest.quote(return_path if return_path else (self.http_host or http_host) + "/")
         if self.security_ls_key:
             query += "&security_ls_key=" + urequest.quote(self.security_ls_key)
 
@@ -547,7 +552,7 @@ class User(object):
             url = url.decode('utf-8')
         if not isinstance(url, urequest.Request):
             if url.startswith('/'):
-                url = http_host + url
+                url = (self.http_host or http_host) + url
             url = urequest.Request(url.encode('utf-8') if PY2 else url)
         if data is not None:
             url.data = data.encode('utf-8') if isinstance(data, text) else data
@@ -806,7 +811,7 @@ class User(object):
         self.check_login()
         return self.urlopen(
             url='/blog/delete/' + text(int(blog_id)) + '/?security_ls_key=' + self.security_ls_key,
-            headers={"referer": http_host + "/"},
+            headers={"referer": (self.http_host or http_host) + "/"},
             redir=False
         ).getcode() / 100 == 3
 
@@ -836,7 +841,7 @@ class User(object):
         self.check_login()
         return self.urlopen(
             url='/topic/delete/' + text(int(post_id)) + '/?security_ls_key=' + self.security_ls_key,
-            headers={"referer": http_host + "/blog/" + text(post_id) + ".html"},
+            headers={"referer": (self.http_host or http_host) + "/blog/" + text(post_id) + ".html"},
             redir=False
         ).getcode() / 100 == 3
 
@@ -1215,40 +1220,9 @@ class User(object):
         return items
 
     def get_short_blogs_list(self, raw_data=None):
-        """Возвращает список объектов Blogs, но у которого указаны только blog_id, имя и закрытость.
-        Зато, в отличие от get_blogs_list, возвращаются сразу все-все блоги.
+        """Возвращает пустой список. После обновления Табуна не работает, функция оставлена для обратной совместимости.
         """
-        if not raw_data:
-            raw_data = self.urlopen("/index/newall/").read()
-
-        raw_data = utils.find_substring(raw_data, b'<div class="block-content" id="block-blog-list"', b"</ul>")
-        if not raw_data:
-            return []
-
-        raw_data = utils.replace_cloudflare_emails(raw_data)
-        node = utils.parse_html_fragment(raw_data)[0]
-        del raw_data
-        node = node.find("ul")
-
-        blogs = []
-
-        for item in node.findall("li"):
-            blog_id = text(item.find("input").get('onclick'))
-            blog_id = blog_id[blog_id.find("',") + 2:]
-            blog_id = int(blog_id[:blog_id.find(")")])
-
-            a = item.find("a")
-
-            blog = a.get('href')[:-1]
-            blog = blog[blog.rfind("/") + 1:]
-
-            name = text(a.text)
-
-            closed = bool(item.xpath('i[@class="icon-synio-topic-private"]'))
-
-            blogs.append(Blog(blog_id, blog, name, "", closed=closed))
-
-        return blogs
+        return []
 
     def get_people_list(self, page=1, order_by="user_rating", order_way="desc", url=None):
         """Возвращает список броняш - объекты UserInfo."""
@@ -1611,11 +1585,11 @@ class User(object):
         if '/talk/read/' in link:
             return int(link.rstrip('/').rsplit('/', 1)[-1])
 
-    def get_talk_list(self, raw_data=None):
+    def get_talk_list(self, page=1, raw_data=None):
         """Возвращает список объектов Talk с личными сообщениями."""
         self.check_login()
         if not raw_data:
-            req = self.urlopen("/talk/")
+            req = self.urlopen("/talk/inbox/page{}/".format(int(page)))
             raw_data = req.read()
             del req
 
@@ -1655,7 +1629,7 @@ class User(object):
             return
         body = body[0]
 
-        recipients = map(lambda x: x.text.strip().encode("utf-8"), item.xpath('div[@class="talk-search talk-recipients"]/header/a[@class!="link-dotted"]'))
+        recipients = map(lambda x: x.text.strip(), item.xpath('div[@class="talk-search talk-recipients"]/header/a[@class!="link-dotted"]'))
 
         footer = item.find("footer")
         author = footer.xpath('ul/li[@class="topic-info-author"]/a[2]/text()')[0].strip()
