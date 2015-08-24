@@ -1907,10 +1907,9 @@ def parse_post(item):
         poll = parse_poll(poll[0])
 
     fav = footer.xpath('ul[@class="topic-info"]/li[@class="topic-info-favourite"]')
-    # favourite = utils.find_substring(fav[0][1].text, '>', '</', with_start=False, with_end=False).strip()
-    favourite = 0
+    favourite = fav[0].xpath('span[@class="favourite-count"]/text()')
     try:
-        favourite = int(favourite) if favourite else 0
+        favourite = int(favourite[0]) if favourite and favourite[0] else 0
     except ValueError:
         favourite = None
     favourited = fav[0].find('i')
