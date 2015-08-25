@@ -390,6 +390,7 @@ class User(object):
     query_interval = 0
     proxy = None
     http_host = None
+    session_cookie_name = 'TABUNSESSIONID'
 
     def __init__(self, login=None, passwd=None, phpsessid=None, security_ls_key=None, key=None, proxy=None, http_host=None):
         self.http_host = text(http_host).rstrip('/') if http_host else None
@@ -443,7 +444,7 @@ class User(object):
                 for x in resp.headers.get_all("set-cookie") or ():
                     cook.load(x)
             if not self.phpsessid:
-                self.phpsessid = cook.get("TABUNSESSIONID")
+                self.phpsessid = cook.get(self.session_cookie_name)
                 if self.phpsessid:
                     self.phpsessid = self.phpsessid.value
             if not self.key:
@@ -570,8 +571,8 @@ class User(object):
             request_headers.update(headers)
 
         if with_cookies and self.phpsessid:
-            request_headers['Cookie'] = ("TABUNSESSIONID=%s; key=%s; LIVESTREET_SECURITY_KEY=%s" % (
-                self.phpsessid, self.key, self.security_ls_key
+            request_headers['Cookie'] = ("%s=%s; key=%s; LIVESTREET_SECURITY_KEY=%s" % (
+                self.session_cookie_name, self.phpsessid, self.key, self.security_ls_key
             )).encode('utf-8')
 
         for header, value in request_headers.items():

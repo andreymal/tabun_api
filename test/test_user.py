@@ -25,20 +25,20 @@ def test_user_preloaded_cookies(set_mock):
     assert user.key == key
 
 
-@pytest.mark.parametrize("phpsessid,security_ls_key,key", [
+@pytest.mark.parametrize("session_id,security_ls_key,key", [
     ('abcdef9876543210abcdef9876543210', '0123456789abcdef0123456789abcdef', None),
     ('abcdef9876543210abcdef9876543210', None, '00000000000000000000000000000000'),
     ('abcdef9876543210abcdef9876543210', None, None)
 ])
-def test_user_partially_preloaded_cookies(phpsessid, security_ls_key, key):
-    user = UserTest(phpsessid=phpsessid, security_ls_key=security_ls_key, key=key)
+def test_user_partially_preloaded_cookies(session_id, security_ls_key, key):
+    user = UserTest(phpsessid=session_id, security_ls_key=security_ls_key, key=key)
     assert user.username == None if security_ls_key else 'test'
-    assert user.phpsessid == phpsessid
+    assert user.phpsessid == session_id
     assert user.security_ls_key == '0123456789abcdef0123456789abcdef'
     assert user.key in (None, '00000000000000000000000000000000')
 
     assert user.update_userinfo(user.urlopen('/').read()) == 'test'
-    assert user.phpsessid == phpsessid
+    assert user.phpsessid == session_id
     assert user.security_ls_key == '0123456789abcdef0123456789abcdef'
     assert user.key in (None, '00000000000000000000000000000000')
 
@@ -52,11 +52,29 @@ def test_user_preloaded_cookies_and_login(set_mock):
     assert user.key is None
 
 
-def test_phpsessid_guest(as_guest, user):
+def test_session_id_guest(as_guest, user):
     assert user.phpsessid == 'abcdef9876543210abcdef9876543210'
 
 
-def test_phpsessid_authorized(user):
+def test_session_id_authorized(user):
+    assert user.phpsessid == 'abcdef9876543210abcdef9876543210'
+
+
+def test_session_id_renamed_guest(set_mock, as_guest):
+    class OtherTestUser(UserTest):
+        session_cookie_name = 'PHPSESSID'
+    set_mock({'/': (None, {'headers': {'Set-Cookie': ['PHPSESSID=abcdef9876543210abcdef9876543210; path=/']}})})
+
+    user = OtherTestUser()
+    assert user.phpsessid == 'abcdef9876543210abcdef9876543210'
+
+
+def test_session_id_renamed_authorized(set_mock):
+    class OtherTestUser(UserTest):
+        session_cookie_name = 'PHPSESSID'
+    set_mock({'/': (None, {'headers': {'Set-Cookie': ['PHPSESSID=abcdef9876543210abcdef9876543210; path=/']}})})
+
+    user = OtherTestUser()
     assert user.phpsessid == 'abcdef9876543210abcdef9876543210'
 
 
@@ -189,6 +207,16 @@ def test_login_hacking_attemp(set_mock, user):
 
 
 def test_build_request_internal(user):
+    req = user.build_request('/blog/2.html')
+    if PY2:
+        assert req.get_full_url() == b'http://tabun.everypony.ru/blog/2.html'
+    else:
+        assert req.get_full_url() == 'http://tabun.everypony.ru/blog/2.html'
+    assert b'TABUNSESSIONID=abcdef9876543210abcdef9876543210' in req.headers[str('Cookie')]
+
+
+def test_build_request_internal_other_session_cookie(user):
+    user.session_cookie_name = 'PHPSESSID'
     req = user.build_request('/blog/2.html')
     if PY2:
         assert req.get_full_url() == b'http://tabun.everypony.ru/blog/2.html'

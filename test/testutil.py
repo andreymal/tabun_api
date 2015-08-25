@@ -19,6 +19,7 @@ if PY2:
 else:
     from http.client import parse_headers
 
+# для выбора загружаемых страниц из каталога data
 guest_mode = False
 
 data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'data')
@@ -143,8 +144,7 @@ def build_response(req_url, result_path, optparams=None):
         'headers': {
             'Content-Type': 'text/html; charset=utf-8',
             'Set-Cookie': [
-                'PHPSESSID=abcdef9876543210abcdef9876543210; path=/',
-                'LIVESTREET_SECURITY_KEY=0123456789abcdef0123456789abcdef; expires=Thu, 04-Jun-2015 23:59:59 GMT; Max-Age=604800; path=/; httponly'
+                'TABUNSESSIONID=abcdef9876543210abcdef9876543210; path=/',
             ]},
         'url': req_url
     }
@@ -182,7 +182,7 @@ def build_response(req_url, result_path, optparams=None):
 class UserTest(api.User):
     def urlopen(self, url, data=None, headers={}, redir=True, nowait=False, with_cookies=True, timeout=None):
         # TODO: заменить эту функцию на send_request
-        # собираем urllib2.Request для проверки, что там ничего не упадёт
+        # собираем объект Request для проверки, что там ничего не упадёт
         self.build_request(url, data, headers, with_cookies)
 
         data = data.encode('utf-8') if isinstance(data, text) else data
