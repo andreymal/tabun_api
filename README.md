@@ -27,7 +27,7 @@ API для сайта tabun.everypony.ru
 pip install git+https://github.com/andreymal/tabun_api.git#egg=tabun_api[imageutils]
 ```
 
-Или если не нужна работа с картинками и не нужно ставить Pillow:
+Или если не нужна работа с картинками и не нужно ставить [Pillow](https://pillow.readthedocs.org/):
 
 ```
 pip install git+https://github.com/andreymal/tabun_api.git#egg=tabun_api
