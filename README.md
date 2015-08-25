@@ -5,7 +5,7 @@ API для сайта tabun.everypony.ru
 
 Умеет:
 
-* Логиниться по логину-паролю или PHPSESSID
+* Логиниться по логину-паролю или TABUNSESSIONID
 * Читать посты (в том числе из RSS), комментарии, личку, профили, информацию о блогах
 * Создавать посты, комментарии, блоги и личные сообщения
 * Удалять посты и блоги
@@ -19,5 +19,29 @@ API для сайта tabun.everypony.ru
 * А также выполнять всякую служебную мелочёвку: искать картинки, которые не смайлики, переводить html в txt и прочее
 
 Требует Python 2.7/3.4 и [lxml](http://lxml.de/) для работы.
+
+
+#### Установка через pip
+
+```
+pip install git+https://github.com/andreymal/tabun_api.git#egg=tabun_api[imageutils]
+```
+
+Или если не нужна работа с картинками и не нужно ставить Pillow:
+
+```
+pip install git+https://github.com/andreymal/tabun_api.git#egg=tabun_api
+```
+
+Или можно просто закинуть каталог `tabun_api` куда требуется.
+
+
+#### Простой пример с выводом заголовков последних постов
+
+```
+import tabun_api as api
+for post in api.User().get_posts():
+    print(post.title)
+```
 
 Документация с примерами: https://andreymal.org/tabun/api_doc/
