@@ -627,6 +627,8 @@ def escape_comment_contents(data):
         if f2 < 0:
             f2 = data.find(b'<div class="comment-path', f1)
         if f2 < 0:
+            f2 = data.find(b'<ul class="comment-info', f1)
+        if f2 < 0:
             break
         f2 = data.rfind(b'</div>', f1, f2)
         if f2 >= 0:
