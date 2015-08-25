@@ -224,8 +224,11 @@ def mon2num(s):
 
 def find_images(body, spoiler_title=True, no_other=False):
     """Ищет картинки в lxml-элементе и возвращает их список в виде [[ссылки до ката], [ссылки после ката]].
+
     spoiler_title (True) - включать ли картинки с заголовков спойлеров
-    no_other (False) не включать ли всякий мусор. Фильтрация простейшая: по наличию "smile" или "gif" в ссылке."""
+
+    no_other (False) не включать ли всякий мусор. Фильтрация простейшая: по наличию "smile" или "gif" в ссылке.
+    """
 
     imgs = [[], []]
     links = [[], []]
@@ -291,7 +294,7 @@ def find_images(body, spoiler_title=True, no_other=False):
 # and modified by andreymal
 def encode_multipart_formdata(fields, files, boundary=None):
     """
-    Возвращает (content_type, body), готовое для отправки HTTP-запроса
+    Возвращает кортеж (content_type, body), готовый для отправки HTTP-запроса.
 
     * fields - список из элементов (имя, значение) или словарь полей формы
     * files - список из элементов (имя, имя файла, значение) для данных, загружаемых в виде файлов
@@ -346,9 +349,9 @@ def get_content_type(filename):
 
 def send_form(url, fields, files, timeout=None, headers=None):
     """
-    Отправляет форму, пользуясь функцией encode_multipart_formdata(fields, files), возвращает результат вызова urllib2.urlopen
+    Отправляет форму, пользуясь функцией encode_multipart_formdata(fields, files), возвращает результат вызова urlopen
 
-    * timeout - сколько ожидать ответа, не дождётся - кидается исключением urllib2
+    * timeout - сколько ожидать ответа, не дождётся - кидается исключением urllib
     * headers - дополнительные HTTP-заголовки
     """
     content_type, data = encode_multipart_formdata(fields, files)
@@ -419,7 +422,7 @@ def download(url, maxmem=20 * 1024 * 1024, timeout=5, waitout=15):
 
 def find_good_image(urls, maxmem=20 * 1024 * 1024):
     """Ищет годную картинку из предложенного списка ссылок и возвращает ссылку и скачанные данные картинки (файл).
-    Такой простенький фильтр смайликов и элементов оформления поста по размеру. Требует PIL.
+    Такой простенький фильтр смайликов и элементов оформления поста по размеру. Требует PIL или Pillow.
     Не грузит картинки размером больше maxmem байт, дабы не вылететь от нехватки памяти.
     """
     try:

@@ -45,7 +45,7 @@ class NoRedirect(urequest.HTTPRedirectHandler):
 class TabunError(Exception):
     """Общее для библиотеки исключение.
     Содержит атрибут code с всякими разными циферками для разных типов исключения, обычно совпадает с HTTP-кодом ошибки при запросе.
-    А в args[0] или текст, или снова код ошибки.
+    А в атрибуте message или текст, или снова код ошибки.
     """
     def __init__(self, msg=None, code=0, data=None):
         self.code = int(code)
@@ -344,7 +344,8 @@ class ActivityItem(object):
 
 
 class User(object):
-    """Через божественные объекты класса User осуществляется всё взаимодействие с Табуном. Почти все функции могут кидаться исключением TabunResultError с текстом ошибки (который на сайте обычно показывается во всплывашке в углу).
+    """Через божественные объекты класса User осуществляется всё взаимодействие с Табуном.
+    Почти все функции могут кидаться исключением TabunResultError с текстом ошибки (который на сайте обычно показывается во всплывашке в углу).
 
     Допустимые комбинации параметров (в квадратных скобках опциональные):
 
@@ -353,16 +354,20 @@ class User(object):
     * login + phpsessid + security_ls_key [+ key] (без запроса к серверу)
     * без параметров (анонимус)
 
-    Если у функции есть параметр raw_data, то через него можно передать код страницы, чтобы избежать лишнего парсинга.
+    Если у функции есть параметр raw_data, то через него можно передать код страницы, чтобы избежать лишнего запроса к Табуну.
     Если есть параметр url, то при его указании открывается именно указанный url вместо формирования стандартного с помощью других параметров функции.
 
-    phpsessid - печенька (cookie), по которой идентифицируется пользователь, security_ls_key - секретный ключ движка livestreet для отправки запросов, key - печенька неизвестного мне назначения.
-    Можно не париться с ними, их автоматически пришлёт сервер во время инициализации объекта. А можно, например, не авторизоваться по логину и паролю, а выдрать из браузера печеньку PHPSESSID и авторизоваться через неё.
+    phpsessid - печенька (cookie), по которой идентифицируется пользователь (на самом Табуне называется TABUNSESSIONID).
+    security_ls_key - секретный ключ движка LiveStreet для отправки запросов.
+    key - печенька неизвестного мне назначения.
+    Можно не париться с ними, их автоматически пришлёт сервер во время инициализации объекта.
+    А можно, например, не авторизоваться по логину и паролю, а выдрать из браузера печеньку TABUNSESSIONID, скормить в аргумент phpsessid и авторизоваться через неё.
 
     Конструктор также принимает кортеж proxy из трёх элементов (тип, хост, порт) для задания прокси-сервера. Сейчас поддерживаются только типы socks4 и socks5.
     Вместо передачи параметра можно установить переменную окружения TABUN_API_PROXY=тип,хост,порт — конструктор её подхватит.
 
-    Если нужно парсить не Табун (можно частично парсить другие Lisestreet-сайты с основанным на synio шаблоном), то можно передать http_host, чтобы не переопределяеть его во всём tabun_api.
+    Если нужно парсить не Табун (можно частично парсить другие LiveStreet-сайты с основанным на synio шаблоном), то можно передать http_host,
+    чтобы не переопределять его во всём tabun_api.
 
     У класса также есть следующие поля:
 
@@ -370,7 +375,7 @@ class User(object):
     * talk_unread — число непрочитанных личных сообщений (после update_userinfo)
     * skill — силушка (после update_userinfo)
     * rating — кармушка (после update_userinfo)
-    * timeout — таймаут ожидания ответа от сервера (для urllib2.urlopen, по умолчанию 20)
+    * timeout — таймаут ожидания ответа от сервера (для функции urlopen, по умолчанию 20)
     * phpsessid, security_ls_key, key — ну вы поняли
     """
 
@@ -463,7 +468,10 @@ class User(object):
         self.talk_count = 0
 
     def update_userinfo(self, raw_data):
-        """Парсит имя пользователя, рейтинг и число сообщений и записывает в объект. Возвращает имя пользователя."""
+        """Парсит имя пользователя, рейтинг и число непрочитанных сообщений
+        с переданного кода страницы и записывает в объект.
+        Возвращает имя пользователя или None при его отсутствии.
+        """
         userinfo = utils.find_substring(raw_data, b'<div class="dropdown-user"', b"<nav", with_end=False)
         if not userinfo:
             auth_panel = utils.find_substring(raw_data, b'<ul class="auth"', b'<nav', with_end=False)
@@ -541,12 +549,12 @@ class User(object):
         self.key = ckey.value if ckey else None
 
     def check_login(self):
-        """Генерирует исключение, если нет печеньки PHPSESSID или security_ls_key."""
+        """Генерирует исключение, если нет phpsessid или security_ls_key."""
         if not self.phpsessid or not self.security_ls_key:
             raise TabunError("Not logined")
 
     def build_request(self, url, data=None, headers=None, with_cookies=True):
-        """Собирает и возвращает объект urllib2.Request. Используется в методе urlopen."""
+        """Собирает и возвращает объект Request. Используется в методе urlopen."""
 
         if isinstance(url, binary):
             url = url.decode('utf-8')
@@ -576,8 +584,8 @@ class User(object):
         return url
 
     def send_request(self, request, redir=True, nowait=False, timeout=None):
-        """Отправляет запрос (строку со ссылкой или urllib2.Request).
-        Возвращает результат urllib2.urlopen (объект urllib.addinfourl).
+        """Отправляет запрос (строку со ссылкой или объект Request).
+        Возвращает результат вызова urlopen (объект urllib.addinfourl).
         Используется в методе urlopen.
         """
 
@@ -621,13 +629,15 @@ class User(object):
             self.lock.release()
 
     def urlopen(self, url, data=None, headers=None, redir=True, nowait=False, with_cookies=True, timeout=None):
-        """Отправляет HTTP-запрос и возвращает результат urllib2.urlopen (объект addinfourl).
+        """Отправляет HTTP-запрос и возвращает результат вызова urlopen (объект addinfourl).
         Если указан параметр data, то отправляется POST-запрос.
-        В качестве URL может быть путь с доменом (http://tabun.everypony.ru/), без домена (/index/newall/) или объект urllib2.Request.
+        В качестве URL может быть путь с доменом (http://tabun.everypony.ru/), без домена (/index/newall/) или объект Request.
         Если redir установлен в False, то не будет осуществляться переход по перенаправлению (HTTP-коды 3xx).
-        К запросу добавлется печенька PHPSESSID; with_cookies=False отключает это.
-        По умолчанию соблюдает между запросами временной интервал query_interval (который по умолчанию 0); nowait=True отправляет запрос немедленно.
-        Может кидаться исключением TabunError."""
+        К запросу добавлется печенька TABUNSESSIONID (из атрибута phpsessid); with_cookies=False отключает это.
+        По умолчанию соблюдает между запросами временной интервал query_interval (который по умолчанию 0);
+        при nowait=True запрос всегда отправляется немедленно.
+        Может кидаться исключением TabunError.
+        """
 
         req = self.build_request(url, data, headers, with_cookies)
         return self.send_request(req, redir, nowait, timeout)
@@ -709,7 +719,7 @@ class User(object):
     def add_poll(self, blog_id, title, choices, body, tags, draft=False, check_if_error=False):
         """Создает опрос и возвращает имя блога с номером поста в случае удачи или
         (None, None)  случае неудачи.
-        Вариантов ответов не может быть более 20 штук! Иначе кидается исключение.
+        Вариантов ответов не может быть более 20 штук, иначе кидается исключение.
         При check_if_error=True проверяет наличие поста по заголовку даже в случае ошибки (если, например, таймаут или 404, но пост, как иногда бывает, добавляется)."""
         if len(choices) > 20:
             raise TabunError("Can't have more than 20 choices in poll, but had %d" % len(choices))
