@@ -305,7 +305,7 @@
                 </time>
             </li>
             <!-- Обработка избранного -->           
-            <li class="topic-info-favourite" onclick="return ls.favourite.toggle(131915,$('#fav_topic_131915'),'topic');">
+            <li class="topic-info-favourite favourite " onclick="return ls.favourite.toggle(131915,$('#fav_topic_131915'),'topic');">
                 <i id="fav_topic_131915" class="favourite ">В избранное</i>
                 <span class="favourite-count" id="fav_count_topic_131915" >1</span>
             </li>
@@ -404,9 +404,9 @@
                 </time>
             </li>
             <!-- Обработка избранного -->           
-            <li class="topic-info-favourite" onclick="return ls.favourite.toggle(131911,$('#fav_topic_131911'),'topic');">
-                <i id="fav_topic_131911" class="favourite ">В избранное</i>
-                <span class="favourite-count" id="fav_count_topic_131911" style="display: none"></span>
+            <!-- Тестируем отсутствие счётчика -->
+            <li class="topic-info-favourite favourite active" onclick="return ls.favourite.toggle(131911,$('#fav_topic_131911'),'topic');">
+                <i id="fav_topic_131911">В избранном</i>
             </li>
 
                             <li class="topic-info-comments">

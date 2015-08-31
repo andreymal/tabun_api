@@ -1917,14 +1917,16 @@ def parse_post(item):
     if poll:
         poll = parse_poll(poll[0])
 
-    fav = footer.xpath('ul[@class="topic-info"]/li[@class="topic-info-favourite"]')
-    favourite = fav[0].xpath('span[@class="favourite-count"]/text()')
+    fav = footer.xpath('ul[@class="topic-info"]/li[starts-with(@class, "topic-info-favourite")]')[0]
+    favourited = fav.get('class').endswith(' active')
+    if not favourited:
+        i = fav.find('i')
+        favourited = i is not None and i.get('class', '').endswith(' active')
+    favourite = fav.xpath('span[@class="favourite-count"]/text()')
     try:
         favourite = int(favourite[0]) if favourite and favourite[0] else 0
     except ValueError:
-        favourite = None
-    favourited = fav[0].find('i')
-    favourited = favourited is not None and 'active' in favourited.get('class', '')
+        favourite = 0
 
     comments_count = None
     comments_new_count = None
