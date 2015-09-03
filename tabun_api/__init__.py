@@ -377,6 +377,7 @@ class User(object):
     * rating — кармушка (после update_userinfo)
     * timeout — таймаут ожидания ответа от сервера (для функции urlopen, по умолчанию 20)
     * phpsessid, security_ls_key, key — ну вы поняли
+    * session_cookie_name — название печеньки, в которую положить phpsessid (для табуна TABUNSESSIONID, для других лайвстритов PHPSESSID)
     """
 
     phpsessid = None
@@ -390,10 +391,10 @@ class User(object):
     query_interval = 0
     proxy = None
     http_host = None
-    session_cookie_name = 'TABUNSESSIONID'
 
-    def __init__(self, login=None, passwd=None, phpsessid=None, security_ls_key=None, key=None, proxy=None, http_host=None):
+    def __init__(self, login=None, passwd=None, phpsessid=None, security_ls_key=None, key=None, proxy=None, http_host=None, session_cookie_name='TABUNSESSIONID'):
         self.http_host = text(http_host).rstrip('/') if http_host else None
+        self.session_cookie_name = text(session_cookie_name)
 
         self.jd = JSONDecoder()
         self.lock = RLock()
@@ -437,6 +438,7 @@ class User(object):
             resp = self.urlopen("/")
             data = resp.read(1024 * 25)
             resp.close()
+
             cook = BaseCookie()
             if PY2:
                 cook.load(resp.headers.get("set-cookie") or b'')
@@ -450,17 +452,12 @@ class User(object):
             if not self.key:
                 ckey = cook.get("key")
                 self.key = ckey.value if ckey else None
-            pos = data.find(b"var LIVESTREET_SECURITY_KEY =")
-            if pos > 0:
-                ls_key = data[pos:]
-                ls_key = ls_key[ls_key.find(b"'") + 1:]
-                self.security_ls_key = ls_key[:ls_key.find(b"'")].decode('utf-8', 'replace')
-
-            if self.security_ls_key == b'LIVESTREET_SECURITY_KEY':  # security fix by Random
-                csecurity_ls_key = cook.get("LIVESTREET_SECURITY_KEY")
-                self.security_ls_key = csecurity_ls_key.value if csecurity_ls_key else None
 
             self.update_userinfo(data)
+
+            if self.security_ls_key == b'LIVESTREET_SECURITY_KEY':  # old security fix by Random
+                csecurity_ls_key = cook.get("LIVESTREET_SECURITY_KEY")
+                self.security_ls_key = csecurity_ls_key.value if csecurity_ls_key else None
 
         if login and passwd:
             self.login(login, passwd)
@@ -468,11 +465,21 @@ class User(object):
         self.last_query_time = 0
         self.talk_count = 0
 
+    def update_security_ls_key(self, raw_data):
+        """Выдирает security_ls_key из страницы. Вызывается из update_userinfo."""
+        pos = raw_data.find(b"var LIVESTREET_SECURITY_KEY =")
+        if pos > 0:
+            ls_key = raw_data[pos:]
+            ls_key = ls_key[ls_key.find(b"'") + 1:]
+            self.security_ls_key = ls_key[:ls_key.find(b"'")].decode('utf-8', 'replace')
+
     def update_userinfo(self, raw_data):
-        """Парсит имя пользователя, рейтинг и число непрочитанных сообщений
+        """Парсит security_ls_key, имя пользователя, рейтинг и число непрочитанных сообщений
         с переданного кода страницы и записывает в объект.
         Возвращает имя пользователя или None при его отсутствии.
         """
+        self.update_security_ls_key(raw_data)
+
         userinfo = utils.find_substring(raw_data, b'<div class="dropdown-user"', b"<nav", with_end=False)
         if not userinfo:
             auth_panel = utils.find_substring(raw_data, b'<ul class="auth"', b'<nav', with_end=False)
