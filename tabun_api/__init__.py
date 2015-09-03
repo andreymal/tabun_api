@@ -705,6 +705,8 @@ class User(object):
                 error = utils.find_substring(error.decode('utf-8', 'replace'), ':', '</li>', extend=True, with_start=False, with_end=False).strip()
                 raise TabunResultError(error)
             link = result.headers.get('location')
+        except TabunResultError:
+            raise
         except TabunError:
             if not check_if_error or not self.username:
                 raise
@@ -762,6 +764,8 @@ class User(object):
                 error = utils.find_substring(error.decode('utf-8', 'replace'), ':', '</li>', extend=True, with_start=False, with_end=False).strip()
                 raise TabunResultError(error)
             link = result.headers.get('location')
+        except TabunResultError:
+            raise
         except TabunError:
             if not check_if_error or not self.username:
                 raise
