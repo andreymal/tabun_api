@@ -45,6 +45,8 @@ current_mocks = {}
 mocks = {
     '/': ('index.html', None),
     '/blog/132085.html': ('132085.html', None),
+    '/blog/borderline/138982.html': ('138982.html', None),
+    '/blog/138983.html': ('138983.html', None),
     '/comments/': ('comments.html', None)
 }
 

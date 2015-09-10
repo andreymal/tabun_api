@@ -30,6 +30,22 @@ def test_get_posts_data_ok(user):
                 assert getattr(post, key) == value
 
 
+def test_get_posts_profile_data_ok(user, set_mock):
+    set_mock({'/profile/test/created/topics/': 'profile_topics.html'})
+
+    post_data = json.loads(load_file('profile_topics.json', template=False).decode('utf-8'))
+    posts = reversed(user.get_posts('/profile/test/created/topics/'))
+
+    for data, post in zip(post_data, posts):
+        assert post.post_id == data['post_id']
+
+        for key, value in data.items():
+            if key == 'time':
+                assert time.strftime("%Y-%m-%d %H:%M:%S", post.time) == value
+            elif key != "post_id":
+                assert getattr(post, key) == value
+
+
 def test_get_posts_types_ok(user):
     posts = reversed(user.get_posts('/'))
     for post in posts:
@@ -48,6 +64,7 @@ def test_get_post_ok(user):
     assert post.post_id == 132085
     assert post.author == 'test'
     assert post.private == False
+    assert post.blog is None
     assert post.draft == True
     assert time.strftime("%Y-%m-%d %H:%M:%S", post.time) == "2015-05-30 19:14:04"
 
@@ -58,9 +75,26 @@ def test_get_post_ok(user):
     assert post.comments_new_count == 0
 
 
+def test_get_post_other_ok(user):
+    post = user.get_post(138982, 'borderline')
+    assert post.post_id == 138982
+    assert post.author == 'test'
+    assert post.private == True
+    assert post.blog == 'borderline'
+    assert post.draft == True
+    assert time.strftime("%Y-%m-%d %H:%M:%S", post.time) == "2015-09-10 15:39:13"
+
+    assert post.title == 'Тестирование ката'
+    assert post.raw_body == '<img src="https://i.imgur.com/V3KzzyAs.png"/>Текст до ката<br/>\n<a></a> <br/>\nТекст после ката<img src="https://i.imgur.com/NAg929K.jpg"/>'
+    assert post.tags == ["Луна", "аликорны", "новость"]
+    assert post.comments_count == 0
+    assert post.comments_new_count == 0
+
+
 def test_get_post_other_blog_1(set_mock, user):
     set_mock({'/blog/news/132085.html': ('132085.html', {'url': '/blog/132085.html'})})
     assert user.get_post(132085, 'news').blog is None
+
 
 def test_get_post_other_blog_2(set_mock, user):
     set_mock({'/blog/blog/132085.html': ('132085.html', {'url': '/blog/132085.html'})})

@@ -1,0 +1,20 @@
+[
+    {
+        "post_id": 138983,
+        "author": "test",
+        "time": "2015-09-10 15:58:16",
+        "blog": null,
+        "blog_name": "Блог им. test",
+        "private": false,
+        "short": true,
+        "title": "Тестирование очень хитрого ката",
+        "tags": ["©®™"],
+        "vote_count": 1,
+        "vote_total": 0,
+        "comments_count": 0,
+        "comments_new_count": 0,
+        "favourite": 0,
+        "favourited": false,
+        "raw_body": "<span class=\"spoiler\"><span class=\"spoiler-title\">Кат внутри спойлера</span><span class=\"spoiler-body\">Перед катом</span></span>\n        \n                    <br/>"
+    }
+]

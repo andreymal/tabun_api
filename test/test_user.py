@@ -61,20 +61,16 @@ def test_session_id_authorized(user):
 
 
 def test_session_id_renamed_guest(set_mock, as_guest):
-    class OtherTestUser(UserTest):
-        session_cookie_name = 'PHPSESSID'
     set_mock({'/': (None, {'headers': {'Set-Cookie': ['PHPSESSID=abcdef9876543210abcdef9876543210; path=/']}})})
 
-    user = OtherTestUser()
+    user = UserTest(session_cookie_name='PHPSESSID')
     assert user.phpsessid == 'abcdef9876543210abcdef9876543210'
 
 
 def test_session_id_renamed_authorized(set_mock):
-    class OtherTestUser(UserTest):
-        session_cookie_name = 'PHPSESSID'
     set_mock({'/': (None, {'headers': {'Set-Cookie': ['PHPSESSID=abcdef9876543210abcdef9876543210; path=/']}})})
 
-    user = OtherTestUser()
+    user = UserTest(session_cookie_name='PHPSESSID')
     assert user.phpsessid == 'abcdef9876543210abcdef9876543210'
 
 

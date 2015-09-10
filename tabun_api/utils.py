@@ -119,7 +119,7 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=Tr
         elif fancy and item.tag == 'a' and item.get('title') == "Читать дальше":
             prev_text = None
             continue
-        elif not with_cutted and item.tag == "a" and item.get("rel") == "nofollow" and not item.text_content() and not item.getchildren():
+        elif not with_cutted and is_cut(item):
             return data.strip()
         elif item.tag in ("img",):
             continue
@@ -185,7 +185,7 @@ def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=Tr
 
             if not with_cutted:
                 for item2 in item.iterchildren():
-                    if item2.tag == "a" and item2.get("rel") == "nofollow" and not item2.text_content() and not item2.getchildren():
+                    if is_cut(item2):
                         return data.strip()
 
             if item.tag in block_elems and not newlines:
@@ -222,6 +222,11 @@ def mon2num(s):
     return s
 
 
+def is_cut(item):
+    """Возвращает True, если тег похож на кат (на момент написания это `<a></a>`)."""
+    return item.tag == "a" and not item.get("href") and not item.text_content() and not item.getchildren()
+
+
 def find_images(body, spoiler_title=True, no_other=False):
     """Ищет картинки в lxml-элементе и возвращает их список в виде [[ссылки до ката], [ссылки после ката]].
 
@@ -235,7 +240,8 @@ def find_images(body, spoiler_title=True, no_other=False):
 
     start = False
     for item in body.iterchildren():
-        if not start and item.tag == "a" and item.get("rel") == "nofollow" and not item.text_content() and not item.getchildren():
+        #FIXME: не работает, если кат внутри другого тега
+        if not start and is_cut(item):
             start = True
             continue
 
