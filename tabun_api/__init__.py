@@ -1669,25 +1669,22 @@ class User(object):
             raw_data = req.read()
             del req
 
-        raw_data = utils.find_substring(raw_data, b'<ul class="stream-list', b'<!-- /content', with_end=False)
+        raw_data = utils.find_substring(raw_data, b'<div id="content"', b'<!-- /content', with_end=False)
         if not raw_data:
             return []
         raw_data = utils.replace_cloudflare_emails(raw_data)
-        node = utils.parse_html_fragment(raw_data[:raw_data.rfind(b'</ul>')])
+        node = utils.parse_html_fragment(raw_data)
         if not node:
             return []
         node = node[0]
 
-        inp = b'<input type="hidden" id="stream_last_id" value="'
-        if raw_data.rfind(inp) > 0:
-            last_id = raw_data[raw_data.rfind(inp) + len(inp):]
-            last_id = int(last_id[:last_id.find(b'"')])
-        else:
-            last_id = -1
+        last_id = node.find('span').get('data-last-id')
+        last_id = int(last_id) if last_id else -1
 
+        item = None
         items = []
 
-        for li in node.findall('li'):
+        for li in node.find('ul').findall('li'):
             if not li.get('class', '').startswith('stream-item'):
                 continue
             item = parse_activity(li)
