@@ -1164,9 +1164,11 @@ class User(object):
                 raise
 
         comms = {}
-        for comm in data['aComments']:
+        # comments/pid для Табуна, aComments/idParent для остальных LiveStreet
+        comms_list = data['comments'].values() if 'comments' in data else data['aComments']
+        for comm in comms_list:
             node = utils.parse_html_fragment(utils.escape_comment_contents(comm['html'].encode('utf-8')))
-            pcomm = parse_comment(node[0], post_id, None, comm['idParent'])
+            pcomm = parse_comment(node[0], post_id, None, comm['pid'] if 'pid' in comm else comm['idParent'])
             if pcomm:
                 comms[pcomm.comment_id] = pcomm
             else:
