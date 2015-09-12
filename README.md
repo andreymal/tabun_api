@@ -18,7 +18,7 @@ API для сайта tabun.everypony.ru
 * Сидеть через прокси
 * А также выполнять всякую служебную мелочёвку: искать картинки, которые не смайлики, переводить html в txt и прочее
 
-Требует Python 2.7/3.4 и [lxml](http://lxml.de/) для работы.
+Требует Python 2.7/3.4, [lxml](http://lxml.de/) и [iso8601](https://bitbucket.org/micktwomey/pyiso8601) для работы.
 
 
 #### Установка через pip

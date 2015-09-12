@@ -39,3 +39,23 @@ def test_htmlToString_without_cutted_spoiler(user):
 def test_find_images_cutted(user):
     post = user.get_post(138982, 'borderline')
     assert utils.find_images(post.body) == [['https://i.imgur.com/V3KzzyAs.png'], ['https://i.imgur.com/NAg929K.jpg']]
+
+
+def test_parse_datetime_2015():
+    assert utils.parse_datetime('2015-01-01T02:00:00+03:00').strftime('%Y-%m-%d %H:%M:%S') == '2014-12-31 23:00:00'
+
+
+def test_parse_datetime_2015_noutc():
+    assert utils.parse_datetime('2015-01-01T02:00:00+03:00', utc=False).strftime('%Y-%m-%d %H:%M:%S') == '2015-01-01 02:00:00'
+
+
+def test_parse_datetime_2015_utc():
+    assert utils.parse_datetime('2015-01-01T02:00:00Z').strftime('%Y-%m-%d %H:%M:%S') == '2015-01-01 02:00:00'
+
+
+def test_parse_datetime_2014_04():
+    assert utils.parse_datetime('2014-10-26T01:59:59+04:00').strftime('%Y-%m-%d %H:%M:%S') == '2014-10-25 21:59:59'
+
+
+def test_parse_datetime_2014_03():
+    assert utils.parse_datetime('2014-10-26T01:00:00+03:00').strftime('%Y-%m-%d %H:%M:%S') == '2014-10-25 22:00:00'

@@ -6,6 +6,7 @@ from __future__ import print_function, unicode_literals
 import os
 import re
 import time
+from datetime import datetime
 from socket import timeout as socket_timeout
 from json import JSONDecoder
 from threading import RLock
@@ -14,7 +15,7 @@ from . import utils, compat
 from .compat import PY2, BaseCookie, urequest, text_types, text, binary
 
 
-__version__ = '0.6.3'
+__version__ = '0.6.4'
 
 #: Адрес Табуна. Именно на указанный здесь адрес направляются запросы.
 http_host = "http://tabun.everypony.ru"
@@ -70,7 +71,7 @@ class Post(object):
     def __init__(self, time, blog, post_id, author, title, draft,
                  vote_count, vote_total, body, tags, comments_count=None, comments_new_count=None,
                  short=False, private=False, blog_name=None, poll=None, favourite=0, favourited=False,
-                 download=None, raw_body=None):
+                 download=None, utctime=None, raw_body=None):
         self.time = time
         self.blog = text(blog) if blog else None
         self.post_id = int(post_id)
@@ -91,6 +92,7 @@ class Post(object):
         if download and (not isinstance(download, Download) or download.post_id != self.post_id):
             raise ValueError
         self.download = download
+        self.utctime = utctime
 
         self.body, self.raw_body = utils.normalize_body(body, raw_body, cls='topic-content text')
 
@@ -125,7 +127,7 @@ class Comment(object):
     """Коммент. Возможно, удалённый, поэтому следите, чтобы значения не были None!"""
     def __init__(self, time, blog, post_id, comment_id, author, body, vote, parent_id=None,
                  post_title=None, unread=False, deleted=False, favourite=None, favourited=False,
-                 raw_body=None):
+                 utctime=None, raw_body=None):
         self.time = time
         self.blog = text(blog) if blog else None
         self.post_id = int(post_id) if post_id else None
@@ -144,6 +146,7 @@ class Comment(object):
         self.deleted = bool(deleted)
         self.favourite = int(favourite) if favourite is not None else None
         self.favourited = bool(favourited)
+        self.utctime = utctime
 
         self.body, self.raw_body = utils.normalize_body(body, raw_body)
 
@@ -264,8 +267,8 @@ class Poll(object):
 
 
 class TalkItem(object):
-    """Личное сообщение."""
-    def __init__(self, talk_id, recipients, unread, title, date, body=None, author=None, comments=None, raw_body=None):
+    """Личное сообщение. При чтении списка сообщений некоторые поля могут быть None."""
+    def __init__(self, talk_id, recipients, unread, title, date, body=None, author=None, comments=None, utctime=None, raw_body=None):
         self.talk_id = int(talk_id)
         self.recipients = [text(x) for x in recipients]
         self.unread = bool(unread)
@@ -273,6 +276,7 @@ class TalkItem(object):
         self.date = date
         self.author = text(author) if author else None
         self.comments = comments if comments else []
+        self.utctime = utctime
 
         self.body, self.raw_body = utils.normalize_body(body, raw_body)
 
@@ -1658,11 +1662,12 @@ class User(object):
         footer = item.find("footer")
         author = footer.xpath('ul/li[@class="topic-info-author"]/a[2]/text()')[0].strip()
         date = footer.xpath('ul/li[@class="topic-info-date"]/time')[0]
+        utctime = utils.parse_datetime(date.get("datetime"))
         date = time.strptime(date.get("datetime")[:-6], "%Y-%m-%dT%H:%M:%S")
 
         comments = self.get_comments(raw_data=raw_data)
 
-        return TalkItem(talk_id, recipients, False, title, date, body, author, comments)
+        return TalkItem(talk_id, recipients, False, title, date, body, author, comments, utctime)
 
     def get_activity(self, url='/stream/all/', raw_data=None):
         """Возвращает список последних событий."""
@@ -1853,11 +1858,14 @@ def parse_post(item):
         blog_name = None
 
     post_time = item.xpath('footer/ul/li[1]/time')
+    utctime = None
     if not post_time:
         post_time = item.xpath('header/div[@class="topic-info"]/time')  # mylittlebrony.ru
     if post_time:
+        utctime = utils.parse_datetime(post_time[0].get("datetime"))
         post_time = time.strptime(post_time[0].get("datetime")[:-6], "%Y-%m-%dT%H:%M:%S")
     else:
+        utctime = datetime.utcnow()
         post_time = time.localtime()
 
     body = item.xpath('div[@class="topic-content text"]')
@@ -1994,7 +2002,7 @@ def parse_post(item):
     return Post(
         post_time, blog, post_id, author, title, draft, vote_count, vote_total, body if raw_body is None else None, tags,
         comments_count, comments_new_count, is_short, private, blog_name,
-        poll, favourite, favourited, download, raw_body
+        poll, favourite, favourited, download, utctime, raw_body
     )
 
 
@@ -2144,6 +2152,7 @@ def parse_comment(node, post_id, blog=None, parent_id=None):
 
         nick = info.findall("li")[0].findall("a")[-1].text
         tm = info.findall("li")[1].find("time").get('datetime')
+        utctime = utils.parse_datetime(tm)
         tm = time.strptime(tm[:-6], "%Y-%m-%dT%H:%M:%S")
 
         post_title = None
@@ -2200,7 +2209,7 @@ def parse_comment(node, post_id, blog=None, parent_id=None):
 
     if body is not None:
         return Comment(tm, blog, post_id, comment_id, nick, body if raw_body is None else None, vote, parent_id,
-                       post_title, unread, deleted, favourite, favourited, raw_body)
+                       post_title, unread, deleted, favourite, favourited, utctime, raw_body)
 
 
 def parse_deleted_comment(node, post_id, blog=None):

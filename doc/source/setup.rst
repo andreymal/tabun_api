@@ -15,4 +15,4 @@
 
     pip install git+https://github.com/andreymal/tabun_api.git#egg=tabun_api
 
-А ещё можно просто закинуть каталог ``tabun_api`` куда требуется, не забыв установить lxml.
+А ещё можно просто закинуть каталог ``tabun_api`` куда требуется, не забыв установить lxml и iso8601.

@@ -26,6 +26,8 @@ def test_get_posts_data_ok(user):
         for key, value in data.items():
             if key == 'time':
                 assert time.strftime("%Y-%m-%d %H:%M:%S", post.time) == value
+            elif key == 'utctime':
+                assert post.utctime.strftime('%Y-%m-%d %H:%M:%S') == value
             elif key != "post_id":
                 assert getattr(post, key) == value
 
@@ -42,6 +44,8 @@ def test_get_posts_profile_data_ok(user, set_mock):
         for key, value in data.items():
             if key == 'time':
                 assert time.strftime("%Y-%m-%d %H:%M:%S", post.time) == value
+            elif key == 'utctime':
+                assert post.utctime.strftime('%Y-%m-%d %H:%M:%S') == value
             elif key != "post_id":
                 assert getattr(post, key) == value
 
@@ -67,6 +71,7 @@ def test_get_post_ok(user):
     assert post.blog is None
     assert post.draft == True
     assert time.strftime("%Y-%m-%d %H:%M:%S", post.time) == "2015-05-30 19:14:04"
+    assert post.utctime.strftime('%Y-%m-%d %H:%M:%S') == '2015-05-30 16:14:04'
 
     assert post.title == 'Тест'
     assert post.raw_body == '<strong>Раз</strong><br/>\n<h4>Два</h4>И ломаем вёрстку <img src="http://ya.ru/" alt="'

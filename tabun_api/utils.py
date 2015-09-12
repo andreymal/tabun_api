@@ -13,6 +13,7 @@ import lxml
 import lxml.html
 import lxml.etree
 # import html5lib
+import iso8601
 
 from .compat import text, text_types, binary, urequest, PY2
 
@@ -657,3 +658,13 @@ def escape_comment_contents(data):
 
     buf.append(data[last_end:])
     return b''.join(buf)
+
+
+def parse_datetime(s, utc=True):
+    """Парсит дату-время в формате ISO 8601 и возвращает объект datetime с часовым поясом.
+    При utc=True возвращает время в UTC (без привязки к часовому поясу для совместимости с Python 2), иначе — что распарсилось.
+    """
+    tm = iso8601.parse_date(s)
+    if not utc:
+        return tm
+    return (tm - tm.utcoffset()).replace(tzinfo=None)
