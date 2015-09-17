@@ -18,7 +18,7 @@ from testutil import UserTest, load_file, form_intercept, set_mock, user
 
 def test_get_posts_data_ok(user):
     post_data = json.loads(load_file('index_posts.json', template=False).decode('utf-8'))
-    posts = reversed(user.get_posts('/'))
+    posts = list(reversed(user.get_posts('/')))
 
     assert len(posts) == len(post_data)
     for data, post in zip(post_data, posts):
@@ -37,7 +37,7 @@ def test_get_posts_profile_data_ok(user, set_mock):
     set_mock({'/profile/test/created/topics/': 'profile_topics.html'})
 
     post_data = json.loads(load_file('profile_topics.json', template=False).decode('utf-8'))
-    posts = reversed(user.get_posts('/profile/test/created/topics/'))
+    posts = list(reversed(user.get_posts('/profile/test/created/topics/')))
 
     assert len(posts) == len(post_data)
     for data, post in zip(post_data, posts):
