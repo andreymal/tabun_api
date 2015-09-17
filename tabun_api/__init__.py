@@ -293,7 +293,7 @@ class TalkItem(object):
 
 class ActivityItem(object):
     """Событие со страницы /stream/."""
-    WALL_ADD = 0  # Просто чтобы было :)
+    WALL_ADD = 0
     POST_ADD = 1
     COMMENT_ADD = 2
     BLOG_ADD = 3
@@ -1685,8 +1685,17 @@ class User(object):
             return []
         node = node[0]
 
-        last_id = node.find('span').get('data-last-id')
-        last_id = int(last_id) if last_id else -1
+        last_id = node.find('span')
+        if last_id is not None and last_id.get('data-last-id'):
+            # Табун
+            last_id = int(last_id.get('data-last-id'))
+        else:
+            # Остальные LiveStreet
+            last_id = node.find('input')
+            if last_id is not None and last_id.get('id') == 'stream_last_id' and last_id.get('value'):
+                last_id = int(last_id.get('value'))
+            else:
+                last_id = -1
 
         item = None
         items = []
@@ -1779,7 +1788,13 @@ def parse_activity(item):
     elif 'stream-item-type-vote_blog' in classes:
         typ = ActivityItem.BLOG_VOTE
         href = item.xpath('a[2]')[0].get('href')[:-1]
-        blog = href[href.rfind('/') + 1:]
+        if (href.endswith('/created/topics') or href.endswith('/created/topics/')) and '/profile/' in href:
+            # Есть такой баг: можно оценивать личные блоги
+            blog = None
+            data = href.split('/profile/', 1)[1]
+            data = data[:data.find('/')]
+        else:
+            blog = href[href.rfind('/') + 1:]
         title = item.xpath('a[2]/text()[1]')[0]
 
     elif 'stream-item-type-vote_user' in classes:
@@ -1795,6 +1810,11 @@ def parse_activity(item):
         href = item.xpath('a[2]')[0].get('href')[:-1]
         blog = href[href.rfind('/') + 1:]
         title = item.xpath('a[2]/text()[1]')[0]
+
+    elif 'stream-item-type-add_wall' in classes:
+        typ = ActivityItem.WALL_ADD
+        data = item.xpath('span/a[2]/text()')[0]
+        # TODO: comment content
 
     else:
         return

@@ -20,6 +20,7 @@ def test_get_posts_data_ok(user):
     post_data = json.loads(load_file('index_posts.json', template=False).decode('utf-8'))
     posts = reversed(user.get_posts('/'))
 
+    assert len(posts) == len(post_data)
     for data, post in zip(post_data, posts):
         assert post.post_id == data['post_id']
 
@@ -38,6 +39,7 @@ def test_get_posts_profile_data_ok(user, set_mock):
     post_data = json.loads(load_file('profile_topics.json', template=False).decode('utf-8'))
     posts = reversed(user.get_posts('/profile/test/created/topics/'))
 
+    assert len(posts) == len(post_data)
     for data, post in zip(post_data, posts):
         assert post.post_id == data['post_id']
 

@@ -35,7 +35,8 @@ templates = {
     'AUTH2_AUTHORIZED': 'auth2_authorized.html',
     'NO_SIDEBAR': 'no_sidebar.html',
     'SIDEBAR': 'sidebar.html',
-    'FOOTER': 'footer.html'
+    'FOOTER': 'footer.html',
+    'ACTIVITY_ITEMS': 'activity_items.html',
 }
 
 interceptors = {}
@@ -47,7 +48,8 @@ mocks = {
     '/blog/132085.html': ('132085.html', None),
     '/blog/borderline/138982.html': ('138982.html', None),
     '/blog/138983.html': ('138983.html', None),
-    '/comments/': ('comments.html', None)
+    '/comments/': ('comments.html', None),
+    '/stream/all/': ('activity.html', None),
 }
 
 @pytest.yield_fixture(scope='function')
