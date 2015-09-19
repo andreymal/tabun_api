@@ -97,7 +97,7 @@ class Post(object):
         self.body, self.raw_body = utils.normalize_body(body, raw_body, cls='topic-content text')
 
     def __repr__(self):
-        o = "<post " + ((self.blog + "/") if self.blog else "personal ") + text(self.post_id) + ">"
+        o = "<post " + (self.blog or "[personal]") + '/' + text(self.post_id) + ">"
         return o.encode('utf-8') if PY2 else o
 
     def __str__(self):
@@ -153,7 +153,7 @@ class Comment(object):
     def __repr__(self):
         o = (
             "<" + ("deleted " if self.deleted else "") + "comment " +
-            ((self.blog + "/" + text(self.post_id) + "/") if self.blog and self.post_id else "") +
+            (((self.blog or '[personal]') + "/" + text(self.post_id) + "/") if self.post_id else "") +
             text(self.comment_id) + ">"
         )
         return o.encode('utf-8') if PY2 else o
