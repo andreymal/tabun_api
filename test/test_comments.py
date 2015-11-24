@@ -60,7 +60,7 @@ def test_add_comment_ok(form_intercept, set_mock, user):
     set_mock({'/blog/ajaxaddcomment/': (None, {'data': b'{"sCommentId": 1, "sMsgTitle": "", "sMsg": "", "bStateError": false}'})})
     @form_intercept('/blog/ajaxaddcomment/')
     def add_comment(data, headers):
-        assert headers.get('content-type', '').startswith('multipart/form-data; boundary=-')
+        assert headers.get('content-type', '').startswith(b'multipart/form-data; boundary=-')
 
         assert data.get('security_ls_key') == [b'0123456789abcdef0123456789abcdef']
         assert data.get('cmt_target_id') in ([b'1'], [b'2'])

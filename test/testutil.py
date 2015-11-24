@@ -16,8 +16,10 @@ if PY2:
     from httplib import HTTPMessage
     def parse_headers(fp):
         return HTTPMessage(fp)
+    import urlparse
 else:
     from http.client import parse_headers
+    from urllib import parse as urlparse
 
 # для выбора загружаемых страниц из каталога data
 guest_mode = False
@@ -184,29 +186,55 @@ def build_response(req_url, result_path, optparams=None):
 
 
 class UserTest(api.User):
-    def urlopen(self, url, data=None, headers={}, redir=True, nowait=False, with_cookies=True, timeout=None):
-        # TODO: заменить эту функцию на send_request
-        # собираем объект Request для проверки, что там ничего не упадёт
-        self.build_request(url, data, headers, with_cookies)
+    def __init__(self, *args, **kwargs):
+        super(UserTest, self).__init__(*args, **kwargs)
 
-        data = data.encode('utf-8') if isinstance(data, text) else data
+    def test_open(self, fullurl, data=None, timeout=None):
+        if isinstance(fullurl, (text, binary)):
+            req_url = fullurl
+        else:
+            assert data is None
+            data = fullurl.data
+            req_url = fullurl.get_full_url()
 
-        # Нормализуем url для поиска
-        req_url = url.get_full_url() if isinstance(url, urequest.Request) else url
-        if req_url.startswith('/'):
-            req_url = api.http_host + req_url
+        # Тестируем совместимость с разными питонами и попутно собираем заголовки
+        headers = {}
+        if PY2:
+            assert isinstance(req_url, binary)
+            if req_url is not fullurl:
+                for h, v in fullurl.headers.items():
+                    assert isinstance(h, binary)
+                    assert isinstance(v, binary)
+                    headers[h.decode('utf-8').lower()] = v
+        else:
+            assert isinstance(req_url, text)
+            if req_url is not fullurl:
+                for h, v in fullurl.headers.items():
+                    assert isinstance(h, text)
+                    assert isinstance(v, binary)  # значение всегда binary
+                    headers[h.lower()] = v
 
-        # Перехват запроса при необходимости
+
+        assert data is None or isinstance(data, binary)
+        assert timeout is None or isinstance(timeout, (int, float))
+
+        # Потестировали, а дальше проще с юникодом работать
+        if PY2:
+            req_url = req_url.decode('utf-8')
+
+        # Перехват запроса при необходимости, можно его параметры assert'ить здесь
         for url, func in form_interceptors.items():
-            if req_url == url or req_url == api.http_host + url:
-                ctype = headers['content-type'].decode('utf-8') if isinstance(headers['content-type'], binary) else headers['content-type']
-                if ctype.startswith('multipart/form-data;'):
-                    pdict = cgi.parse_header(headers['content-type'])[1]
-                    data = cgi.parse_multipart(BytesIO(data), {'boundary': pdict['boundary'].encode('utf-8')})
-                else:
-                    data = cgi.parse_qs(data.decode('utf-8'))
-                func(data, headers)
-                break
+            if req_url != url and req_url != api.http_host + url:
+                continue
+            ctype = headers['content-type'].decode('utf-8')
+            if ctype.startswith('multipart/form-data;'):
+                pdict = cgi.parse_header(headers['content-type'] if PY2 else ctype)[1]
+                print(data)
+                data = cgi.parse_multipart(BytesIO(data), {'boundary': pdict['boundary'].encode('utf-8')})
+            else:
+                data = urlparse.parse_qs(data.decode('utf-8'))
+            func(data, headers)
+            break
 
         for url, func in interceptors.items():
             if req_url == url or req_url == api.http_host + url:
@@ -214,7 +242,8 @@ class UserTest(api.User):
                 break
 
         # Ищем ответ на запрос
-        for url, (result_path, optparams) in list(current_mocks.items()) + list(mocks.items()):
+        for url, x in list(current_mocks.items()) + list(mocks.items()):
+            result_path, optparams = x
             if url.startswith('/'):
                 url = api.http_host + url
             if req_url == url:
@@ -229,3 +258,8 @@ class UserTest(api.User):
             return build_response(req_url, mocks['404'][0], params)
         else:
             return build_response(req_url, '404.html', params)
+
+    def send_request(self, *args, **kwargs):
+        self.opener.open = self.test_open
+        self.noredir.open = self.test_open
+        return super(UserTest, self).send_request(*args, **kwargs)

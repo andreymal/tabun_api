@@ -6,16 +6,16 @@ from __future__ import print_function, unicode_literals
 import os
 import re
 import time
+import threading
 from datetime import datetime
 from socket import timeout as socket_timeout
 from json import JSONDecoder
-from threading import RLock
 
 from . import utils, compat
 from .compat import PY2, BaseCookie, urequest, text_types, text, binary
 
 
-__version__ = '0.6.4'
+__version__ = '0.6.5'
 
 #: Адрес Табуна. Именно на указанный здесь адрес направляются запросы.
 http_host = "http://tabun.everypony.ru"
@@ -401,7 +401,8 @@ class User(object):
         self.session_cookie_name = text(session_cookie_name)
 
         self.jd = JSONDecoder()
-        self.lock = RLock()
+        self.lock = threading.Lock()
+        self.wait_lock = threading.Lock()
 
         handlers = []
 
@@ -599,27 +600,37 @@ class User(object):
         """Отправляет запрос (строку со ссылкой или объект Request).
         Возвращает результат вызова urlopen (объект urllib.addinfourl).
         Используется в методе urlopen.
+        Если установлен query_interval, то метод может сделать паузу перед запросом
+        для соблюдения интервала. Таймаут на эту паузу не влияет.
         """
 
-        # FIXME: ну чего так некрасиво-то получилось?
-        self.lock.acquire()
+        if self.query_interval <= 0:
+            nowait = True
+
+        # Выстраиваем «очередь» запросов с помощью блокировки;
+        # каждый из запросов в этой блокировке поспит query_interval секунд
+        if not nowait:
+            self.wait_lock.acquire()
+
         try:
-            while not nowait and self.query_interval > 0 and time.time() - self.last_query_time < self.query_interval:
-                sleeptime = self.query_interval - time.time() + self.last_query_time
+            # Если последний запрос был недавно, спим
+            sleeptime = 0
+            if not nowait:
+                sleeptime = self.last_query_time - time.time() + self.query_interval
                 if sleeptime > 0:
-                    self.lock.release()
-                    try:
-                        time.sleep(sleeptime)
-                    finally:
-                        self.lock.acquire()
+                    time.sleep(sleeptime)
 
-            self.last_query_time = time.time()
+            # Записываем время запроса перед отправкой, а не после, для компенсации сетевых задержек
+            # А для компенсации локальных задержек время считаем сами вместо time.time()
+            self.last_query_time = time.time() if sleeptime <= 0 else (self.last_query_time + self.query_interval)
 
+            # И уже теперь готовим и отправляем запрос
             if timeout is None:
                 timeout = self.timeout
 
             try:
-                return (self.opener.open if redir else self.noredir.open)(request, timeout=timeout)
+                with self.lock:
+                    return (self.opener.open if redir else self.noredir.open)(request, timeout=timeout)
             except KeyboardInterrupt:
                 raise
             except urequest.HTTPError as exc:
@@ -636,9 +647,9 @@ class User(object):
                 raise TabunError("Timeout", -2)
             except IOError as exc:
                 raise TabunError(text(exc), -3)
-
         finally:
-            self.lock.release()
+            if not nowait:
+                self.wait_lock.release()
 
     def urlopen(self, url, data=None, headers=None, redir=True, nowait=False, with_cookies=True, timeout=None):
         """Отправляет HTTP-запрос и возвращает результат вызова urlopen (объект addinfourl).

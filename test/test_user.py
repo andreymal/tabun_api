@@ -228,3 +228,92 @@ def test_build_request_external(user):
     else:
         assert req.get_full_url() == 'https://imgur.com/'
     assert str('Cookie') not in req.headers.keys()
+
+
+def test_send_request_without_interval(user):
+    import time
+
+    now = [100]
+    sleeps = []
+    def sleep(n):
+        sleeps.append(n)
+        now[0] += n
+        now[0] += 1  # всякие техничские задержки
+    def get_time():
+        return now[0]
+
+    old_sleep = time.sleep
+    old_time = time.time
+    time.sleep = sleep
+    time.time = get_time
+
+    try:
+        user.urlopen('/')
+        assert sleeps == []
+        assert user.last_query_time == now[0]
+
+        now[0] += 2
+        user.urlopen('/comments/', nowait=True)
+        assert sleeps == []
+        assert user.last_query_time == now[0]
+
+        now[0] += 2
+        user.urlopen('/stream/all/')
+        assert sleeps == []
+        assert user.last_query_time == now[0]
+
+        now[0] += 100
+        user.urlopen('/')
+        assert sleeps == []
+        assert user.last_query_time == now[0]
+    finally:
+        time.sleep = old_sleep
+        time.time = old_time
+
+
+def test_send_request_with_interval(user):
+    user.query_interval = 5
+
+    import time
+
+    now = [100]
+    sleeps = []
+    def sleep(n):
+        sleeps.append(n)
+        now[0] += n
+        now[0] += 1  # имитация технических задержек и неточности time.time()
+    def get_time():
+        return now[0]
+
+    old_sleep = time.sleep
+    old_time = time.time
+    time.sleep = sleep
+    time.time = get_time
+
+    try:
+        user.urlopen('/')
+        assert sleeps == []
+        assert user.last_query_time == now[0]
+
+        now[0] += 2  # 100 + 2 = 102
+        user.urlopen('/comments/')  # 102 + (5 - 2) + 1 = 106
+        assert sleeps == [3]
+        assert user.last_query_time == now[0] - 1  # встроена компенсация технических задержек
+
+        now[0] += 1  # 106 + 1 = 107
+        user.urlopen('/', nowait=True)  # 107 + 0 = 107
+        assert sleeps == [3]
+        assert user.last_query_time == now[0]
+
+        now[0] += 1  # 107 + 1 = 108
+        user.urlopen('/stream/all/')  # 108 + (5 - 1) + 1 = 113 (предыдущий запрос сбросил last_query_time)
+        assert sleeps == [3, 4]
+        assert user.last_query_time == now[0] - 1
+
+        now[0] += 100  # 113 + 100 = 213
+        user.urlopen('/')  # 213 + 0 = 213
+        assert sleeps == [3, 4]
+        assert user.last_query_time == now[0]
+    finally:
+        time.sleep = old_sleep
+        time.time = old_time
