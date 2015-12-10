@@ -1314,6 +1314,7 @@ class User(object):
         return peoples
 
     def get_profile(self, username=None, raw_data=None):
+        """Возвращает объект UserInfo с полной информацией о броняше."""
         if not raw_data:
             raw_data = self.urlopen("/profile/" + urequest.quote(text(username).encode('utf-8'))).read()
 
