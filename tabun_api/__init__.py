@@ -1553,8 +1553,8 @@ class User(object):
 
         return blog_title, blog_url, blog_type == "close", blog_description, blog_limit_rating_topic
 
-    def edit_post(self, post_id, blog_id, title, body, tags, draft=False):
-        """Редактирует пост и возвращает его блог и номер в случае удачи или (None,None) в случае неудачи."""
+    def edit_post(self, post_id, blog_id, title, body, tags, forbid_comment=False, draft=False):
+        """Редактирует пост и возвращает его блог и номер в случае удачи или (None, None) в случае неудачи."""
         self.check_login()
         blog_id = int(blog_id if blog_id else 0)
 
@@ -1569,6 +1569,9 @@ class User(object):
             'topic_text': text(body),
             'topic_tags': text(tags)
         }
+        if forbid_comment:
+            fields['topic_forbid_comment'] = '1'
+
         if draft:
             fields['submit_topic_save'] = "Сохранить в черновиках"
         else:
