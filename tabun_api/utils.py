@@ -618,9 +618,26 @@ def escape_comment_contents(data):
     f2 = 0
     last_end = 0
     buf = []
+
     while True:
         # определяем границы очередного коммента
-        f1 = data.find(b'class="comment-content">', last_end)
+        sect_start = data.find(b'<section', last_end)
+        if sect_start < 0:
+            break
+        sect_end = data.find(b'</section>', sect_start)
+        if sect_end < 0:
+            break
+
+        prev_last_end = last_end
+        last_end = sect_end
+
+        if data.find(b'class="comment ', sect_start, sect_end) < 0 and data.find(b'class="comment"', sect_start, sect_end) < 0 and data.find(b'class="comment\n', sect_start, sect_end) < 0:
+            # не коммент
+            buf.append(data[prev_last_end:last_end])
+            continue
+
+        # Выделяем текст коммента
+        f1 = data.find(b'class="comment-content">', sect_start, sect_end)
         if f1 >= 0:
             f = data.find(b'<div class=" text">', f1, f1 + 150)
             if f < 0:
@@ -629,32 +646,46 @@ def escape_comment_contents(data):
                 f1 = f
             del f
         if f1 < 0:
-            break
-        f2 = data.find(b'<div id="info_edit_', f1)
+            # Коммент без текста (например, удалённый)
+            buf.append(data[prev_last_end:last_end])
+            continue
+
+        # Блок редактирования (в отключенном плагине)
+        f2 = data.rfind(b'<div id="info_edit_', f1, sect_end)
+
+        # Путь к посту на странице /comments/
         if f2 < 0:
-            f2 = data.find(b'<div class="comment-path', f1)
+            f2 = data.rfind(b'<div class="comment-path', f1, sect_end)
+
+        # Информация о комменте в самом посте
         if f2 < 0:
-            f2 = data.find(b'<ul class="comment-info', f1)
+            f2 = data.rfind(b'<ul class="comment-info', f1, sect_end)
+
         if f2 < 0:
-            break
+            # Что-то совсем битое, вроде скрытого заминусованного коммента
+            buf.append(data[prev_last_end:last_end])
+            continue
+
+        # Обходим </div> от <div class="comment-content">
         f2 = data.rfind(b'</div>', f1, f2)
         if f2 >= 0:
             f2 = data.rfind(b'</div>', f1, f2)
         if f2 < 0:
-            break
+            print('Warning: cannot find </div></div>! Please report to andreymal.')
+            buf.append(data[prev_last_end:last_end])
+            continue
 
         # экранируем тело
-        body = data[data.find(b'>', f1) + 1:f2].strip()
+        body = data[data.find(b'>', f1, f2) + 1:f2].strip()
         body = body.replace(b'&', b'&amp;').replace(b'<', b'&lt;').replace(b'>', b'&gt;').replace(b'"', b'&quot;')
 
         # собираем страницу обратно
         buf.extend((
-            data[last_end:f1],
+            data[prev_last_end:f1],
             b'<div class="text" data-escaped="1">',
             body,
-            b'</div>'
+            data[f2:last_end]
         ))
-        last_end = f2 + 6
 
     buf.append(data[last_end:])
     return b''.join(buf)

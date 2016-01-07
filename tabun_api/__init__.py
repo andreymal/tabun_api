@@ -2256,7 +2256,8 @@ def parse_deleted_comment(node, post_id, blog=None):
         return
     unread = "comment-new" in node.get("class", "")
     deleted = "comment-deleted" in node.get("class", "")
-    if not deleted:
+    bad = "comment-bad" in node.get("class", "")  # вроде обещалось, что это временно, поэтому пусть пока тут
+    if not deleted and not bad:
         print("Warning: deleted comment %d is not deleted! Please report to andreymal." % comment_id)
     body = None
     nick = None
@@ -2268,7 +2269,7 @@ def parse_deleted_comment(node, post_id, blog=None):
         parent_id = int(parent_wrapper.get("id").rsplit("_", 1)[-1])
     else:
         parent_id = None
-    return Comment(tm, blog, post_id, comment_id, nick, body, vote, parent_id, post_title, unread, deleted)
+    return Comment(tm, blog, post_id, comment_id, nick, body, vote, parent_id, post_title, unread, deleted or bad)
 
 
 def parse_talk_item(node):

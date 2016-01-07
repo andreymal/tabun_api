@@ -1,5 +1,19 @@
 [
     {
+        "comment_id": 0,
+        "post_id": 132085,
+        "parent_id": null,
+        "time": null,
+        "author": null,
+        "blog": null,
+        "vote": null,
+        "unread": false,
+        "deleted": true,
+        "favourite": null,
+        "favourited": false,
+        "raw_body": null
+    },
+    {
         "comment_id": 9444642,
         "post_id": 132085,
         "parent_id": null,
