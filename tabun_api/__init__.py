@@ -882,6 +882,18 @@ class User(object):
             redir=False
         ).getcode() / 100 == 3
 
+    def subscribe_to_new_comments(self, post_id, subscribed, mail=None):
+        """Меняет статус подписки на новые комментарии у поста."""
+        self.ajax(
+            '/subscribe/ajax-subscribe-toggle/',
+            {
+                'target_type': 'topic_new_comment',
+                'target_id': int(post_id),
+                'value': 1 if subscribed else 0,
+                'mail': text(mail) if mail else '',
+            }
+        )
+
     def toggle_blog_subscribe(self, blog_id):
         """Подписывается на блог/отписывается от блога и возвращает новое состояние: True - подписан, False - не подписан."""
         return self.ajax('/blog/ajaxblogjoin/', {'idBlog': int(blog_id)})['bState']
