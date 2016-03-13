@@ -21,7 +21,7 @@ __version__ = '0.6.5'
 http_host = "http://tabun.everypony.ru"
 
 #: Список полузакрытых блогов. В tabun_api нигде не используется, но может использоваться в использующих его программах.
-halfclosed = ("borderline", "shipping", "erpg", "gak", "RPG", "roliplay", "tearsfromthemoon", "Technic")
+halfclosed = ("borderline", "shipping", "erpg", "gak", "RPG", "roliplay", "tearsfromthemoon", "Technic", "zootopia")
 
 #: Заголовки для HTTP-запросов. Возможно, стоит менять user-agent.
 http_headers = {
