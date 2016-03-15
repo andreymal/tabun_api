@@ -1156,7 +1156,7 @@ class User(object):
         return Blog(blog_id, blog, name, creator, readers, vote_total, closed, description, admins, moderators, vote_count, posts_count, created)
 
     def get_post_and_comments(self, post_id, blog=None, raw_data=None):
-        """Возвращает пост и список комментов. По сути просто вызывает функции get_posts и get_comments."""
+        """Возвращает пост и словарь комментариев. По сути просто вызывает функции get_posts и get_comments."""
         post_id = int(post_id)
         if not raw_data:
             req = self.urlopen("/blog/" + (text(blog) + "/" if blog else "") + text(post_id) + ".html")
@@ -1170,7 +1170,8 @@ class User(object):
         return (post[0] if post else None), comments
 
     def get_comments_from(self, post_id, comment_id=0, typ="blog"):
-        """Возвращает комментарии к посту, начиная с определённого номера комментария. На сайте используется для подгрузки новых комментариев.
+        """Возвращает словарь комментариев к посту c id больше чем `comment_id`.
+        На сайте используется для подгрузки новых комментариев (ajaxresponsecomment).
         Тип - blog (пост) или talk (личные сообщения).
         """
         post_id = int(post_id)
