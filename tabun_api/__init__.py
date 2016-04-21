@@ -1633,7 +1633,7 @@ class User(object):
         result = self.send_form('/talk/add/', fields, redir=False)
         data = result.read()
         errors = utils.find_substring(data, b'<ul class="system-message-error">', b'</ul>')
-        if errors and ':' in errors:
+        if errors and b':' in errors:
             errors = utils.parse_html_fragment(errors)[0]
             errors = '; '.join(x.text_content().split('Ошибка:', 1)[-1].strip() for x in errors.findall('li'))
             raise TabunResultError(errors)
