@@ -229,7 +229,6 @@ class UserTest(api.User):
             ctype = headers['content-type'].decode('utf-8')
             if ctype.startswith('multipart/form-data;'):
                 pdict = cgi.parse_header(headers['content-type'] if PY2 else ctype)[1]
-                print(data)
                 data = cgi.parse_multipart(BytesIO(data), {'boundary': pdict['boundary'].encode('utf-8')})
             else:
                 data = urlparse.parse_qs(data.decode('utf-8'))

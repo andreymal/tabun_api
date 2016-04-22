@@ -45,14 +45,26 @@ class NoRedirect(urequest.HTTPRedirectHandler):
 
 class TabunError(Exception):
     """Общее для библиотеки исключение.
-    Содержит атрибут code с всякими разными циферками для разных типов исключения, обычно совпадает с HTTP-кодом ошибки при запросе.
+    Содержит атрибут code с всякими разными циферками для разных типов исключения,
+    обычно совпадает с HTTP-кодом ошибки при запросе.
     А в атрибуте message или текст, или снова код ошибки.
+    Если возможно (например, при ошибке ввода-вывода), присутствует атрибут exc
+    с оригинальным исключением. Если это HTTPError, то можно, например, вызвать
+    ``exc.read()`` или ``user.saferead(exc)``.
     """
-    def __init__(self, msg=None, code=0, data=None):
+
+    def __init__(self, message=None, code=0, data=None, exc=None, msg=None):
+        if msg is not None:
+            assert message is None
+            import warnings
+            warnings.warn('TabunError(msg=...) is deprecated; use TabunError(message=...) instead of it', FutureWarning)
+            message = msg
+        message = text(message) if message else text(code)
+        super(TabunError, self).__init__(message.encode('utf-8') if PY2 else message)
+        self.message = message
         self.code = int(code)
-        self.message = text(msg) if msg else text(code)
         self.data = data
-        Exception.__init__(self, self.message.encode("utf-8"))
+        self.exc = exc
 
     def __str__(self):
         return self.message.encode("utf-8") if PY2 else self.message
@@ -60,10 +72,27 @@ class TabunError(Exception):
     def __unicode__(self):
         return self.message
 
+    def __repr__(self):
+        result = 'TabunError({})'.format(self._reprfields())
+        return result.encode('utf-8') if PY2 else result
+
+    def _reprfields(self):
+        f = []
+        if self.message is not None and self.message != text(self.code):
+            f.append('message=' + repr(self.message))
+        if self.code != 0:
+            f.append('code=' + repr(self.code))
+        if self.data is not None:
+            f.append('data=' + repr(self.data))
+        return ', '.join(f)
+
 
 class TabunResultError(TabunError):
     """Исключение, содержащее текст ошибки, который вернул сервер. Как правило, это текст соответствующих всплывашек на сайте."""
-    pass
+
+    def __repr__(self):
+        result = 'TabunResultError({})'.format(self._reprfields())
+        return result.encode('utf-8') if PY2 else result
 
 
 class Post(object):
@@ -441,7 +470,7 @@ class User(object):
 
         if not self.phpsessid or not security_ls_key:
             resp = self.urlopen("/")
-            data = resp.read(1024 * 25)
+            data = self._netwrap(resp.read, 1024 * 25)
             resp.close()
 
             cook = BaseCookie()
@@ -548,7 +577,7 @@ class User(object):
             query += "&security_ls_key=" + urequest.quote(self.security_ls_key)
 
         resp = self.urlopen("/login/ajax-login", query, {"X-Requested-With": "XMLHttpRequest", "content-type": "application/x-www-form-urlencoded"})
-        data = resp.read()
+        data = self.saferead(resp)
         if data[0] not in (b"{", 123):
             raise TabunResultError(data.decode("utf-8", "replace"))
         data = self.jd.decode(data.decode('utf-8'))
@@ -574,6 +603,8 @@ class User(object):
         if not isinstance(url, urequest.Request):
             if url.startswith('/'):
                 url = (self.http_host or http_host) + url
+            elif not url.startswith('http://') and not url.startswith('https://'):
+                raise ValueError('Invalid URL: not http and not https')
             url = urequest.Request(url.encode('utf-8') if PY2 else url)
         if data is not None:
             url.data = data.encode('utf-8') if isinstance(data, text) else data
@@ -595,6 +626,31 @@ class User(object):
             url.add_header(header, value)
 
         return url
+
+    def _netwrap(self, func, *args, **kwargs):
+        lock = kwargs.pop('_lock', False)
+        try:
+            if lock:
+                with self.lock:
+                    return func(*args, **kwargs)
+            else:
+                return func(*args, **kwargs)
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except urequest.HTTPError as exc:
+            if exc.getcode() == 404:
+                data = exc.read(8192)
+                if b'//projects.everypony.ru/error/main.css' in data:
+                    raise TabunError('Static 404', -404)
+            raise TabunError(code=exc.getcode(), exc=exc)
+        except urequest.URLError as exc:
+            raise TabunError(exc.reason, -abs(getattr(exc.reason, 'errno', 0)), exc=exc)
+        except compat.HTTPException as exc:
+            raise TabunError("HTTP error", -40, exc=exc)
+        except socket_timeout:
+            raise TabunError("Timeout", -20, exc=exc)
+        except IOError as exc:
+            raise TabunError('IOError: ' + text(exc), -30, exc=exc)
 
     def send_request(self, request, redir=True, nowait=False, timeout=None):
         """Отправляет запрос (строку со ссылкой или объект Request).
@@ -628,25 +684,7 @@ class User(object):
             if timeout is None:
                 timeout = self.timeout
 
-            try:
-                with self.lock:
-                    return (self.opener.open if redir else self.noredir.open)(request, timeout=timeout)
-            except KeyboardInterrupt:
-                raise
-            except urequest.HTTPError as exc:
-                if exc.getcode() == 404:
-                    data = exc.read(8192)
-                    if b'//projects.everypony.ru/error/main.css' in data:
-                        raise TabunError('Static 404', -404)
-                raise TabunError(code=exc.getcode())
-            except urequest.URLError as exc:
-                raise TabunError(exc.reason, -exc.reason.errno if exc.reason.errno else 0)
-            except compat.HTTPException as exc:
-                raise TabunError("HTTP error", -4)
-            except socket_timeout:
-                raise TabunError("Timeout", -2)
-            except IOError as exc:
-                raise TabunError(text(exc), -3)
+            return self._netwrap(self.opener.open if redir else self.noredir.open, request, timeout=timeout, _lock=True)
         finally:
             if not nowait:
                 self.wait_lock.release()
@@ -665,6 +703,25 @@ class User(object):
         req = self.build_request(url, data, headers, with_cookies)
         return self.send_request(req, redir, nowait, timeout)
 
+    def urlread(self, url, data=None, headers=None, redir=True, nowait=False, with_cookies=True, timeout=None):
+        """Как return self.urlopen(*args, **kwargs).read(), но с перехватом исключений, возникших в процессе чтения."""
+        req = self.build_request(url, data, headers, with_cookies)
+        resp = self.send_request(req, redir, nowait, timeout)
+        try:
+            return self._netwrap(resp.read)
+        finally:
+            resp.close()
+
+    def saferead(self, resp):
+        """Вызывает функцию read у переданного объекта с перехватом ошибок ввода-вывода и выкидыванием TabunError вместо них.
+        Также вызывает функцию close при её наличии.
+        """
+        try:
+            return self._netwrap(resp.read)
+        finally:
+            if hasattr(resp, 'close'):
+                resp.close()
+
     def send_form(self, url, fields=(), files=(), headers=None, redir=True):
         """Формирует multipart/form-data запрос и отправляет его через функцию urlopen."""
         content_type, data = utils.encode_multipart_formdata(fields, files)
@@ -672,13 +729,20 @@ class User(object):
         headers['content-type'] = content_type
         return self.urlopen(url, data, headers, redir)
 
+    def send_form_and_read(self, url, fields=(), files=(), headers=None, redir=True):
+        """Формирует multipart/form-data запрос, отправляет его через функцию urlopen и возвращает тело ответа."""
+        content_type, data = utils.encode_multipart_formdata(fields, files)
+        headers = dict(headers or ())
+        headers['content-type'] = content_type
+        return self.urlread(url, data, headers, redir)
+
     def ajax(self, url, fields=None, files=(), headers=None, throw_if_error=True):
         """Отправляет ajax-запрос и возвращает распарсенный json-ответ. Или кидается исключением TabunResultError в случае ошибки."""
         self.check_login()
         headers = dict(headers or ())
         headers['x-requested-with'] = 'XMLHttpRequest'
         fields['security_ls_key'] = self.security_ls_key
-        data = self.send_form(url, fields or {}, files, headers=headers).read()
+        data = self.send_form_and_read(url, fields or {}, files, headers=headers)
 
         try:
             data = self.jd.decode(data.decode('utf-8'))
@@ -714,7 +778,7 @@ class User(object):
 
         try:
             result = self.send_form('/topic/add/', fields, redir=False)
-            data = result.read()
+            data = self.saferead(result)
             error = utils.find_substring(data, b'<ul class="system-message-error">', b'</ul>', with_start=False, with_end=False)
             if error and b':' in error:
                 error = utils.find_substring(error.decode('utf-8', 'replace'), ':', '</li>', extend=True, with_start=False, with_end=False).strip()
@@ -773,7 +837,7 @@ class User(object):
 
         try:
             result = self.send_form('/question/add/', fields, redir=False)
-            data = result.read()
+            data = self.saferead(result)
             error = utils.find_substring(data, b'<ul class="system-message-error">', b'</ul>', with_start=False, with_end=False)
             if error and b':' in error:
                 error = utils.find_substring(error.decode('utf-8', 'replace'), ':', '</li>', extend=True, with_start=False, with_end=False).strip()
@@ -865,7 +929,7 @@ class User(object):
             'topic_tags': text(tags)
         }
 
-        data = self.send_form('/ajax/preview/topic/', fields, (), headers={'x-requested-with': 'XMLHttpRequest'}).read()
+        data = self.send_form_and_read('/ajax/preview/topic/', fields, (), headers={'x-requested-with': 'XMLHttpRequest'})
         node = utils.parse_html_fragment(data)[0]
         data = node.text
         result = self.jd.decode(data)
@@ -939,9 +1003,10 @@ class User(object):
     def get_posts(self, url="/index/newall/", raw_data=None):
         """Возвращает список постов со страницы или RSS. Если постов нет - кидает исключение TabunError("No post")."""
         if not raw_data:
-            req = self.urlopen(url)
-            url = req.url
-            raw_data = req.read()
+            resp = self.urlopen(url)
+            url = resp.url
+            raw_data = self.saferead(resp)
+            del resp
         raw_data = utils.replace_cloudflare_emails(raw_data)
 
         posts = []
@@ -990,9 +1055,10 @@ class User(object):
             url = "/blog/" + text(post_id) + ".html"
 
         if not raw_data:
-            req = self.urlopen(url)
-            url = req.url
-            raw_data = req.read()
+            resp = self.urlopen(url)
+            url = resp.url
+            raw_data = self.saferead(resp)
+            del resp
         raw_data = utils.replace_cloudflare_emails(raw_data)
 
         posts = self.get_posts(url, raw_data=raw_data)
@@ -1011,10 +1077,10 @@ class User(object):
     def get_comments(self, url="/comments/", raw_data=None):
         """Возвращает словарь id-комментарий."""
         if not raw_data:
-            req = self.urlopen(url)
-            url = req.url
-            raw_data = req.read()
-            del req
+            resp = self.urlopen(url)
+            url = resp.url
+            raw_data = self.saferead(resp)
+            del resp
         blog, post_id = parse_post_url(url)
 
         raw_data = utils.find_substring(raw_data, b'<div class="comments', b'<!-- /content -->', extend=True, with_end=False)
@@ -1063,7 +1129,7 @@ class User(object):
             url += "?order=" + text(order_by)
             url += "&order_way=" + text(order_way)
 
-        data = self.urlopen(url).read()
+        data = self.urlread(url)
         data = utils.find_substring(data, b'<table class="table table-blogs', b'</table>')
         node = utils.parse_html_fragment(data)
         if not node:
@@ -1106,9 +1172,7 @@ class User(object):
         """Возвращает информацию о блоге. Функция не доделана."""
         blog = text(blog)
         if not raw_data:
-            req = self.urlopen("/blog/" + text(blog) + "/")
-            raw_data = req.read()
-            del req
+            raw_data = self.urlread("/blog/" + text(blog) + "/")
         data = utils.find_substring(raw_data, b'<div class="blog-top">', b'<div class="nav-menu-wrapper">', with_end=False)
         data = utils.replace_cloudflare_emails(data)
 
@@ -1159,10 +1223,10 @@ class User(object):
         """Возвращает пост и словарь комментариев. По сути просто вызывает функции get_posts и get_comments."""
         post_id = int(post_id)
         if not raw_data:
-            req = self.urlopen("/blog/" + (text(blog) + "/" if blog else "") + text(post_id) + ".html")
-            url = req.url
-            raw_data = req.read()
-            del req
+            resp = self.urlopen("/blog/" + ((text(blog) + "/") if blog else "") + text(post_id) + ".html")
+            url = resp.url
+            raw_data = self.saferead(resp)
+            del resp
 
         post = self.get_posts(url=url, raw_data=raw_data)
         comments = self.get_comments(url=url, raw_data=raw_data)
@@ -1208,10 +1272,10 @@ class User(object):
     def get_stream_comments(self):
         """Возвращает «Прямой эфир» - объекты StreamItem."""
         self.check_login()
-        data = self.urlopen(
+        data = self.urlread(
             "/ajax/stream/comment/",
             "security_ls_key=" + urequest.quote(self.security_ls_key)
-        ).read()
+        )
 
         data = self.jd.decode(data.decode('utf-8', 'replace'))
         if data['bStateError']:
@@ -1284,7 +1348,7 @@ class User(object):
             url += "?order=" + text(order_by)
             url += "&order_way=" + text(order_way)
 
-        data = self.urlopen(url).read()
+        data = self.urlread(url)
         data = utils.find_substring(data, b'<table class="table table-users', b'</table>')
         if not data:
             return []
@@ -1329,7 +1393,7 @@ class User(object):
     def get_profile(self, username=None, raw_data=None):
         """Возвращает объект UserInfo с полной информацией о броняше."""
         if not raw_data:
-            raw_data = self.urlopen("/profile/" + urequest.quote(text(username).encode('utf-8'))).read()
+            raw_data = self.urlread("/profile/" + urequest.quote(text(username).encode('utf-8')))
 
         data = utils.find_substring(raw_data, b'<div id="content"', b'<!-- /content ', extend=True, with_end=False)
         if not data:
@@ -1504,9 +1568,7 @@ class User(object):
     def get_editable_post(self, post_id, raw_data=None):
         """Возвращает blog_id, заголовок, исходный код поста, список тегов и галочку закрытия комментариев (True/False)."""
         if not raw_data:
-            req = self.urlopen("/topic/edit/" + text(int(post_id)) + "/")
-            raw_data = req.read()
-            del req
+            raw_data = self.urlread("/topic/edit/" + text(int(post_id)) + "/")
 
         raw_data = utils.find_substring(
             raw_data,
@@ -1540,9 +1602,7 @@ class User(object):
     def get_editable_blog(self, blog_id, raw_data=None):
         """Возвращает заголовок блога, URL, тип (True - закрытый, False - открытый), описание и ограничение рейтинга."""
         if not raw_data:
-            req = self.urlopen("/blog/edit/" + text(int(blog_id)) + "/")
-            raw_data = req.read()
-            del req
+            raw_data = self.urlread("/blog/edit/" + text(int(blog_id)) + "/")
 
         raw_data = utils.find_substring(
             raw_data,
@@ -1605,7 +1665,7 @@ class User(object):
             'security_ls_key': self.security_ls_key,
         }
 
-        data = self.send_form("/blog/ajaxaddbloginvite/", fields).read()
+        data = self.send_form_and_read("/blog/ajaxaddbloginvite/", fields)
         result = self.jd.decode(data.decode('utf-8'))
         if result['bStateError']:
             raise TabunResultError(result['sMsg'])
@@ -1631,7 +1691,7 @@ class User(object):
         }
 
         result = self.send_form('/talk/add/', fields, redir=False)
-        data = result.read()
+        data = self.saferead(result)
         errors = utils.find_substring(data, b'<ul class="system-message-error">', b'</ul>')
         if errors and b':' in errors:
             errors = utils.parse_html_fragment(errors)[0]
@@ -1646,9 +1706,7 @@ class User(object):
         """Возвращает список объектов Talk с личными сообщениями."""
         self.check_login()
         if not raw_data:
-            req = self.urlopen("/talk/inbox/page{}/".format(int(page)))
-            raw_data = req.read()
-            del req
+            raw_data = self.urlread("/talk/inbox/page{}/".format(int(page)))
 
         raw_data = utils.find_substring(raw_data, b'<table ', b'</table>')
         if not raw_data:
@@ -1670,9 +1728,7 @@ class User(object):
         """Возвращает объект Talk беседы с переданным номером."""
         self.check_login()
         if not raw_data:
-            req = self.urlopen("/talk/read/" + text(int(talk_id)) + "/")
-            raw_data = req.read()
-            del req
+            raw_data = self.urlread("/talk/read/" + text(int(talk_id)) + "/")
 
         data = utils.find_substring(raw_data, b"<article ", b"</article>", extend=True)
         if not data:
@@ -1701,9 +1757,7 @@ class User(object):
     def get_activity(self, url='/stream/all/', raw_data=None):
         """Возвращает список последних событий."""
         if not raw_data:
-            req = self.urlopen(url)
-            raw_data = req.read()
-            del req
+            raw_data = self.urlread(url)
 
         raw_data = utils.find_substring(raw_data, b'<div id="content"', b'<!-- /content', with_end=False)
         if not raw_data:
@@ -1749,7 +1803,7 @@ class User(object):
             'security_ls_key': self.security_ls_key,
         }
 
-        data = self.send_form("/stream/get_more_all/", fields).read()
+        data = self.send_form_and_read("/stream/get_more_all/", fields)
         result = self.jd.decode(data.decode('utf-8'))
         if result['bStateError']:
             raise TabunResultError(result['sMsg'])

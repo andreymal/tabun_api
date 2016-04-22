@@ -230,6 +230,11 @@ def test_build_request_external(user):
     assert str('Cookie') not in req.headers.keys()
 
 
+def test_build_request_invalid(user):
+    with pytest.raises(ValueError):
+        user.build_request(b'file:///etc/passwd')
+
+
 def test_send_request_without_interval(user):
     import time
 
