@@ -6,6 +6,7 @@ from __future__ import print_function, unicode_literals
 import os
 import re
 import time
+import logging
 import threading
 from datetime import datetime
 from socket import timeout as socket_timeout
@@ -34,6 +35,9 @@ post_url_regex = re.compile(r"/blog/(([A-z0-9_\-\.]{1,})/)?([0-9]{1,}).html")
 
 #: Регулярка для парсинга прикреплённых файлов.
 post_file_regex = re.compile(r'^Скачать \"(.+)" \(([0-9]*(\.[0-9]*)?) (Кб|Мб)\)$')
+
+#: Логгер tabun_api.
+logger = logging.getLogger(__name__)
 
 
 class NoRedirect(urequest.HTTPRedirectHandler):
@@ -574,7 +578,7 @@ class User(object):
                 self.skill = None
                 self.rating = None
             else:
-                print("Warning: update_userinfo received unknown data")
+                logger.warning('update_userinfo received unknown data')
             return
 
         node = utils.parse_html_fragment(userinfo)[0]
@@ -655,7 +659,7 @@ class User(object):
             context['username'] = None
             auth_panel = utils.find_substring(raw_data, b'<ul class="auth"', b'<nav', with_end=False)
             if not auth_panel or 'Войти'.encode('utf-8') not in auth_panel:
-                print("Warning: update_userinfo received unknown data")
+                logger.warning('get_main_context received unknown userinfo')
         else:
             f = userinfo.find(b'class="username">')
             if f >= 0:
@@ -1199,9 +1203,9 @@ class User(object):
                     if c:
                         comms[c.comment_id] = c
                     else:
-                        print("Warning: cannot parse deleted comment %s" % sect.get("id"))
+                        logger.warning('Cannot parse deleted comment %s (url: %s)', sect.get('id'), url)
                 else:
-                    print("Warning: unknown comment format %s" % sect.get("id"))
+                    logger.warning('Unknown comment format %s (url: %s)', sect.get('id'), url)
 
         return comms
 
@@ -1348,7 +1352,7 @@ class User(object):
             if pcomm:
                 comms[pcomm.comment_id] = pcomm
             else:
-                print("Warning: cannot parse ajax comment from %s" % post_id)
+                logger.warning('Cannot parse ajax comment from %s', post_id)
 
         return comms
 
@@ -2338,7 +2342,8 @@ def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
             info = node.xpath('div[@class="comment-path"]/ul[@class="comment-info"]')
         info = info[0] if info else None
         if info is None:
-            print('Warning: comment in {} without info and parsed by parse_comment! Please report to andreymal.'.format(post_id))
+            if 'comment-deleted' not in node.get("class", "") and 'comment-bad' not in node.get("class", ""):
+                logger.warning('Comment in post %s (id=%s) has no info! Please report to andreymal.', post_id, node.get('id', 'N/A'))
             return
 
         comment_id = info.xpath('li[@class="comment-link"]/a')[0].get('href')
@@ -2452,7 +2457,7 @@ def parse_deleted_comment(node, post_id, blog=None):
     deleted = "comment-deleted" in node.get("class", "")
     bad = "comment-bad" in node.get("class", "")  # вроде обещалось, что это временно, поэтому пусть пока тут
     if not deleted and not bad:
-        print("Warning: deleted comment %d is not deleted! Please report to andreymal." % comment_id)
+        logger.warning('Deleted comment %s is not deleted! Please report to andreymal.', comment_id)
     body = None
     nick = None
     tm = None
