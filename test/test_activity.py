@@ -23,7 +23,6 @@ def test_get_activity_tabun(user):
 
     # assert len(items) == len(items_data)
     for data, item in zip(items_data, items):
-        print(item)
         for key, value in data.items():
             if key == "date":
                 assert time.strftime("%Y-%m-%d %H:%M", item.date) == value
@@ -40,7 +39,6 @@ def test_get_activity_livestreet(user, set_mock):
 
     # assert len(items) == len(items_data)
     for data, item in zip(items_data, items):
-        print(item)
         for key, value in data.items():
             if key == "date":
                 assert time.strftime("%Y-%m-%d %H:%M", item.date) == value
@@ -68,7 +66,6 @@ def test_get_more_activity(user, set_mock):
 
     # assert len(items) == len(items_data)
     for data, item in zip(items_data, items):
-        print(item)
         for key, value in data.items():
             if key == "date":
                 assert time.strftime("%Y-%m-%d %H:%M", item.date) == value

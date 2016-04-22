@@ -32,7 +32,7 @@ def test_user_preloaded_cookies(set_mock):
 ])
 def test_user_partially_preloaded_cookies(session_id, security_ls_key, key):
     user = UserTest(phpsessid=session_id, security_ls_key=security_ls_key, key=key)
-    assert user.username == None if security_ls_key else 'test'
+    assert user.username is None if security_ls_key else 'test'
     assert user.phpsessid == session_id
     assert user.security_ls_key == '0123456789abcdef0123456789abcdef'
     assert user.key in (None, '00000000000000000000000000000000')
@@ -61,14 +61,14 @@ def test_session_id_authorized(user):
 
 
 def test_session_id_renamed_guest(set_mock, as_guest):
-    set_mock({'/': (None, {'headers': {'Set-Cookie': ['PHPSESSID=abcdef9876543210abcdef9876543210; path=/']}})})
+    set_mock({'/': ('index.html', {'headers': {'Set-Cookie': ['PHPSESSID=abcdef9876543210abcdef9876543210; path=/']}})})
 
     user = UserTest(session_cookie_name='PHPSESSID')
     assert user.phpsessid == 'abcdef9876543210abcdef9876543210'
 
 
 def test_session_id_renamed_authorized(set_mock):
-    set_mock({'/': (None, {'headers': {'Set-Cookie': ['PHPSESSID=abcdef9876543210abcdef9876543210; path=/']}})})
+    set_mock({'/': ('index.html', {'headers': {'Set-Cookie': ['PHPSESSID=abcdef9876543210abcdef9876543210; path=/']}})})
 
     user = UserTest(session_cookie_name='PHPSESSID')
     assert user.phpsessid == 'abcdef9876543210abcdef9876543210'
