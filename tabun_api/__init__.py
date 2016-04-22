@@ -190,7 +190,7 @@ class Comment(object):
     """Коммент. Возможно, удалённый, поэтому следите, чтобы значения не были None!"""
     def __init__(self, time, blog, post_id, comment_id, author, body, vote, parent_id=None,
                  post_title=None, unread=False, deleted=False, favourite=None, favourited=False,
-                 utctime=None, raw_body=None):
+                 utctime=None, raw_body=None, context=None):
         self.time = time
         self.blog = text(blog) if blog else None
         self.post_id = int(post_id) if post_id else None
@@ -208,8 +208,13 @@ class Comment(object):
             self.post_title = None
         self.deleted = bool(deleted)
         self.favourite = int(favourite) if favourite is not None else None
-        self.favourited = bool(favourited)
         self.utctime = utctime
+        self.context = context or {}
+
+        if favourited is not None:
+            import warnings
+            warnings.warn('Comment(favourited=...) is deprecated; use context["favourited"] instead of it', FutureWarning)
+            self.context['favourited'] = bool(favourited)
 
         self.body, self.raw_body = utils.normalize_body(body, raw_body)
 
@@ -226,6 +231,18 @@ class Comment(object):
 
     def __unicode__(self):
         return self.__repr__().decode('utf-8', 'replace')
+
+    @property
+    def favourited(self):
+        import warnings
+        warnings.warn('comment.favourited is deprecated; use comment.context.get("favourited") instead of it', FutureWarning)
+        return self.context.get('favourited')
+
+    @favourited.setter
+    def favourited(self, value):
+        import warnings
+        warnings.warn('comment.favourited is deprecated; use comment.context.get("favourited") instead of it', FutureWarning)
+        self.context['favourited'] = value
 
 
 class Blog(object):
@@ -701,7 +718,7 @@ class User(object):
             raise TabunError(exc.reason, -abs(getattr(exc.reason, 'errno', 0)), exc=exc)
         except compat.HTTPException as exc:
             raise TabunError("HTTP error", -40, exc=exc)
-        except socket_timeout:
+        except socket_timeout as exc:
             raise TabunError("Timeout", -20, exc=exc)
         except IOError as exc:
             raise TabunError('IOError: ' + text(exc), -30, exc=exc)
@@ -1148,11 +1165,11 @@ class User(object):
             del resp
         blog, post_id = parse_post_url(url)
 
-        raw_data = utils.find_substring(raw_data, b'<div class="comments', b'<!-- /content -->', extend=True, with_end=False)
-        if not raw_data:
+        data = utils.find_substring(raw_data, b'<div class="comments', b'<!-- /content -->', extend=True, with_end=False)
+        if not data:
             return {}
-        raw_data = utils.replace_cloudflare_emails(raw_data)
-        escaped_data = utils.escape_comment_contents(utils.escape_topic_contents(raw_data, True))
+        data = utils.replace_cloudflare_emails(data)
+        escaped_data = utils.escape_comment_contents(utils.escape_topic_contents(data, True))
         div = utils.parse_html_fragment(escaped_data)
         if not div:
             return {}
@@ -1170,9 +1187,10 @@ class User(object):
                 raw_comms.append(sect)
 
         comms = {}
+        context = self.get_main_context(raw_data, url=url)
 
         for sect in raw_comms:
-            c = parse_comment(sect, post_id, blog)
+            c = parse_comment(sect, post_id, blog, context=context)
             if c:
                 comms[c.comment_id] = c
             else:
@@ -2310,15 +2328,18 @@ def parse_wrapper(node):
     return comms
 
 
-def parse_comment(node, post_id, blog=None, parent_id=None):
+def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
     # И это тоже парсинг коммента. Не надо юзать эту функцию.
     body = None
+    context = dict(context) if context else {}
     try:
         info = node.xpath('ul[@class="comment-info"]')
-        if len(info) == 0:
-            info = node.xpath('div[@class="comment-path"]/ul[@class="comment-info"]')[0]
-        else:
-            info = info[0]
+        if not info:
+            info = node.xpath('div[@class="comment-path"]/ul[@class="comment-info"]')
+        info = info[0] if info else None
+        if info is None:
+            print('Warning: comment in {} without info and parsed by parse_comment! Please report to andreymal.'.format(post_id))
+            return
 
         comment_id = info.xpath('li[@class="comment-link"]/a')[0].get('href')
         if '#comment' in comment_id:
@@ -2364,7 +2385,7 @@ def parse_comment(node, post_id, blog=None, parent_id=None):
             link2 = link.xpath('a[@class="comment-path-comments"]')[0]
             link2 = link2.get('href')
             blog, post_id = parse_post_url(link2)
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, SystemExit):
             raise
         except:
             pass
@@ -2380,11 +2401,22 @@ def parse_comment(node, post_id, blog=None, parent_id=None):
             else:
                 parent_id = None
 
-        vote = info.xpath('li[starts-with(@id, "vote_area_comment")]/span[@class="vote-count"]/text()[1]')
-        if vote:
+        vote = 0
+        context['can_vote'] = None
+        context['vote_value'] = None
+
+        vote_area = info.xpath('li[starts-with(@id, "vote_area_comment")]')
+        if vote_area:
+            vote = vote_area[0].xpath('span[@class="vote-count"]/text()[1]')
             vote = int(vote[0].replace("+", ""))
-        else:
-            vote = 0
+            if vote_area[0].xpath('div[@class="vote-up"]'):  # проверка, что пост не из ленты (в ней классы полупустые)
+                votecls = vote_area[0].get('class', '').split()
+                # vote-expired стоит также у своих комментов, осторожно
+                context['can_vote'] = 'voted' not in votecls and 'vote-expired' not in votecls
+                if 'voted-up' in votecls:
+                    context['vote_value'] = 1
+                elif 'voted-down' in votecls:
+                    context['vote_value'] = -1
 
         favourited = False
         favourite = info.xpath('li[@class="comment-favourite"]')
@@ -2398,6 +2430,7 @@ def parse_comment(node, post_id, blog=None, parent_id=None):
                 favourite = int(favourite) if favourite else 0
             except:
                 favourite = None
+        context['favourited'] = favourited
 
     except AttributeError:
         return
@@ -2406,7 +2439,7 @@ def parse_comment(node, post_id, blog=None, parent_id=None):
 
     if body is not None:
         return Comment(tm, blog, post_id, comment_id, nick, body if raw_body is None else None, vote, parent_id,
-                       post_title, unread, deleted, favourite, favourited, utctime, raw_body)
+                       post_title, unread, deleted, favourite, None, utctime, raw_body, context=context)
 
 
 def parse_deleted_comment(node, post_id, blog=None):
