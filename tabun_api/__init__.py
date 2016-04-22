@@ -99,8 +99,8 @@ class Post(object):
     """Пост."""
     def __init__(self, time, blog, post_id, author, title, draft,
                  vote_count, vote_total, body, tags, comments_count=None, comments_new_count=None,
-                 short=False, private=False, blog_name=None, poll=None, favourite=0, favourited=False,
-                 download=None, utctime=None, raw_body=None):
+                 short=False, private=False, blog_name=None, poll=None, favourite=0, favourited=None,
+                 download=None, utctime=None, raw_body=None, context=None):
         self.time = time
         self.blog = text(blog) if blog else None
         self.post_id = int(post_id)
@@ -111,19 +111,28 @@ class Post(object):
         self.vote_total = int(vote_total) if vote_total is not None else None
         self.tags = tags
         self.comments_count = int(comments_count) if comments_count is not None else None
-        self.comments_new_count = int(comments_new_count) if comments_new_count is not None else None
         self.short = bool(short)
         self.private = bool(private)
         self.blog_name = text(blog_name) if blog_name else None
         self.poll = poll
         self.favourite = int(favourite) if favourite is not None else None
-        self.favourited = bool(favourited)
         if download and (not isinstance(download, Download) or download.post_id != self.post_id):
             raise ValueError
         self.download = download
         self.utctime = utctime
+        self.context = context or {}
 
         self.body, self.raw_body = utils.normalize_body(body, raw_body, cls='topic-content text')
+
+        if favourited is not None:
+            import warnings
+            warnings.warn('Post(favourited=...) is deprecated; use context["favourited"] instead of it', FutureWarning)
+            self.context['favourited'] = bool(favourited)
+
+        if comments_new_count is not None:
+            import warnings
+            warnings.warn('Post(comments_new_count=...) is deprecated; use context["unread_comments_count"] instead of it', FutureWarning)
+            self.context['unread_comments_count'] = comments_new_count
 
     def __repr__(self):
         o = "<post " + (self.blog or "[personal]") + '/' + text(self.post_id) + ">"
@@ -137,7 +146,32 @@ class Post(object):
 
     @property
     def url(self):
-        return http_host + '/blog/' + ((self.blog + '/') if self.blog else '') + text(self.post_id) + '.html'
+        host = self.context.get('http_host') or http_host
+        return host + '/blog/' + ((self.blog + '/') if self.blog else '') + text(self.post_id) + '.html'
+
+    @property
+    def favourited(self):
+        import warnings
+        warnings.warn('post.favourited is deprecated; use post.context.get("favourited") instead of it', FutureWarning)
+        return self.context.get('favourited')
+
+    @favourited.setter
+    def favourited(self, value):
+        import warnings
+        warnings.warn('post.favourited is deprecated; use post.context.get("favourited") instead of it', FutureWarning)
+        self.context['favourited'] = value
+
+    @property
+    def comments_new_count(self):
+        import warnings
+        warnings.warn('post.comments_new_count is deprecated; use post.context.get("unread_comments_count") instead of it', FutureWarning)
+        return self.context.get('unread_comments_count')
+
+    @comments_new_count.setter
+    def comments_new_count(self, value):
+        import warnings
+        warnings.warn('post.comments_new_count is deprecated; use post.context.get("unread_comments_count") instead of it', FutureWarning)
+        self.context['unread_comments_count'] = value
 
 
 class Download(object):
@@ -595,6 +629,26 @@ class User(object):
         if not self.phpsessid or not self.security_ls_key:
             raise TabunError("Not logined")
 
+    def get_main_context(self, raw_data, url=None):
+        """Парсит основные параметры контекста со страницы Табуна."""
+        context = {'http_host': self.http_host or http_host, 'url': url}
+
+        userinfo = utils.find_substring(raw_data, b'<div class="dropdown-user"', b"<nav", with_end=False)
+        if not userinfo:
+            context['username'] = None
+            auth_panel = utils.find_substring(raw_data, b'<ul class="auth"', b'<nav', with_end=False)
+            if not auth_panel or 'Войти'.encode('utf-8') not in auth_panel:
+                print("Warning: update_userinfo received unknown data")
+        else:
+            f = userinfo.find(b'class="username">')
+            if f >= 0:
+                username = userinfo[userinfo.find(b'>', f) + 1:userinfo.find(b'</', f)]
+                context['username'] = username.decode('utf-8').strip()
+            else:
+                context['username'] = None
+
+        return context
+
     def build_request(self, url, data=None, headers=None, with_cookies=True):
         """Собирает и возвращает объект Request. Используется в методе urlopen."""
 
@@ -1028,6 +1082,8 @@ class User(object):
 
             return posts
 
+        context = self.get_main_context(raw_data, url=url)
+
         data = utils.find_substring(raw_data, b"<article ", b"</article> <!-- /.topic -->", extend=True)
         if not data:
             raise TabunError("No post")
@@ -1039,7 +1095,7 @@ class User(object):
         items.reverse()
 
         for item in items:
-            post = parse_post(item)
+            post = parse_post(item, context=context)
             if post:
                 posts.append(post)
 
@@ -1048,6 +1104,7 @@ class User(object):
     def get_post(self, post_id, blog=None, raw_data=None):
         """Возвращает пост по номеру. Рекомендуется указать url-имя блога, чтобы избежать перенаправления и лишнего запроса.
         Если поста нет - кидается исключением TabunError("No post"). В случае проблем с парсингом может вернуть None.
+        Также, в отличие от get_posts, добавляет can_comment в контекст.
         """
         if blog:
             url = "/blog/" + text(blog) + "/" + text(post_id) + ".html"
@@ -1059,19 +1116,27 @@ class User(object):
             url = resp.url
             raw_data = self.saferead(resp)
             del resp
-        raw_data = utils.replace_cloudflare_emails(raw_data)
 
         posts = self.get_posts(url, raw_data=raw_data)
         if not posts:
             return
 
+        if len(posts) != 1:
+            raise TabunError('Many posts on page {}'.format(repr(url)))
         post = posts[0]
 
         comments_count = utils.find_substring(raw_data, b'<div class="comments" id="comments"', b'</h3>')
         if comments_count:
             comments_count = utils.find_substring(raw_data, b'<span id="count-comments">', b'</span>', with_start=False, with_end=False)
             post.comments_count = int(comments_count.strip())
-            post.comments_new_count = 0
+            post.context['unread_comments_count'] = 0
+
+        post.context['can_comment'] = b'<h4 class="reply-header" id="comment_id_0">' in raw_data
+
+        f = raw_data.find(b'<div class="comments" id="comments">')
+        if f >= 0:
+            post.context['subscribed_to_comments'] = raw_data.find(b'<input checked="checked" type="checkbox" id="comment_subscribe"', f, f + 1000) >= 0
+
         return post
 
     def get_comments(self, url="/comments/", raw_data=None):
@@ -1331,7 +1396,8 @@ class User(object):
 
             items.append(Post(
                 time=None, blog=blog, post_id=post_id, author=author, title=title, draft=False,
-                vote_count=None, vote_total=None, body=None, tags=[], comments_count=comments_count
+                vote_count=None, vote_total=None, body=None, tags=[], comments_count=comments_count,
+                context=None
             ))
 
         return items
@@ -1910,12 +1976,14 @@ def parse_activity(item):
     return ActivityItem(typ, date, post_id, comment_id, blog, username, title, data)
 
 
-def parse_post(item):
+def parse_post(item, context=None):
     # Парсинг поста. Не надо юзать эту функцию.
     header = item.find("header")
     title = header.find("h1")
     if title is None:
         return
+
+    context = dict(context) if context else {}
 
     link = title.find("a")
     if link is not None:
@@ -2102,10 +2170,36 @@ def parse_post(item):
             post_link = post_link[0].text.strip()
             download = Download("link", post_id, post_link, link_count, None)
 
+    votecls = header.xpath('div[@class="topic-info"]/div/div')
+    if votecls:
+        votecls = votecls[0].get('class', '').split()
+        context['can_vote'] = 'not-voted' in votecls and 'vote-not-expired' in votecls
+        if 'voted-up' in votecls:
+            context['vote_value'] = 1
+        elif 'voted-down' in votecls:
+            context['vote_value'] = -1
+        elif 'voted-zero' in votecls:
+            context['vote_value'] = 0
+        else:
+            context['vote_value'] = None
+    else:
+        votecls = None
+        context['can_vote'] = None
+        context['vote_value'] = None
+
+    context['can_edit'] = bool(header.xpath('div[@class="topic-info"]//a[@class="actions-edit"]'))
+    context['can_delete'] = bool(header.xpath('div[@class="topic-info"]//a[@class="actions-delete"]'))
+    context['can_comment'] = None  # из <article/> не выяснить никак
+    context['subscribed_to_comments'] = None
+
+    context['unread_comments_count'] = comments_new_count
+    context['favourited'] = favourited
+
     return Post(
         post_time, blog, post_id, author, title, draft, vote_count, vote_total, body if raw_body is None else None, tags,
-        comments_count, comments_new_count, is_short, private, blog_name,
-        poll, favourite, favourited, download, utctime, raw_body
+        comments_count, None, is_short, private, blog_name,
+        poll, favourite, None, download, utctime, raw_body,
+        context=context
     )
 
 
