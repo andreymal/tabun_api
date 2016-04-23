@@ -1,4 +1,4 @@
-.PHONY: all
+.PHONY: clean clean-build clean-pyc clean-test test coverage dist install develop
 
 clean: clean-build clean-pyc clean-test
 
