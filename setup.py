@@ -18,6 +18,7 @@ setup(
     install_requires=['lxml>=3.3', 'iso8601>=0.1.10'],
     extras_require={
         'imageutils': ['Pillow>=3.0'],
+        'proxy': ['PySocks>=1.5'],
     },
     classifiers=[
         'Development Status :: 4 - Beta',

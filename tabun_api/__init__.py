@@ -505,30 +505,7 @@ class User(object):
         self.lock = threading.Lock()
         self.wait_lock = threading.Lock()
 
-        handlers = []
-
-        if proxy is None and os.getenv('TABUN_API_PROXY') and os.getenv('TABUN_API_PROXY').count(',') == 2:
-            proxy = os.getenv('TABUN_API_PROXY').split(',')[:3]
-        elif proxy:
-            proxy = proxy.split(',') if isinstance(proxy, text_types) else list(proxy)[:3]
-
-        if proxy:
-            if not PY2:
-                raise NotImplementedError("Python 2 only")
-            if proxy[0] not in ('socks4', 'socks5'):
-                raise NotImplementedError('I can use only socks proxies now')
-            proxy[2] = int(proxy[2])
-            import socks
-            from socksipyhandler import SocksiPyHandler
-            if proxy[0] == 'socks5':
-                handlers.append(SocksiPyHandler(socks.PROXY_TYPE_SOCKS5, proxy[1], proxy[2]))
-            elif proxy[0] == 'socks4':
-                handlers.append(SocksiPyHandler(socks.PROXY_TYPE_SOCKS4, proxy[1], proxy[2]))
-            self.proxy = proxy
-
-        # for thread safety
-        self.opener = urequest.build_opener(*handlers)
-        self.noredir = urequest.build_opener(*(handlers + [NoRedirect]))
+        self.configure_opener(proxy)
 
         # init
         self.last_query_time = 0
@@ -575,6 +552,30 @@ class User(object):
         # reset after urlopen
         self.last_query_time = 0
         self.talk_count = 0
+
+    def configure_opener(self, proxy=None):
+        handlers = []
+
+        if proxy is None and os.getenv('TABUN_API_PROXY') and os.getenv('TABUN_API_PROXY').count(',') == 2:
+            proxy = os.getenv('TABUN_API_PROXY').split(',')[:3]
+        elif proxy:
+            proxy = proxy.split(',') if isinstance(proxy, text_types) else list(proxy)[:3]
+
+        if proxy:
+            if proxy[0] not in ('socks4', 'socks5'):
+                raise NotImplementedError('I can use only socks proxies now')
+            proxy[2] = int(proxy[2])
+            import socks
+            from sockshandler import SocksiPyHandler
+            if proxy[0] == 'socks5':
+                handlers.append(SocksiPyHandler(socks.PROXY_TYPE_SOCKS5, proxy[1], proxy[2]))
+            elif proxy[0] == 'socks4':
+                handlers.append(SocksiPyHandler(socks.PROXY_TYPE_SOCKS4, proxy[1], proxy[2]))
+            self.proxy = proxy
+
+        # for thread safety
+        self.opener = urequest.build_opener(*handlers)
+        self.noredir = urequest.build_opener(*(handlers + [NoRedirect]))
 
     def update_security_ls_key(self, raw_data):
         """Выдирает security_ls_key из страницы. Вызывается из update_userinfo."""

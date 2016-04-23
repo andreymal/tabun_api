@@ -150,10 +150,6 @@ def test_logout_auto(set_mock, as_guest, user):
 
 
 def test_init_proxy_ok():
-    if not PY2:
-        with pytest.raises(NotImplementedError):
-            UserTest(proxy='socks5,localhost,9999')
-        return
     assert UserTest(proxy='socks5,localhost,9999').proxy == ['socks5', 'localhost', 9999]
     assert UserTest(proxy='socks4,localhost,9999').proxy == ['socks4', 'localhost', 9999]
 
@@ -168,11 +164,6 @@ def test_init_proxy_from_setenv():
     os.getenv = getenv
 
     try:
-        if not PY2:
-            with pytest.raises(NotImplementedError):
-                UserTest()
-            return
-
         assert UserTest().proxy == ['socks5', 'localhost', 8888]
     finally:
         os.getenv = old_getenv
