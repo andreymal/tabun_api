@@ -1,4 +1,4 @@
-.PHONY: clean-pyc clean-build clean docs test coverage
+.PHONY: all
 
 clean: clean-build clean-pyc clean-test
 
@@ -6,8 +6,9 @@ clean-build:
 	rm -fr build/
 	rm -fr dist/
 	rm -fr .eggs/
-	find . -name '*.egg-info' -exec rm -fr {} +
-	find . -name '*.egg' -exec rm -rf {} +
+	rm -fr *.egg-info
+	rm -fr *.egg
+
 
 clean-pyc:
 	find . -name '*.pyc' -exec rm -f {} +
@@ -16,7 +17,6 @@ clean-pyc:
 	find . -name '__pycache__' -exec rm -fr {} +
 
 clean-test:
-	rm -fr .tox/
 	rm -f .coverage
 	rm -fr htmlcov/
 

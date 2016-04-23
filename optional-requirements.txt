@@ -1,1 +1,1 @@
-Pillow
+Pillow>=3.0
