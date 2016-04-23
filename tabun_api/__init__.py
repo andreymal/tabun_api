@@ -530,6 +530,10 @@ class User(object):
         self.opener = urequest.build_opener(*handlers)
         self.noredir = urequest.build_opener(*(handlers + [NoRedirect]))
 
+        # init
+        self.last_query_time = 0
+        self.talk_count = 0
+
         if phpsessid:
             self.phpsessid = text(phpsessid).split(";", 1)[0]
         if key:
@@ -568,6 +572,7 @@ class User(object):
         if login and passwd:
             self.login(login, passwd)
 
+        # reset after urlopen
         self.last_query_time = 0
         self.talk_count = 0
 
