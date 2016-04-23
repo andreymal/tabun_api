@@ -192,15 +192,15 @@ class Download(object):
 
 class Comment(object):
     """Коммент. Возможно, удалённый, поэтому следите, чтобы значения не были None!"""
-    def __init__(self, time, blog, post_id, comment_id, author, body, vote, parent_id=None,
-                 post_title=None, unread=False, deleted=False, favourite=None, favourited=False,
-                 utctime=None, raw_body=None, context=None):
+    def __init__(self, time, blog, post_id, comment_id, author, body, vote_total, parent_id=None,
+                 post_title=None, unread=False, deleted=False, favourite=None, favourited=None,
+                 utctime=None, raw_body=None, context=None, vote=None):
         self.time = time
         self.blog = text(blog) if blog else None
         self.post_id = int(post_id) if post_id else None
         self.comment_id = int(comment_id)
         self.author = text(author) if author else None
-        self.vote = int(vote) if vote is not None else None
+        self.vote_total = int(vote_total) if vote_total is not None else None
         self.unread = bool(unread)
         if parent_id:
             self.parent_id = int(parent_id)
@@ -214,6 +214,11 @@ class Comment(object):
         self.favourite = int(favourite) if favourite is not None else None
         self.utctime = utctime
         self.context = context or {}
+
+        if vote is not None:
+            import warnings
+            warnings.warn('Comment(vote=...) is deprecated; use Comment(vote_total=...) instead of it', FutureWarning)
+            self.vote_total = int(vote) if vote is not None else None
 
         if favourited is not None:
             import warnings
@@ -235,6 +240,18 @@ class Comment(object):
 
     def __unicode__(self):
         return self.__repr__().decode('utf-8', 'replace')
+
+    @property
+    def vote(self):
+        import warnings
+        warnings.warn('comment.vote is deprecated; use comment.vote_total instead of it', FutureWarning)
+        return self.vote_total
+
+    @vote.setter
+    def vote(self, value):
+        import warnings
+        warnings.warn('comment.vote is deprecated; use comment.vote_total instead of it', FutureWarning)
+        self.vote_total = value
 
     @property
     def favourited(self):
@@ -1199,7 +1216,7 @@ class User(object):
                 comms[c.comment_id] = c
             else:
                 if sect.get("id", "").find("comment_id_") == 0:
-                    c = parse_deleted_comment(sect, post_id, blog)
+                    c = parse_deleted_comment(sect, post_id, blog, context=context)
                     if c:
                         comms[c.comment_id] = c
                     else:
@@ -2447,12 +2464,13 @@ def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
                        post_title, unread, deleted, favourite, None, utctime, raw_body, context=context)
 
 
-def parse_deleted_comment(node, post_id, blog=None):
+def parse_deleted_comment(node, post_id, blog=None, context=None):
     # И это тоже парсинг коммента! Но не простого, а удалённого.
     try:
         comment_id = int(node.get("id").rsplit("_", 1)[-1])
     except:
         return
+    context = dict(context) if context else {}
     unread = "comment-new" in node.get("class", "")
     deleted = "comment-deleted" in node.get("class", "")
     bad = "comment-bad" in node.get("class", "")  # вроде обещалось, что это временно, поэтому пусть пока тут
@@ -2468,7 +2486,7 @@ def parse_deleted_comment(node, post_id, blog=None):
         parent_id = int(parent_wrapper.get("id").rsplit("_", 1)[-1])
     else:
         parent_id = None
-    return Comment(tm, blog, post_id, comment_id, nick, body, vote, parent_id, post_title, unread, deleted or bad)
+    return Comment(tm, blog, post_id, comment_id, nick, body, vote, parent_id, post_title, unread, deleted or bad, context=context)
 
 
 def parse_talk_item(node):
