@@ -13,7 +13,7 @@ import pytest
 import tabun_api as api
 from tabun_api.compat import text, binary
 
-from testutil import UserTest, load_file, form_intercept, set_mock, user
+from testutil import UserTest, load_file, form_intercept, set_mock, user, assert_data
 
 
 @pytest.mark.parametrize("url,data_file,rev", [
@@ -32,12 +32,7 @@ def test_get_comments(user, url, data_file, rev):
     for data in comments_data:
         comment = comments[data['comment_id']]
         assert data['comment_id'] == comment.comment_id
-
-        for key, value in data.items():
-            if key == 'time' and value is not None:
-                assert time.strftime("%Y-%m-%d %H:%M:%S", comment.time) == value
-            elif key != "comment_id":
-                assert getattr(comment, key) == value
+        assert_data(comment, data)
 
 
 def test_get_comments_types_ok(user):
@@ -49,11 +44,11 @@ def test_get_comments_types_ok(user):
         if comment.deleted:
             assert comment.author is None
             assert comment.raw_body is None
-            assert comment.vote is None
+            assert comment.vote_total is None
         else:
             assert isinstance(comment.author, text)
             assert isinstance(comment.raw_body, text)
-            assert isinstance(comment.vote, int)
+            assert isinstance(comment.vote_total, int)
 
 
 def test_add_comment_ok(form_intercept, set_mock, user):
@@ -69,6 +64,7 @@ def test_add_comment_ok(form_intercept, set_mock, user):
 
     assert user.comment(1, 'тест') == 1
     assert user.comment(1, 'тест', reply=0) == 1
+
 
 def test_add_comment_fail(set_mock, user):
     err = "Текст комментария должен быть от 2 до 3000 символов и не содержать разного рода каку"

@@ -145,14 +145,27 @@ def load_file(name, ignorekeys=(), template=True):
 
 def assert_data(obj, data, exclude=('post_id', 'comment_id')):
     for key, value in data.items():
-        if key == 'time':
+        if key == 'time' and value is not None:
             assert time.strftime("%Y-%m-%d %H:%M:%S", obj.time) == value
-        elif key == 'utctime':
+
+        elif key == 'utctime' and value is not None:
             assert obj.utctime.strftime('%Y-%m-%d %H:%M:%S') == value
+
         elif key.startswith('context:'):
-            assert obj.context[key[8:]] == value
+            ov = obj.context[key[8:]]
+            if value is True or value is False or value is None:  # 1 == True, but 1 is not True
+                assert ov is value
+            else:
+                assert ov is not True and ov is not False and ov is not None
+                assert ov == value
+
         elif key not in exclude:
-            assert getattr(obj, key) == value
+            ov = getattr(obj, key)
+            if value is True or value is False or value is None:
+                assert ov is value
+            else:
+                assert ov is not True and ov is not False and ov is not None
+                assert ov == value
 
 
 def build_response(req_url, result_path, optparams=None):

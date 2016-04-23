@@ -6,11 +6,16 @@
         "time": "2015-05-30 21:22:27",
         "author": "Endor",
         "blog": "news",
-        "vote": 0,
+        "vote_total": 0,
         "unread": false,
-        "deleted": 0,
+        "deleted": false,
         "favourite": 0,
-        "favourited": false
+        "context:favourited": false,
+        "context:url": "http://tabun.everypony.ru/comments/",
+        "context:can_vote": null,
+        "context:username": "test",
+        "context:http_host": "http://tabun.everypony.ru",
+        "context:vote_value": null
     },
     {
         "comment_id": 9445361,
@@ -19,10 +24,15 @@
         "time": "2015-05-30 21:00:23",
         "author": "Gitzo",
         "blog": "news",
-        "vote": 6,
+        "vote_total": 6,
         "unread": false,
-        "deleted": 0,
+        "deleted": false,
         "favourite": 1,
-        "favourited": true
+        "context:favourited": true,
+        "context:url": "http://tabun.everypony.ru/comments/",
+        "context:can_vote": null,
+        "context:username": "test",
+        "context:http_host": "http://tabun.everypony.ru",
+        "context:vote_value": null
     }
 ]

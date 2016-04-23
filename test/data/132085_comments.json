@@ -6,12 +6,12 @@
         "time": null,
         "author": null,
         "blog": null,
-        "vote": null,
+        "vote_total": null,
         "unread": false,
         "deleted": true,
         "favourite": null,
-        "favourited": false,
-        "raw_body": null
+        "raw_body": null,
+        "context": {"http_host": "http://tabun.everypony.ru", "url": "http://tabun.everypony.ru/blog/132085.html", "username": "test"}
     },
     {
         "comment_id": 9444642,
@@ -20,12 +20,17 @@
         "time": "2015-05-30 19:15:24",
         "author": "test",
         "blog": null,
-        "vote": 0,
+        "vote_total": 0,
         "unread": false,
-        "deleted": 0,
+        "deleted": false,
         "favourite": 0,
-        "favourited": false,
-        "raw_body": "К1"
+        "context:favourited": false,
+        "raw_body": "К1",
+        "context:url": "http://tabun.everypony.ru/blog/132085.html",
+        "context:can_vote": false,
+        "context:username": "test",
+        "context:http_host": "http://tabun.everypony.ru",
+        "context:vote_value": null
     },
     {
         "comment_id": 9444648,
@@ -34,12 +39,17 @@
         "time": "2015-05-30 19:15:54",
         "author": "test",
         "blog": null,
-        "vote": 0,
+        "vote_total": 0,
         "unread": false,
-        "deleted": 0,
+        "deleted": false,
         "favourite": null,
-        "favourited": false,
-        "raw_body": "К2 <img src=\"http://google.com/\" alt=\"123"
+        "context:favourited": false,
+        "raw_body": "К2 <img src=\"http://google.com/\" alt=\"123",
+        "context:url": "http://tabun.everypony.ru/blog/132085.html",
+        "context:can_vote": true,
+        "context:username": "test",
+        "context:http_host": "http://tabun.everypony.ru",
+        "context:vote_value": null
     },
     {
         "comment_id": 9444652,
@@ -48,12 +58,12 @@
         "time": null,
         "author": null,
         "blog": null,
-        "vote": null,
+        "vote_total": null,
         "unread": false,
         "deleted": true,
         "favourite": null,
-        "favourited": false,
-        "raw_body": null
+        "raw_body": null,
+        "context": {"http_host": "http://tabun.everypony.ru", "url": "http://tabun.everypony.ru/blog/132085.html", "username": "test"}
     },
     {
         "comment_id": 9444653,
@@ -62,12 +72,17 @@
         "time": "2015-05-30 19:16:10",
         "author": "test",
         "blog": null,
-        "vote": 0,
+        "vote_total": 0,
         "unread": false,
         "deleted": false,
         "favourite": 0,
-        "favourited": 0,
-        "raw_body": "К4"
+        "context:favourited": false,
+        "raw_body": "К4",
+        "context:url": "http://tabun.everypony.ru/blog/132085.html",
+        "context:can_vote": true,
+        "context:username": "test",
+        "context:http_host": "http://tabun.everypony.ru",
+        "context:vote_value": null
     },
     {
         "comment_id": 9444654,
@@ -76,11 +91,16 @@
         "time": "2015-05-30 19:16:13",
         "author": "test2",
         "blog": null,
-        "vote": 0,
+        "vote_total": 0,
         "unread": true,
         "deleted": false,
         "favourite": 0,
-        "favourited": 0,
-        "raw_body": "К5"
+        "context:favourited": false,
+        "raw_body": "К5",
+        "context:url": "http://tabun.everypony.ru/blog/132085.html",
+        "context:can_vote": false,
+        "context:username": "test",
+        "context:http_host": "http://tabun.everypony.ru",
+        "context:vote_value": -1
     }
 ]
