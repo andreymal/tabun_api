@@ -2195,7 +2195,7 @@ def parse_post(item, context=None):
     votecls = header.xpath('div[@class="topic-info"]/div/div')
     if votecls:
         votecls = votecls[0].get('class', '').split()
-        context['can_vote'] = 'not-voted' in votecls and 'vote-not-expired' in votecls
+        context['can_vote'] = 'not-voted' in votecls and 'vote-not-expired' in votecls and 'vote-nobuttons' not in votecls
         if 'voted-up' in votecls:
             context['vote_value'] = 1
         elif 'voted-down' in votecls:

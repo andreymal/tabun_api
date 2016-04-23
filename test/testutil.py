@@ -5,6 +5,7 @@ from __future__ import unicode_literals
 
 import os
 import cgi
+import time
 from io import BytesIO
 
 import pytest
@@ -140,6 +141,18 @@ def load_file(name, ignorekeys=(), template=True):
             data = data.replace(bkey, load_file(tname, ignorekeys + (key,)))
 
     return data
+
+
+def assert_data(obj, data, exclude=('post_id', 'comment_id')):
+    for key, value in data.items():
+        if key == 'time':
+            assert time.strftime("%Y-%m-%d %H:%M:%S", obj.time) == value
+        elif key == 'utctime':
+            assert obj.utctime.strftime('%Y-%m-%d %H:%M:%S') == value
+        elif key.startswith('context:'):
+            assert obj.context[key[8:]] == value
+        elif key not in exclude:
+            assert getattr(obj, key) == value
 
 
 def build_response(req_url, result_path, optparams=None):

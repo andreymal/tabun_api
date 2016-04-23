@@ -3,6 +3,7 @@
         "post_id": 138983,
         "author": "test",
         "time": "2015-09-10 15:58:16",
+        "utctime": "2015-09-10 12:58:16",
         "blog": null,
         "blog_name": "Блог им. test",
         "private": false,
@@ -12,9 +13,18 @@
         "vote_count": 1,
         "vote_total": 0,
         "comments_count": 0,
-        "comments_new_count": 0,
+        "raw_body": "<span class=\"spoiler\"><span class=\"spoiler-title\">Кат внутри спойлера</span><span class=\"spoiler-body\">Перед катом</span></span>\n        \n                    <br/>",
         "favourite": 0,
-        "favourited": false,
-        "raw_body": "<span class=\"spoiler\"><span class=\"spoiler-title\">Кат внутри спойлера</span><span class=\"spoiler-body\">Перед катом</span></span>\n        \n                    <br/>"
+        "context:favourited": false,
+        "context:username": "test",
+        "context:http_host": "http://tabun.everypony.ru",
+        "context:url": "http://tabun.everypony.ru/profile/test/created/topics/",
+        "context:can_comment": null,
+        "context:can_edit": false,
+        "context:can_delete": false,
+        "context:can_vote": true,
+        "context:vote_value": null,
+        "context:subscribed_to_comments": null,
+        "context:unread_comments_count": 0
     }
 ]

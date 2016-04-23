@@ -13,7 +13,7 @@ import pytest
 import tabun_api as api
 from tabun_api.compat import text
 
-from testutil import UserTest, load_file, form_intercept, set_mock, user
+from testutil import UserTest, load_file, form_intercept, as_guest, set_mock, user, assert_data
 
 
 def test_get_posts_data_ok(user):
@@ -23,14 +23,7 @@ def test_get_posts_data_ok(user):
     assert len(posts) == len(post_data)
     for data, post in zip(post_data, posts):
         assert post.post_id == data['post_id']
-
-        for key, value in data.items():
-            if key == 'time':
-                assert time.strftime("%Y-%m-%d %H:%M:%S", post.time) == value
-            elif key == 'utctime':
-                assert post.utctime.strftime('%Y-%m-%d %H:%M:%S') == value
-            elif key != "post_id":
-                assert getattr(post, key) == value
+        assert_data(post, data)
 
 
 def test_get_posts_profile_data_ok(user, set_mock):
@@ -42,14 +35,7 @@ def test_get_posts_profile_data_ok(user, set_mock):
     assert len(posts) == len(post_data)
     for data, post in zip(post_data, posts):
         assert post.post_id == data['post_id']
-
-        for key, value in data.items():
-            if key == 'time':
-                assert time.strftime("%Y-%m-%d %H:%M:%S", post.time) == value
-            elif key == 'utctime':
-                assert post.utctime.strftime('%Y-%m-%d %H:%M:%S') == value
-            elif key != "post_id":
-                assert getattr(post, key) == value
+        assert_data(post, data)
 
 
 def test_get_posts_types_ok(user):
@@ -62,16 +48,50 @@ def test_get_posts_types_ok(user):
         assert isinstance(post.raw_body, text)
         assert isinstance(post.tags[0], text)
         assert isinstance(post.comments_count, int)
-        assert isinstance(post.comments_new_count, int)
+        assert isinstance(post.context, dict)
+
+
+def test_get_posts_context_user_ok(user):
+    posts = reversed(user.get_posts('/'))
+    for post in posts:
+        c = post.context
+        assert isinstance(c['username'], text)
+        assert isinstance(c['http_host'], text)
+        assert isinstance(c['url'], text)
+        assert isinstance(c['can_comment'], type(None))  # not available on lists
+        assert isinstance(c['can_edit'], bool)
+        assert isinstance(c['can_delete'], bool)
+        assert isinstance(c['can_vote'], bool)
+        assert isinstance(c['vote_value'], (int, type(None)))  # None is not voted
+        assert isinstance(c['favourited'], bool)
+        assert isinstance(c['subscribed_to_comments'], type(None))  # not available on lists
+        assert isinstance(c['unread_comments_count'], int)
+
+
+def test_get_posts_context_guest_ok(user, as_guest):
+    posts = reversed(user.get_posts('/'))
+    for post in posts:
+        c = post.context
+        assert isinstance(c['username'], type(None))
+        assert isinstance(c['http_host'], text)
+        assert isinstance(c['url'], text)
+        assert isinstance(c['can_comment'], type(None))  # not available no lists
+        assert isinstance(c['can_edit'], bool)
+        assert isinstance(c['can_delete'], bool)
+        assert isinstance(c['can_vote'], bool)
+        assert isinstance(c['vote_value'], (int, type(None)))  # None is not voted
+        assert isinstance(c['favourited'], bool)
+        assert isinstance(c['subscribed_to_comments'], type(None))  # not available on lists
+        assert isinstance(c['unread_comments_count'], int)
 
 
 def test_get_post_ok(user):
     post = user.get_post(132085)
     assert post.post_id == 132085
     assert post.author == 'test'
-    assert post.private == False
+    assert post.private is False
     assert post.blog is None
-    assert post.draft == True
+    assert post.draft is True
     assert time.strftime("%Y-%m-%d %H:%M:%S", post.time) == "2015-05-30 19:14:04"
     assert post.utctime.strftime('%Y-%m-%d %H:%M:%S') == '2015-05-30 16:14:04'
 
@@ -79,23 +99,47 @@ def test_get_post_ok(user):
     assert post.raw_body == '<strong>Раз</strong><br/>\n<h4>Два</h4>И ломаем вёрстку <img src="http://ya.ru/" alt="'
     assert post.tags == ["тег1", "тег2"]
     assert post.comments_count == 5
-    assert post.comments_new_count == 0
+
+    assert post.context['username'] == 'test'
+    assert post.context['http_host'] == 'http://tabun.everypony.ru'
+    assert post.context['url'] == 'http://tabun.everypony.ru/blog/132085.html'
+    assert post.context['can_comment'] is True
+    assert post.context['can_edit'] is True
+    assert post.context['can_delete'] is True
+    assert post.context['can_vote'] is False
+    assert post.context['vote_value'] is None
+    assert post.context['favourited'] is False
+    assert post.context['subscribed_to_comments'] is True
+    assert post.context['unread_comments_count'] == 0
 
 
 def test_get_post_other_ok(user):
     post = user.get_post(138982, 'borderline')
     assert post.post_id == 138982
-    assert post.author == 'test'
-    assert post.private == True
+    assert post.author == 'test2'
+    assert post.private is True
     assert post.blog == 'borderline'
-    assert post.draft == True
+    assert post.draft is False
     assert time.strftime("%Y-%m-%d %H:%M:%S", post.time) == "2015-09-10 15:39:13"
 
     assert post.title == 'Тестирование ката'
     assert post.raw_body == '<img src="https://i.imgur.com/V3KzzyAs.png"/>Текст до ката<br/>\n<a></a> <br/>\nТекст после ката<img src="https://i.imgur.com/NAg929K.jpg"/>'
     assert post.tags == ["Луна", "аликорны", "новость"]
     assert post.comments_count == 0
-    assert post.comments_new_count == 0
+    assert post.vote_count == 35
+    assert post.vote_total == 36
+
+    assert post.context['username'] == 'test'
+    assert post.context['http_host'] == 'http://tabun.everypony.ru'
+    assert post.context['url'] == 'http://tabun.everypony.ru/blog/borderline/138982.html'
+    assert post.context['can_comment'] is False
+    assert post.context['can_edit'] is False
+    assert post.context['can_delete'] is False
+    assert post.context['can_vote'] is False
+    assert post.context['vote_value'] == 1
+    assert post.context['favourited'] is True
+    assert post.context['subscribed_to_comments'] is False
+    assert post.context['unread_comments_count'] == 0
 
 
 def test_get_post_other_blog_1(set_mock, user):
