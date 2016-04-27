@@ -20,7 +20,7 @@ from .compat import text, text_types, binary, urequest, PY2
 #: Месяцы, для парсинга даты.
 mons = ('января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря')
 
-#: Блочные элементы, для красивого вывода в htmlToString.
+#: Блочные элементы, для красивого вывода в htmlToString (устарело, используйте HTMLFormatter.block_elems)
 block_elems = ("div", "p", "blockquote", "section", "ul", "li", "h1", "h2", "h3", "h4", "h5", "h6")
 
 #: Регулярка для парсинга ютуба для выдирания превьюшки.
@@ -55,16 +55,270 @@ def parse_html_fragment(data, encoding='utf-8'):
     return doc
 
 
-def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=True, disable_links=False):
-    """Пытается косплеить браузер lynx и переделывает html-элемент в читабельный текст.
+class HTMLFormatter(object):
+    NEWLINE = -1
+    block_elems = ("div", "p", "blockquote", "section", "ul", "li", "h1", "h2", "h3", "h4", "h5", "h6")
 
-    * node: текст поста, html-элемент, распарсенный с помощью parse_html[_fragment]
-    * with_cutted: выводить ли содержимое, которое под катом
-    * fancy: если True, выкинет заголовки спойлеров и текст кнопки «Читать дальше» (при наличии, разумеется)
-    * vk_links: преобразует ссылки вида http://vk.com/blablabla в [blablabla|текст ссылки] для отправки в пост ВКонтакте
-    * hr_lines: если True, добавляет линию из знаков равно на месте тега hr, иначе просто перенос строки
-    * disable_links: если True, то будут проигнорированы ссылки, текст которых совпадает с самой ссылкой
-    """
+    fancy = True
+    strike_mode = 'unicode'
+    vk_links = False
+    disable_links = False
+
+    def __init__(self, params=None):
+        for k in ('fancy', 'strike_mode', 'vk_links', 'disable_links'):
+            if params and k in params:
+                setattr(self, k, params[k])
+
+    def format(self, node, with_cutted=True):
+        return self.format_part(node, with_cutted)[1]
+
+    def format_part(self, node, with_cutted=True):
+        if isinstance(node, text_types):
+            return False, text(node)
+
+        if node.text:
+            data = [self.format_text(self.escape(node.text), [])]
+        else:
+            data = ['']
+
+        depth = [node]  # for <div><ul><li>: [<div>, <ul>]
+        full_queue = [list(node.getchildren())]  # for <div><ul><li>: [[div children after current ul], [ul children after current li]]
+        full_queue[0].reverse()
+
+        # Самые часто используемые функции вытащим заранее (говорят, так слегка быстрее)
+        process_br = getattr(self, 'process_br', None)
+        process_a = getattr(self, 'process_a', None)
+        process_span = getattr(self, 'process_span', None)
+        default_process = self.default_process
+        format_item_tail = self.format_item_tail
+
+        cut_stop = False
+
+        while True:
+            # Проверяем, что очередь не пуста
+            while full_queue and not full_queue[-1]:
+                full_queue.pop()
+                depth.pop()
+            if not full_queue or not depth:
+                assert not depth
+                assert not full_queue
+                break
+
+            # Берём следующий элемент (может быть любой вложенности — избегаем рекурсии зазря)
+            item = full_queue[-1].pop()
+
+            # С помощью специального значения избегаем лишних переносов на границах блоков
+            if item == self.NEWLINE:
+                sdata = data[-1].rstrip(' ')
+                if not sdata.endswith('\n'):
+                    data[-1] = sdata
+                    data.append('\n')
+                continue
+
+            # Это может быть просто текст между элементами (добавляется ниже в format_item_tail)
+            if isinstance(item, text_types):
+                ntext = self.format_text(item, data)
+                if ntext:
+                    data.append(ntext)
+                continue
+
+            # Это может быть кат в полном посте — тогда сразу закругляемся
+            if not with_cutted and is_cut(item):
+                cut_stop = True
+                break
+
+            format_item_tail(item, data, depth, full_queue)
+
+            children = []
+
+            # Обрабатываем элемент
+            tag = item.tag.lower().replace('-', '_')
+            if tag == 'br':
+                process_func = process_br
+            elif tag == 'a':
+                process_func = process_a
+            elif tag == 'span':
+                process_func = process_span
+            else:
+                process_func = getattr(self, 'process_' + tag, None)
+
+            if process_func is None:
+                process_func = default_process
+            children = process_func(item, data, depth, with_cutted=with_cutted)
+
+            if children is None:
+                # None означает, что надо закругляться
+                break
+
+            elif children:
+                # Обрабатываем потомков в следующей итерации
+                children.reverse()
+                full_queue.append(children)
+                depth.append(item)
+
+        return cut_stop, ''.join(data).strip()
+
+    def element_children(self, item, noblock=False):
+        children = []
+        is_block = not noblock and item.tag in self.block_elems
+
+        # Начало элемента-блока
+        if is_block:
+            children.append(self.NEWLINE)
+
+        # Содержимое элемента
+        if item.text:
+            children.append(self.escape(item.text))
+
+        ch = list(item.getchildren())
+        if ch:
+            children.extend(ch)
+
+        # Конец элемента-блока (есть смысл только при непустом блоке)
+        if is_block and (item.text or ch):
+            children.append(self.NEWLINE)
+
+        return children
+
+    def process_br(self, item, data, depth, with_cutted):
+        # Не более одной пустой строчки при нескольких <br/> подряд
+        if data[-1].rstrip(' ').endswith('\n\n'):
+            pass
+        elif len(data) > 1 and data[-1].rstrip(' ') == '\n' and data[-2].rstrip(' ').endswith('\n'):
+            pass
+        else:
+            data[-1] = data[-1].rstrip(' ')
+            data.append('\n')
+        return []
+
+    def default_process(self, item, data, depth, with_cutted):
+        return self.element_children(item)
+
+    def format_item_tail(self, item, data, depth, full_queue):
+        # Текст после тега не относится к самому тегу и добавится после обработки потомков
+        if item.tail:
+            full_queue[-1].append(self.escape(item.tail))
+
+    def format_text(self, ntext, data=None):
+        # Форматирует текст подобно HTML — не более одного пробела подряд
+        if '\n' in ntext:
+            ntext = ntext.replace('\n', ' ')
+        if '\r' in ntext:
+            ntext = ntext.replace('\r', ' ')
+        if '\t' in ntext:
+            ntext = ntext.replace('\t', ' ')
+        if data and (data[-1].endswith('\n') or data[-1].endswith(' ')):
+            ntext = ntext.lstrip(' ')
+        elif ntext.startswith('  '):
+            ntext = ' ' + ntext.lstrip(' ')
+        if ntext.endswith('  '):
+            ntext = ntext.rstrip(' ') + ' '
+        if '  ' in ntext:
+            ntext = re.sub(r'  +', ' ', ntext)
+        return ntext
+
+    def escape(self, ntext):
+        if not self.vk_links:
+            return ntext
+        return ntext.replace('@', '&#64;').replace('(', '&#40;').replace(')', '&#41;').replace('*', '&#42;').replace('[', '&#91;').replace(']', '&#93;')
+
+    def process_a(self, item, data, depth, with_cutted):
+        if self.fancy and item.get('title') == "Читать дальше":
+            # Кнопку ката пропускаем (её можно сделать фейковой, поэтому can_next = True)
+            return []
+
+        href = item.get('href')
+        if self.vk_links and href and 'vk.com/' in href:
+            g = re.match(r'^(https?:)?//([\.A-z0-9_-]+\.)?vk\.com/([A-z0-9_-]+)$', href)
+            path = g.groups()[2] if g else None
+            for stopword in ("wall", "photo", "page", "video", "topic", "app", "album", "note"):
+                if (
+                    len(path) > len(stopword) and
+                    path.startswith(stopword) and
+                    (path[len(stopword)].isdigit() or path[len(stopword)] == '-')
+                ):
+                    return self.element_children(item, noblock=True)
+
+            stop_cut, tmp = self.format_part(item, with_cutted)
+
+            data.append(' @' + path + ' (')
+            data.append(self.escape(tmp))
+            data.append(') ')
+            return None if stop_cut else []
+
+        stop_cut, tmp = self.format_part(item, with_cutted)
+        if self.disable_links and (
+            tmp == href or
+            href.find('://') < 7 and tmp == href[href.find('://') + 3:] or
+            href.startswith('//') and tmp == href[2:]
+        ):
+            return None if stop_cut else []
+
+        return self.element_children(item, noblock=True)
+
+    def process_span(self, item, data, depth, with_cutted):
+        if not self.fancy:
+            return self.element_children(item, noblock=True)
+
+        if item.get('class') == 'spoiler-title':
+            # Заголовок спойлера опускаем всегда
+            return []
+
+        if item.get('class') == 'spoiler-body':
+            # Тело спойлера опускаем, только если оно фейковое
+            if depth[-1].tag != 'span' or depth[-1].get('class') != 'spoiler':
+                return []
+            ch = self.element_children(item, noblock=True)
+            if ch:
+                # Имитируем display: block
+                ch.insert(0, self.NEWLINE)
+                ch.append(self.NEWLINE)
+            else:
+                ch.append(self.NEWLINE)
+            return ch
+        return self.element_children(item, noblock=True)
+
+    def process_li(self, item, data, depth, with_cutted):
+        ch = [self.NEWLINE, '• ']
+        ch.extend(self.element_children(item, noblock=True))
+        ch.append(self.NEWLINE)
+        return ch
+
+    def process_blockquote(self, item, data, depth, with_cutted):
+        ch = [self.NEWLINE, '«']
+        ch.extend(self.element_children(item, noblock=True))
+        ch.append('»')
+        ch.append(self.NEWLINE)
+        return ch
+
+    def process_hr(self, item, data, depth, with_cutted):
+        return [self.NEWLINE, '=====', self.NEWLINE]
+
+    def process_s(self, item, data, depth, with_cutted):
+        if self.strike_mode == 'unicode':
+            # Без рекурсии никак :(
+            stop_cut, tmp = self.format_part(item, with_cutted)
+            tmp2 = []
+            for x in tmp:
+                tmp2.append(x)
+                tmp2.append('\u0336')
+            result = ''.join(tmp2)
+            data.append(result)
+            return None if stop_cut else []
+
+        elif self.strike_mode == 'html':
+            result = ['<s>']
+            result.extend(self.element_children(item, noblock=True))
+            result.append('</s>')
+            return result
+
+        else:
+            return self.element_children(item, noblock=True)
+
+
+def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=True, disable_links=False):
+    import warnings
+    warnings.warn('utils.htmlToString is deprecated; use utils.HTMLFormatter instead of it', FutureWarning)
 
     if isinstance(node, text_types):
         return text(node)
