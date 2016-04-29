@@ -231,8 +231,8 @@ class HTMLFormatter(object):
         if self.vk_links and href and 'vk.com/' in href:
             g = re.match(r'^(https?:)?//([\.A-z0-9_-]+\.)?vk\.com/([A-z0-9_-]+)$', href)
             path = g.groups()[2] if g else None
-            for stopword in ("wall", "photo", "page", "video", "topic", "app", "album", "note"):
-                if (
+            for stopword in ("wall", "photo", "page", "video", "videos", "audio", "audios", "topic", "app", "album", "note"):
+                if not path or (
                     len(path) > len(stopword) and
                     path.startswith(stopword) and
                     (path[len(stopword)].isdigit() or path[len(stopword)] == '-')
