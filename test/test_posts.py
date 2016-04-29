@@ -26,6 +26,24 @@ def test_get_posts_data_ok(user):
         assert_data(post, data)
 
 
+def test_get_posts_data_ok_without_escape(user):
+    def noescape(data, may_be_short=False):
+        return data
+
+    old_escape = api.utils.escape_topic_contents
+    api.utils.escape_topic_contents = noescape
+    try:
+        post_data = json.loads(load_file('index_posts.json', template=False).decode('utf-8'))
+        posts = list(reversed(user.get_posts('/')))
+
+        assert len(posts) == len(post_data)
+        for data, post in zip(post_data, posts):
+            assert post.post_id == data['post_id']
+            assert_data(post, data)
+    finally:
+        api.utils.escape_topic_contents = old_escape
+
+
 def test_get_posts_profile_data_ok(user, set_mock):
     set_mock({'/profile/test/created/topics/': 'profile_topics.html'})
 
@@ -48,6 +66,7 @@ def test_get_posts_types_ok(user):
         assert isinstance(post.raw_body, text)
         assert isinstance(post.tags[0], text)
         assert isinstance(post.comments_count, int)
+        assert post.cut_text is None or isinstance(post.cut_text, text)
         assert isinstance(post.context, dict)
 
 
@@ -92,12 +111,14 @@ def test_get_post_ok(user):
     assert post.private is False
     assert post.blog is None
     assert post.draft is True
+    assert post.short is False
     assert time.strftime("%Y-%m-%d %H:%M:%S", post.time) == "2015-05-30 19:14:04"
     assert post.utctime.strftime('%Y-%m-%d %H:%M:%S') == '2015-05-30 16:14:04'
 
     assert post.title == 'Тест'
     assert post.raw_body == '<strong>Раз</strong><br/>\n<h4>Два</h4>И ломаем вёрстку <img src="http://ya.ru/" alt="'
     assert post.tags == ["тег1", "тег2"]
+    assert post.cut_text is None
     assert post.comments_count == 5
 
     assert post.context['username'] == 'test'
@@ -120,12 +141,14 @@ def test_get_post_other_ok(user):
     assert post.private is True
     assert post.blog == 'borderline'
     assert post.draft is False
+    assert post.short is False
     assert time.strftime("%Y-%m-%d %H:%M:%S", post.time) == "2015-09-10 15:39:13"
 
     assert post.title == 'Тестирование ката'
     assert post.raw_body == '<img src="https://i.imgur.com/V3KzzyAs.png"/>Текст до ката<br/>\n<a></a> <br/>\nТекст после ката<img src="https://i.imgur.com/NAg929K.jpg"/>'
     assert post.tags == ["Луна", "аликорны", "новость"]
     assert post.comments_count == 0
+    assert post.cut_text is None
     assert post.vote_count == 35
     assert post.vote_total == 36
 

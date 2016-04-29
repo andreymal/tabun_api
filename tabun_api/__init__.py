@@ -105,7 +105,7 @@ class Post(object):
     def __init__(self, time, blog, post_id, author, title, draft,
                  vote_count, vote_total, body, tags, comments_count=None, comments_new_count=None,
                  short=False, private=False, blog_name=None, poll=None, favourite=0, favourited=None,
-                 download=None, utctime=None, raw_body=None, context=None):
+                 download=None, utctime=None, raw_body=None, cut_text=None, context=None):
         self.time = time
         self.blog = text(blog) if blog else None
         self.post_id = int(post_id)
@@ -125,6 +125,7 @@ class Post(object):
             raise ValueError
         self.download = download
         self.utctime = utctime
+        self.cut_text = text(cut_text) if cut_text else None
         self.context = context or {}
 
         self.body, self.raw_body = utils.normalize_body(body, raw_body, cls='topic-content text')
@@ -2169,8 +2170,7 @@ def parse_post(item, context=None):
         # всё почищено в utils
         raw_body = body.text
         is_short = body.get('data-short') == '1'
-        # TODO: cut_text
-
+        cut_text = body.get('data-short-text') or None
     else:
         raw_body = None
 
@@ -2191,7 +2191,10 @@ def parse_post(item, context=None):
         nextbtn = body.xpath('a[@title="Читать дальше"][1]')
         is_short = len(nextbtn) > 0
         if is_short:
+            cut_text = nextbtn[-1].text.strip() or None
             body.remove(nextbtn[-1])
+        else:
+            cut_text = None
 
         if len(body) > 0 and body[-1].tail:
             body[-1].tail = body[-1].tail.rstrip()
@@ -2317,10 +2320,11 @@ def parse_post(item, context=None):
     context['favourited'] = favourited
 
     return Post(
-        post_time, blog, post_id, author, title, draft, vote_count, vote_total, body if raw_body is None else None, tags,
+        post_time, blog, post_id, author, title, draft,
+        vote_count, vote_total, body if raw_body is None else None, tags,
         comments_count, None, is_short, private, blog_name,
         poll, favourite, None, download, utctime, raw_body,
-        context=context
+        cut_text, context=context
     )
 
 
