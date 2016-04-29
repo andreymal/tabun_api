@@ -153,9 +153,9 @@ def test_get_post_other_blog_2(set_mock, user):
 
 
 @pytest.mark.parametrize("blog_id,blog,result_url,draft,tags", [
-    (6, 'news', 'http://tabun.everypony.ru/blog/news/1.html', False, ['Т2', 'Т3']),
-    (6, 'news', 'http://tabun.everypony.ru/blog/news/1.html', False, ['Т2, Т3']),
-    (None, None, 'http://tabun.everypony.ru/blog/1.html', True, ['Т2', 'Т3'])
+    (6, 'news', 'https://tabun.everypony.ru/blog/news/1.html', False, ['Т2', 'Т3']),
+    (6, 'news', 'https://tabun.everypony.ru/blog/news/1.html', False, ['Т2, Т3']),
+    (None, None, 'https://tabun.everypony.ru/blog/1.html', True, ['Т2', 'Т3'])
 ])
 def test_add_post_ok(form_intercept, set_mock, user, blog_id, blog, result_url, draft, tags):
     set_mock({
