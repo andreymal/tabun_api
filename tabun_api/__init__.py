@@ -18,7 +18,7 @@ from .compat import PY2, BaseCookie, urequest, text_types, text, binary
 __version__ = '0.6.5'
 
 #: Адрес Табуна. Именно на указанный здесь адрес направляются запросы.
-http_host = "http://tabun.everypony.ru"
+http_host = "https://tabun.everypony.ru"
 
 #: Список полузакрытых блогов. В tabun_api нигде не используется, но может использоваться в использующих его программах.
 halfclosed = ("borderline", "shipping", "erpg", "gak", "RPG", "roliplay", "tearsfromthemoon", "Technic", "zootopia")
