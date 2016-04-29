@@ -186,4 +186,44 @@ def test_add_post_error(set_mock, user):
         user.add_post(None, '', '', [])
     assert excinfo.value.message == 'Поле Заголовок слишком короткое (минимально допустимо 2 символов)'
 
+
+# Тесты hashsum гарантируют обратную совместимость, так что лучше их не трогать
+
+
+def test_post_hashsum_default(user):
+    p = user.get_posts('/')
+    assert p[0].post_id == 100000
+    assert p[0].hashsum() == 'e93efead3145c59b9aac26037b9c5fcf'
+    assert p[1].post_id == 131909
+    assert p[1].hashsum() == 'b6147c9ba6dbc7e8e07db958390108bd'
+    assert p[2].post_id == 131911
+    assert p[2].hashsum() == '33b7a175c45eea8e5f68f4bc885f324b'
+    assert p[3].post_id == 131915
+    assert p[3].hashsum() == '51b480ee57ee3166750e4f15f6a48f1f'
+    assert p[4].post_id == 131904
+    assert p[4].hashsum() == 'd28e3ff695cd4cdc1f63e5919da95516'
+    assert p[5].post_id == 131937
+    assert p[5].hashsum() == '93ef694d929b03b2f48b702ef68ce77b'
+
+
+def test_post_hashsum_part(user):
+    p = user.get_posts('/')
+    assert p[0].post_id == 100000
+    assert p[0].hashsum(('title', 'body', 'tags')) == 'efeff4792ac7666c280b06d6d0ae1136'
+    assert p[1].post_id == 131909
+    assert p[1].hashsum(('title', 'body', 'tags')) == 'dacf2a4631636a1ab796681d607c11e0'
+    assert p[2].post_id == 131911
+    assert p[2].hashsum(('title', 'body', 'tags')) == '1381908ebf93038617b400f59d97646a'
+    assert p[3].post_id == 131915
+    assert p[3].hashsum(('title', 'body', 'tags')) == '9fbca162a43f2a2b1dff8c5764864fdf'
+    assert p[4].post_id == 131904
+    assert p[4].hashsum(('title', 'body', 'tags')) == '61a43c4d0f33313bfb4926fb86560450'
+    assert p[5].post_id == 131937
+    assert p[5].hashsum(('title', 'body', 'tags')) == 'a49976cb3879a540334a3e93f57a752e'
+
+    # Потому что смешивать \n и \r\n в файлах так же, как и на сайте, очень геморройно
+    p[0].raw_body = p[0].raw_body.replace('\n', '\r\n')
+    assert p[0].hashsum(('title', 'body', 'tags')) == '1364ee5a2fee913325d3b220d43623a5'
+
+
 # TODO: rss

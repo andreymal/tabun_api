@@ -8,6 +8,7 @@ import re
 import time
 import logging
 import threading
+from hashlib import md5
 from datetime import datetime
 from socket import timeout as socket_timeout
 from json import JSONDecoder
@@ -148,6 +149,48 @@ class Post(object):
     def __unicode__(self):
         return self.__repr__().decode('utf-8', 'replace')
 
+    def hashsum(self, fields=None, debug=False):
+        """Считает md5-хэш от конкатенации полей поста, разделённых нулевым байтом.
+        Поддерживаются только следующие поля:
+        post_id, time (в UTC), draft, author, blog, title, body (как необработанный html), tags.
+        По умолчанию используются все они. Аргумент fields — список полей для использования
+        (или любая другая коллекция, для которой работает проверка "if field in fields").
+        Порядок и повторения полей в этом списке значения не имеют. Неизвестные поля игнорируются.
+        При debug=True вместо хэша возвращается сырой список, используемый перед хэшированием,
+        что позволит проверить правильность выбора полей. Возможные применения хэша —
+        отслеживание изменений поста (но не мета-информации вроде названия блога и числа голосов)
+        и идентификация разных версий постов.
+        """
+
+        buf = []
+
+        # Not used: vote_count vote_total comments_count short private blog_name poll favourite download context
+
+        if fields is None or 'post_id' in fields:
+            buf.append(text(self.post_id))
+
+        if fields is None or 'time' in fields:
+            buf.append(text(self.utctime.strftime('%Y-%m-%dT%H:%M:%SZ')))
+
+        if fields is None or 'draft' in fields:
+            buf.append('1' if self.draft else '0')
+
+        for field in ('author', 'blog', 'title'):
+            if fields is None or field in fields:
+                buf.append(getattr(self, field, None) or '')
+
+        if fields is None or 'body' in fields:
+            buf.append(self.raw_body)
+
+        if fields is None or 'tags' in fields:
+            buf.extend(self.tags)
+
+        buf = [x.encode('utf-8') for x in buf]
+        if debug:
+            return buf
+        h = md5(b'\x00'.join(buf))
+        return h.hexdigest()
+
     @property
     def url(self):
         host = self.context.get('http_host') or http_host
@@ -234,6 +277,39 @@ class Comment(object):
             text(self.comment_id) + ">"
         )
         return o.encode('utf-8') if PY2 else o
+
+    def hashsum(self, fields=None, debug=False):
+        """Считает md5-хэш от конкатенации полей коммента, разделённых нулевым байтом.
+        Поддерживаются только следующие поля:
+        comment_id, time (в UTC), author, body (как необработанный html).
+        По умолчанию используются все они. Аргумент fields — список полей для использования
+        (или любая другая коллекция, для которой работает проверка "if field in fields").
+        Порядок и повторения полей в этом списке значения не имеют. Неизвестные поля игнорируются.
+        При debug=True вместо хэша возвращается сырой список, используемый перед хэшированием,
+        что позволит проверить правильность выбора полей.
+        """
+
+        buf = []
+
+        # Not used: blog post_id vote_total unread parent_id post_title deleted favourite context
+
+        if fields is None or 'comment_id' in fields:
+            buf.append(text(self.comment_id))
+
+        if fields is None or 'time' in fields:
+            buf.append(text(self.utctime.strftime('%Y-%m-%dT%H:%M:%SZ')))
+
+        if fields is None or 'author' in fields:
+            buf.append(self.author)
+
+        if fields is None or 'body' in fields:
+            buf.append(self.raw_body)
+
+        buf = [x.encode('utf-8') for x in buf]
+        if debug:
+            return buf
+        h = md5(b'\x00'.join(buf))
+        return h.hexdigest()
 
     def __str__(self):
         return self.__repr__()

@@ -72,3 +72,26 @@ def test_add_comment_fail(set_mock, user):
     with pytest.raises(api.TabunResultError) as excinfo:
         user.comment(1, '')
     assert excinfo.value.message == err
+
+
+# Тесты hashsum гарантируют обратную совместимость, так что лучше их не трогать
+
+
+def test_comments_hashsum_default(user):
+    c = list(sorted(user.get_comments().items()))
+    assert c[0][0] == 9445361
+    assert c[0][1].hashsum() == '21e86981a1eb1110c55f8f59c6b7e684'
+    assert c[1][0] == 9445595
+    assert c[1][1].hashsum() == 'c8c7a9621120fc5f9f1f10caa2941ec0'
+
+
+def test_comments_hashsum_part(user):
+    c = list(sorted(user.get_comments().items()))
+    assert c[0][0] == 9445361
+    assert c[0][1].hashsum(('body',)) == '5768f420c77973975c835ba44e8bd285'
+    assert c[1][0] == 9445595
+    assert c[1][1].hashsum(('body',)) == 'be8d648dd8bb53a957b0bd861dfb548f'
+
+    # Потому что смешивать \n и \r\n в файлах так же, как и на сайте, очень геморройно
+    c[1][1].raw_body = c[1][1].raw_body.replace('\n', '\r\n')
+    assert c[1][1].hashsum(('body',)) == '10b2ae8cd48a8e9bc86bf5138ebfa18d'
