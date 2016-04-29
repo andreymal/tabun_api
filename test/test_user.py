@@ -205,9 +205,9 @@ def test_login_hacking_attemp(set_mock, user):
 def test_build_request_internal(user):
     req = user.build_request('/blog/2.html')
     if PY2:
-        assert req.get_full_url() == b'http://tabun.everypony.ru/blog/2.html'
+        assert req.get_full_url() == b'https://tabun.everypony.ru/blog/2.html'
     else:
-        assert req.get_full_url() == 'http://tabun.everypony.ru/blog/2.html'
+        assert req.get_full_url() == 'https://tabun.everypony.ru/blog/2.html'
     assert b'TABUNSESSIONID=abcdef9876543210abcdef9876543210' in req.headers[str('Cookie')]
 
 
@@ -215,9 +215,9 @@ def test_build_request_internal_other_session_cookie(user):
     user.session_cookie_name = 'PHPSESSID'
     req = user.build_request('/blog/2.html')
     if PY2:
-        assert req.get_full_url() == b'http://tabun.everypony.ru/blog/2.html'
+        assert req.get_full_url() == b'https://tabun.everypony.ru/blog/2.html'
     else:
-        assert req.get_full_url() == 'http://tabun.everypony.ru/blog/2.html'
+        assert req.get_full_url() == 'https://tabun.everypony.ru/blog/2.html'
     assert b'PHPSESSID=abcdef9876543210abcdef9876543210' in req.headers[str('Cookie')]
 
 
