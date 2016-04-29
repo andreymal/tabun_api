@@ -11,10 +11,10 @@
         "deleted": false,
         "favourite": 0,
         "context:favourited": false,
-        "context:url": "http://tabun.everypony.ru/comments/",
+        "context:url": "https://tabun.everypony.ru/comments/",
         "context:can_vote": null,
         "context:username": "test",
-        "context:http_host": "http://tabun.everypony.ru",
+        "context:http_host": "https://tabun.everypony.ru",
         "context:vote_value": null
     },
     {
@@ -29,10 +29,10 @@
         "deleted": false,
         "favourite": 1,
         "context:favourited": true,
-        "context:url": "http://tabun.everypony.ru/comments/",
+        "context:url": "https://tabun.everypony.ru/comments/",
         "context:can_vote": null,
         "context:username": "test",
-        "context:http_host": "http://tabun.everypony.ru",
+        "context:http_host": "https://tabun.everypony.ru",
         "context:vote_value": null
     }
 ]

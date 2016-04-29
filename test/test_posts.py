@@ -101,8 +101,8 @@ def test_get_post_ok(user):
     assert post.comments_count == 5
 
     assert post.context['username'] == 'test'
-    assert post.context['http_host'] == 'http://tabun.everypony.ru'
-    assert post.context['url'] == 'http://tabun.everypony.ru/blog/132085.html'
+    assert post.context['http_host'] == 'https://tabun.everypony.ru'
+    assert post.context['url'] == 'https://tabun.everypony.ru/blog/132085.html'
     assert post.context['can_comment'] is True
     assert post.context['can_edit'] is True
     assert post.context['can_delete'] is True
@@ -130,8 +130,8 @@ def test_get_post_other_ok(user):
     assert post.vote_total == 36
 
     assert post.context['username'] == 'test'
-    assert post.context['http_host'] == 'http://tabun.everypony.ru'
-    assert post.context['url'] == 'http://tabun.everypony.ru/blog/borderline/138982.html'
+    assert post.context['http_host'] == 'https://tabun.everypony.ru'
+    assert post.context['url'] == 'https://tabun.everypony.ru/blog/borderline/138982.html'
     assert post.context['can_comment'] is False
     assert post.context['can_edit'] is False
     assert post.context['can_delete'] is False
