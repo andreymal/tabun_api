@@ -531,19 +531,19 @@ class User(object):
 
     Допустимые комбинации параметров (в квадратных скобках опциональные):
 
-    * login + passwd [ + phpsessid]
-    * phpsessid [+ key] - без куки key разлогинивает через некоторое время
-    * login + phpsessid + security_ls_key [+ key] (без запроса к серверу)
+    * login + passwd [ + session_id]
+    * session_id [+ key] - без куки key разлогинивает через некоторое время
+    * login + session_id + security_ls_key [+ key] (без запроса к серверу)
     * без параметров (анонимус)
 
     Если у функции есть параметр raw_data, то через него можно передать код страницы, чтобы избежать лишнего запроса к Табуну.
     Если есть параметр url, то при его указании открывается именно указанный url вместо формирования стандартного с помощью других параметров функции.
 
-    phpsessid - печенька (cookie), по которой идентифицируется пользователь (на самом Табуне называется TABUNSESSIONID).
+    session_id - печенька (cookie), по которой идентифицируется пользователь (на самом Табуне называется TABUNSESSIONID).
     security_ls_key - секретный ключ движка LiveStreet для отправки запросов.
     key - печенька неизвестного мне назначения.
     Можно не париться с ними, их автоматически пришлёт сервер во время инициализации объекта.
-    А можно, например, не авторизоваться по логину и паролю, а выдрать из браузера печеньку TABUNSESSIONID, скормить в аргумент phpsessid и авторизоваться через неё.
+    А можно, например, не авторизоваться по логину и паролю, а выдрать из браузера печеньку TABUNSESSIONID, скормить в аргумент session_id и авторизоваться через неё.
 
     Конструктор также принимает кортеж proxy из трёх элементов (тип, хост, порт) для задания прокси-сервера. Сейчас поддерживаются только типы socks4 и socks5.
     Вместо передачи параметра можно установить переменную окружения TABUN_API_PROXY=тип,хост,порт — конструктор её подхватит.
@@ -558,11 +558,11 @@ class User(object):
     * skill — силушка (после update_userinfo)
     * rating — кармушка (после update_userinfo)
     * timeout — таймаут ожидания ответа от сервера (для функции urlopen, по умолчанию 20)
-    * phpsessid, security_ls_key, key — ну вы поняли
-    * session_cookie_name — название печеньки, в которую положить phpsessid (для табуна TABUNSESSIONID, для других лайвстритов PHPSESSID)
+    * session_id, security_ls_key, key — ну вы поняли
+    * session_cookie_name — название печеньки, в которую положить session_id (для табуна TABUNSESSIONID, для других лайвстритов PHPSESSID)
     """
 
-    phpsessid = None
+    session_id = None
     username = None
     security_ls_key = None
     key = None
@@ -574,7 +574,15 @@ class User(object):
     proxy = None
     http_host = None
 
-    def __init__(self, login=None, passwd=None, phpsessid=None, security_ls_key=None, key=None, proxy=None, http_host=None, session_cookie_name='TABUNSESSIONID'):
+    def __init__(
+        self, login=None, passwd=None, session_id=None, security_ls_key=None, key=None,
+        proxy=None, http_host=None, session_cookie_name='TABUNSESSIONID', phpsessid=None
+    ):
+        if phpsessid is not None:
+            import warnings
+            warnings.warn('phpsessid is deprecated; use session_id instead of it', FutureWarning)
+            session_id = phpsessid
+
         self.http_host = text(http_host).rstrip('/') if http_host else None
         self.session_cookie_name = text(session_cookie_name)
 
@@ -588,17 +596,17 @@ class User(object):
         self.last_query_time = 0
         self.talk_count = 0
 
-        if phpsessid:
-            self.phpsessid = text(phpsessid).split(";", 1)[0]
+        if session_id:
+            self.session_id = text(session_id).split(";", 1)[0]
         if key:
             self.key = text(key)
-        if self.phpsessid and security_ls_key:
+        if self.session_id and security_ls_key:
             self.security_ls_key = text(security_ls_key)
             if login:
                 self.username = text(login)
             return
 
-        if not self.phpsessid or not security_ls_key:
+        if not self.session_id or not security_ls_key:
             resp = self.urlopen("/")
             data = self._netwrap(resp.read, 1024 * 25)
             resp.close()
@@ -609,10 +617,10 @@ class User(object):
             else:
                 for x in resp.headers.get_all("set-cookie") or ():
                     cook.load(x)
-            if not self.phpsessid:
-                self.phpsessid = cook.get(self.session_cookie_name)
-                if self.phpsessid:
-                    self.phpsessid = self.phpsessid.value
+            if not self.session_id:
+                self.session_id = cook.get(self.session_cookie_name)
+                if self.session_id:
+                    self.session_id = self.session_id.value
             if not self.key:
                 ckey = cook.get("key")
                 self.key = ckey.value if ckey else None
@@ -629,6 +637,18 @@ class User(object):
         # reset after urlopen
         self.last_query_time = 0
         self.talk_count = 0
+
+    @property
+    def phpsessid(self):
+        import warnings
+        warnings.warn('phpsessid is deprecated; use session_id instead of it', FutureWarning)
+        return self.session_id
+
+    @phpsessid.setter
+    def phpsessid(self, value):
+        import warnings
+        warnings.warn('phpsessid is deprecated; use session_id instead of it', FutureWarning)
+        self.session_id = value
 
     def configure_opener(self, proxy=None):
         handlers = []
@@ -746,8 +766,8 @@ class User(object):
         self.key = ckey.value if ckey else None
 
     def check_login(self):
-        """Генерирует исключение, если нет phpsessid или security_ls_key."""
-        if not self.phpsessid or not self.security_ls_key:
+        """Генерирует исключение, если нет session_id или security_ls_key."""
+        if not self.session_id or not self.security_ls_key:
             raise TabunError("Not logined")
 
     def get_main_context(self, raw_data, url=None):
@@ -788,9 +808,9 @@ class User(object):
         if headers:
             request_headers.update(headers)
 
-        if with_cookies and self.phpsessid:
+        if with_cookies and self.session_id:
             request_headers['Cookie'] = ("%s=%s; key=%s; LIVESTREET_SECURITY_KEY=%s" % (
-                self.session_cookie_name, self.phpsessid, self.key, self.security_ls_key
+                self.session_cookie_name, self.session_id, self.key, self.security_ls_key
             )).encode('utf-8')
 
         for header, value in request_headers.items():
@@ -869,7 +889,7 @@ class User(object):
         Если указан параметр data, то отправляется POST-запрос.
         В качестве URL может быть путь с доменом (http://tabun.everypony.ru/), без домена (/index/newall/) или объект Request.
         Если redir установлен в False, то не будет осуществляться переход по перенаправлению (HTTP-коды 3xx).
-        К запросу добавлется печенька TABUNSESSIONID (из атрибута phpsessid); with_cookies=False отключает это.
+        К запросу добавлется печенька TABUNSESSIONID (из атрибута session_id); with_cookies=False отключает это.
         По умолчанию соблюдает между запросами временной интервал query_interval (который по умолчанию 0);
         при nowait=True запрос всегда отправляется немедленно.
         Может кидаться исключением TabunError.

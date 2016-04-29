@@ -15,12 +15,12 @@ from testutil import UserTest, form_intercept, set_mock, as_guest, user
 
 def test_user_preloaded_cookies(set_mock):
     set_mock({'/': ('404.html', {'status': 404, 'status_msg': 'Not Found'})})
-    phpsessid = 'abcdef9876543210abcdef9876543210'
+    session_id = 'abcdef9876543210abcdef9876543210'
     security_ls_key = '0123456789abcdef0123456789abcdef'
     key = '00000000000000000000000000000000'
-    user = UserTest(phpsessid=phpsessid, security_ls_key=security_ls_key, key=key)
+    user = UserTest(session_id=session_id, security_ls_key=security_ls_key, key=key)
     assert user.username is None
-    assert user.phpsessid == phpsessid
+    assert user.session_id == session_id
     assert user.security_ls_key == security_ls_key
     assert user.key == key
 
@@ -31,47 +31,47 @@ def test_user_preloaded_cookies(set_mock):
     ('abcdef9876543210abcdef9876543210', None, None)
 ])
 def test_user_partially_preloaded_cookies(session_id, security_ls_key, key):
-    user = UserTest(phpsessid=session_id, security_ls_key=security_ls_key, key=key)
+    user = UserTest(session_id=session_id, security_ls_key=security_ls_key, key=key)
     assert user.username is None if security_ls_key else 'test'
-    assert user.phpsessid == session_id
+    assert user.session_id == session_id
     assert user.security_ls_key == '0123456789abcdef0123456789abcdef'
     assert user.key in (None, '00000000000000000000000000000000')
 
     assert user.update_userinfo(user.urlopen('/').read()) == 'test'
-    assert user.phpsessid == session_id
+    assert user.session_id == session_id
     assert user.security_ls_key == '0123456789abcdef0123456789abcdef'
     assert user.key in (None, '00000000000000000000000000000000')
 
 
 def test_user_preloaded_cookies_and_login(set_mock):
     set_mock({'/': ('404.html', {'status': 404, 'status_msg': 'Not Found'})})
-    user = UserTest('test', phpsessid='abcdef9876543210abcdef9876543210', security_ls_key='0123456789abcdef0123456789abcdef')
+    user = UserTest('test', session_id='abcdef9876543210abcdef9876543210', security_ls_key='0123456789abcdef0123456789abcdef')
     assert user.username == 'test'
-    assert user.phpsessid == 'abcdef9876543210abcdef9876543210'
+    assert user.session_id == 'abcdef9876543210abcdef9876543210'
     assert user.security_ls_key == '0123456789abcdef0123456789abcdef'
     assert user.key is None
 
 
 def test_session_id_guest(as_guest, user):
-    assert user.phpsessid == 'abcdef9876543210abcdef9876543210'
+    assert user.session_id == 'abcdef9876543210abcdef9876543210'
 
 
 def test_session_id_authorized(user):
-    assert user.phpsessid == 'abcdef9876543210abcdef9876543210'
+    assert user.session_id == 'abcdef9876543210abcdef9876543210'
 
 
 def test_session_id_renamed_guest(set_mock, as_guest):
     set_mock({'/': ('index.html', {'headers': {'Set-Cookie': ['PHPSESSID=abcdef9876543210abcdef9876543210; path=/']}})})
 
     user = UserTest(session_cookie_name='PHPSESSID')
-    assert user.phpsessid == 'abcdef9876543210abcdef9876543210'
+    assert user.session_id == 'abcdef9876543210abcdef9876543210'
 
 
 def test_session_id_renamed_authorized(set_mock):
     set_mock({'/': ('index.html', {'headers': {'Set-Cookie': ['PHPSESSID=abcdef9876543210abcdef9876543210; path=/']}})})
 
     user = UserTest(session_cookie_name='PHPSESSID')
-    assert user.phpsessid == 'abcdef9876543210abcdef9876543210'
+    assert user.session_id == 'abcdef9876543210abcdef9876543210'
 
 
 def test_ls_key_guest(as_guest, user):
