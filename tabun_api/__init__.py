@@ -62,7 +62,7 @@ class TabunError(Exception):
         if msg is not None:
             assert message is None
             import warnings
-            warnings.warn('TabunError(msg=...) is deprecated; use TabunError(message=...) instead of it', FutureWarning)
+            warnings.warn('TabunError(msg=...) is deprecated; use TabunError(message=...) instead of it', FutureWarning, stacklevel=2)
             message = msg
         message = text(message) if message else text(code)
         super(TabunError, self).__init__(message.encode('utf-8') if PY2 else message)
@@ -132,12 +132,12 @@ class Post(object):
 
         if favourited is not None:
             import warnings
-            warnings.warn('Post(favourited=...) is deprecated; use context["favourited"] instead of it', FutureWarning)
+            warnings.warn('Post(favourited=...) is deprecated; use context["favourited"] instead of it', FutureWarning, stacklevel=2)
             self.context['favourited'] = bool(favourited)
 
         if comments_new_count is not None:
             import warnings
-            warnings.warn('Post(comments_new_count=...) is deprecated; use context["unread_comments_count"] instead of it', FutureWarning)
+            warnings.warn('Post(comments_new_count=...) is deprecated; use context["unread_comments_count"] instead of it', FutureWarning, stacklevel=2)
             self.context['unread_comments_count'] = comments_new_count
 
     def __repr__(self):
@@ -200,25 +200,25 @@ class Post(object):
     @property
     def favourited(self):
         import warnings
-        warnings.warn('post.favourited is deprecated; use post.context.get("favourited") instead of it', FutureWarning)
+        warnings.warn('post.favourited is deprecated; use post.context.get("favourited") instead of it', FutureWarning, stacklevel=2)
         return self.context.get('favourited')
 
     @favourited.setter
     def favourited(self, value):
         import warnings
-        warnings.warn('post.favourited is deprecated; use post.context.get("favourited") instead of it', FutureWarning)
+        warnings.warn('post.favourited is deprecated; use post.context.get("favourited") instead of it', FutureWarning, stacklevel=2)
         self.context['favourited'] = value
 
     @property
     def comments_new_count(self):
         import warnings
-        warnings.warn('post.comments_new_count is deprecated; use post.context.get("unread_comments_count") instead of it', FutureWarning)
+        warnings.warn('post.comments_new_count is deprecated; use post.context.get("unread_comments_count") instead of it', FutureWarning, stacklevel=2)
         return self.context.get('unread_comments_count')
 
     @comments_new_count.setter
     def comments_new_count(self, value):
         import warnings
-        warnings.warn('post.comments_new_count is deprecated; use post.context.get("unread_comments_count") instead of it', FutureWarning)
+        warnings.warn('post.comments_new_count is deprecated; use post.context.get("unread_comments_count") instead of it', FutureWarning, stacklevel=2)
         self.context['unread_comments_count'] = value
 
 
@@ -261,12 +261,12 @@ class Comment(object):
 
         if vote is not None:
             import warnings
-            warnings.warn('Comment(vote=...) is deprecated; use Comment(vote_total=...) instead of it', FutureWarning)
+            warnings.warn('Comment(vote=...) is deprecated; use Comment(vote_total=...) instead of it', FutureWarning, stacklevel=2)
             self.vote_total = int(vote) if vote is not None else None
 
         if favourited is not None:
             import warnings
-            warnings.warn('Comment(favourited=...) is deprecated; use context["favourited"] instead of it', FutureWarning)
+            warnings.warn('Comment(favourited=...) is deprecated; use context["favourited"] instead of it', FutureWarning, stacklevel=2)
             self.context['favourited'] = bool(favourited)
 
         self.body, self.raw_body = utils.normalize_body(body, raw_body)
@@ -321,25 +321,25 @@ class Comment(object):
     @property
     def vote(self):
         import warnings
-        warnings.warn('comment.vote is deprecated; use comment.vote_total instead of it', FutureWarning)
+        warnings.warn('comment.vote is deprecated; use comment.vote_total instead of it', FutureWarning, stacklevel=2)
         return self.vote_total
 
     @vote.setter
     def vote(self, value):
         import warnings
-        warnings.warn('comment.vote is deprecated; use comment.vote_total instead of it', FutureWarning)
+        warnings.warn('comment.vote is deprecated; use comment.vote_total instead of it', FutureWarning, stacklevel=2)
         self.vote_total = value
 
     @property
     def favourited(self):
         import warnings
-        warnings.warn('comment.favourited is deprecated; use comment.context.get("favourited") instead of it', FutureWarning)
+        warnings.warn('comment.favourited is deprecated; use comment.context.get("favourited") instead of it', FutureWarning, stacklevel=2)
         return self.context.get('favourited')
 
     @favourited.setter
     def favourited(self, value):
         import warnings
-        warnings.warn('comment.favourited is deprecated; use comment.context.get("favourited") instead of it', FutureWarning)
+        warnings.warn('comment.favourited is deprecated; use comment.context.get("favourited") instead of it', FutureWarning, stacklevel=2)
         self.context['favourited'] = value
 
 
@@ -580,7 +580,7 @@ class User(object):
     ):
         if phpsessid is not None:
             import warnings
-            warnings.warn('phpsessid is deprecated; use session_id instead of it', FutureWarning)
+            warnings.warn('phpsessid is deprecated; use session_id instead of it', FutureWarning, stacklevel=2)
             session_id = phpsessid
 
         self.http_host = text(http_host).rstrip('/') if http_host else None
@@ -641,13 +641,13 @@ class User(object):
     @property
     def phpsessid(self):
         import warnings
-        warnings.warn('phpsessid is deprecated; use session_id instead of it', FutureWarning)
+        warnings.warn('phpsessid is deprecated; use session_id instead of it', FutureWarning, stacklevel=2)
         return self.session_id
 
     @phpsessid.setter
     def phpsessid(self, value):
         import warnings
-        warnings.warn('phpsessid is deprecated; use session_id instead of it', FutureWarning)
+        warnings.warn('phpsessid is deprecated; use session_id instead of it', FutureWarning, stacklevel=2)
         self.session_id = value
 
     def configure_opener(self, proxy=None):

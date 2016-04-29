@@ -318,7 +318,7 @@ class HTMLFormatter(object):
 
 def htmlToString(node, with_cutted=True, fancy=True, vk_links=False, hr_lines=True, disable_links=False):
     import warnings
-    warnings.warn('utils.htmlToString is deprecated; use utils.HTMLFormatter instead of it', FutureWarning)
+    warnings.warn('utils.htmlToString is deprecated; use utils.HTMLFormatter instead of it', FutureWarning, stacklevel=2)
 
     if isinstance(node, text_types):
         return text(node)
