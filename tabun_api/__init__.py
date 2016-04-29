@@ -1742,6 +1742,19 @@ class User(object):
 
         return self.ajax('/ajax/favourite/comment/', fields)['iCount']
 
+    def save_favourite_tags(self, target_id, tags, target_type='topic'):
+        """Редактирует теги избранного поста и возвращает
+        новый их список (элементы — словари с tag и url).
+        """
+
+        fields = {
+            "target_type": target_type,
+            "target_id": int(target_id),
+            "tags": tags if isinstance(tags, text) else ', '.join(tags)
+        }
+
+        return self.ajax('/ajax/favourite/save-tags/', fields)['aTags']
+
     def edit_comment(self, comment_id, text):
         """Редактирует комментарий и возвращает новое тело комментария."""
         fields = {
@@ -2204,11 +2217,18 @@ def parse_post(item, context=None):
     footer = item.find("footer")
     ntags = footer.find("p")
     tags = []
+    fav_tags = []
     if ntags is not None:
         for ntag in ntags.findall("a"):
-            if not ntag.text:
-                continue
-            tags.append(text(ntag.text))
+            if ntag.text:
+                tags.append(text(ntag.text))
+        for fav_ntag_li in ntags.xpath('*[starts-with(@class, "topic-tags-user")]'):
+            fav_ntag = fav_ntag_li.find('a')
+            if fav_ntag is not None and fav_ntag.text:
+                fav_tags.append({'tag': fav_ntag.get('href'), 'url': fav_ntag.text})
+
+    tags_btn = ntags.xpath('span[starts-with(@class, "topic-tags-edit")]')
+    can_save_favourite_tags = tags_btn and 'display:none' not in tags_btn[0].get('style', '') and 'display: none' not in tags_btn[0].get('style', '')
 
     draft = bool(header.xpath('h1/i[@class="icon-synio-topic-draft"]'))
 
@@ -2318,6 +2338,8 @@ def parse_post(item, context=None):
 
     context['unread_comments_count'] = comments_new_count
     context['favourited'] = favourited
+    context['favourite_tags'] = fav_tags
+    context['can_save_favourite_tags'] = can_save_favourite_tags
 
     return Post(
         post_time, blog, post_id, author, title, draft,
