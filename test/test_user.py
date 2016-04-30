@@ -221,6 +221,14 @@ def test_build_request_external(user):
     assert str('Cookie') not in req.headers.keys()
 
 
+def test_build_request_nonascii(user):
+    req = user.build_request('/blog/©ы\u007f')
+    if PY2:
+        assert req.get_full_url() == b'https://tabun.everypony.ru/blog/%C2%A9%D1%8B%7F'
+    else:
+        assert req.get_full_url() == 'https://tabun.everypony.ru/blog/%C2%A9%D1%8B%7F'
+
+
 def test_build_request_invalid(user):
     with pytest.raises(ValueError):
         user.build_request(b'file:///etc/passwd')

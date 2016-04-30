@@ -796,6 +796,11 @@ class User(object):
         if isinstance(url, binary):
             url = url.decode('utf-8')
         if not isinstance(url, urequest.Request):
+            # 'abc абв\x7f' => 'abc%20%D0%B0%D0%B1%D0%B2%7F'
+            url = ''.join((
+                x if 0x21 <= ord(x) < 0x7f else urequest.quote(
+                    x.encode('utf-8') if PY2 else x
+                )) for x in url)
             if url.startswith('/'):
                 url = (self.http_host or http_host) + url
             elif not url.startswith('http://') and not url.startswith('https://'):
