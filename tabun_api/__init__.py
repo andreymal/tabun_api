@@ -1394,7 +1394,7 @@ class User(object):
 
     def toggle_blog_subscribe(self, blog_id):
         import warnings
-        warnings.warn('TabunError(msg=...) is deprecated; use TabunError(message=...) instead of it', FutureWarning, stacklevel=2)
+        warnings.warn('toggle_blog_subscribe is deprecated; use toggle_subscription_to_blog instead of it', FutureWarning, stacklevel=2)
         return self.toggle_subscription_to_blog(blog_id)
 
     def comment(self, target_id=None, body=None, reply=0, typ="blog", post_id=None):
