@@ -1,7 +1,8 @@
 Примеры
 =======
 
-Все примеры написаны под Python 3. Для Python 2 нужно поменять `input` на `raw_input` и перед примерами выполнить:
+Все примеры написаны под Python 3. Для Python 2 нужно поменять `input`
+на `raw_input` и перед примерами выполнить:
 
 .. code-block:: python
 
@@ -72,7 +73,9 @@
 Прямой эфир
 -----------
 
-Работает на допущении, что дата написания комментария тем больше, чем больше его id (известен `один случай <https://tabun.everypony.ru/blog/comicsworkshop/46415.html#comment2498188>`_, когда это не так).
+Работает на допущении, что дата написания комментария тем больше, чем больше его id
+(известен `один случай <https://tabun.everypony.ru/blog/comicsworkshop/46415.html#comment2498188>`_,
+когда это не так).
 
 .. code-block:: python
 
@@ -101,7 +104,7 @@
                     author=c.author,
                     title=c.post_title
                 ))
-                print(api.utils.htmlToString(c.body))
+                print(api.utils.HTMLFormatter().format(c.body))
         time.sleep(5)
 
 
@@ -183,7 +186,7 @@
             for comment in user.get_talk(talk.talk_id).comments.values():
                 if not comment.unread:
                     continue
-                message = api.utils.htmlToString(comment.body)
+                message = api.utils.HTMLFormatter().format(comment.body)
                 print('<', message)
                 answer = parse_command(message)
                 if answer:
@@ -193,4 +196,3 @@
                     except api.TabunError as exc:
                         print(exc.message)
         time.sleep(10)
-

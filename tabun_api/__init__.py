@@ -52,9 +52,10 @@ class TabunError(Exception):
     """Общее для библиотеки исключение.
     Содержит атрибут code с всякими разными циферками для разных типов исключения,
     обычно совпадает с HTTP-кодом ошибки при запросе.
-    А в атрибуте message или текст, или снова код ошибки.
-    Если возможно (например, при ошибке ввода-вывода), присутствует атрибут exc
-    с оригинальным исключением. Если это HTTPError, то можно, например, вызвать
+    А в атрибуте ``message`` или текст, или снова код ошибки.
+
+    Если возможно (например, при ошибке ввода-вывода), присутствует атрибут ``exc``
+    с оригинальным исключением. Если это ``HTTPError``, то можно, например, вызвать
     ``exc.read()`` или ``user.saferead(exc)``.
     """
 
@@ -93,7 +94,10 @@ class TabunError(Exception):
 
 
 class TabunResultError(TabunError):
-    """Исключение, содержащее текст ошибки, который вернул сервер. Как правило, это текст соответствующих всплывашек на сайте."""
+    """Исключение, содержащее текст ошибки, который вернул сервер.
+    Как правило, это текст соответствующих всплывашек на сайте.
+    Потомок ``TabunError``.
+    """
 
     def __repr__(self):
         result = 'TabunResultError({})'.format(self._reprfields())
@@ -101,7 +105,24 @@ class TabunResultError(TabunError):
 
 
 class Post(object):
-    """Пост."""
+    """Пост.
+
+    Поля ``comments_new_count`` и ``favourited`` устарели; используйте контекст вместо них.
+
+    Дополнительные значения контекста:
+
+    * ``can_comment`` (True/False) — можно ли отправить комментарий
+    * ``can_edit`` (True/False) — можно ли редактировать пост
+    * ``can_delete`` — можно ли удалить пост
+    * ``can_vote`` — можно ли голосовать за пост
+    * ``vote_value`` (-1/0/1/None) — голос текущего пользователя
+    * ``subscribed_to_comments`` (True/False) — подписан ли текущий пользователь на новые комментарии
+    * ``unread_comments_count`` (int) — число новых комментариев (для постов из списка постов, иначе ноль)
+    * ``favourited`` (True/False) — добавлен ли пост в избранное
+    * ``favourite_tags`` (list) — теги избранного поста
+    * ``can_save_favourite_tags`` (True/False) — можно ли редактировать теги избранного поста (обычно совпадает с ``favourited``)
+    """
+
     def __init__(self, time, blog, post_id, author, title, draft,
                  vote_count, vote_total, body, tags, comments_count=None, comments_new_count=None,
                  short=False, private=False, blog_name=None, poll=None, favourite=0, favourited=None,
@@ -152,13 +173,21 @@ class Post(object):
 
     def hashsum(self, fields=None, debug=False):
         """Считает md5-хэш от конкатенации полей поста, разделённых нулевым байтом.
+
         Поддерживаются только следующие поля:
         post_id, time (в UTC), draft, author, blog, title, body (как необработанный html), tags.
-        По умолчанию используются все они. Аргумент fields — список полей для использования
-        (или любая другая коллекция, для которой работает проверка "if field in fields").
+
+        По умолчанию используются все они.
+
+        Аргумент ``fields`` — список полей для использования
+        (или любая другая коллекция, для которой работает проверка ``if field in fields``).
+
         Порядок и повторения полей в этом списке значения не имеют. Неизвестные поля игнорируются.
-        При debug=True вместо хэша возвращается сырой список, используемый перед хэшированием,
-        что позволит проверить правильность выбора полей. Возможные применения хэша —
+
+        При ``debug=True`` вместо хэша возвращается сырой список, используемый перед хэшированием,
+        что позволит проверить правильность выбора полей.
+
+        Возможные применения хэша —
         отслеживание изменений поста (но не мета-информации вроде названия блога и числа голосов)
         и идентификация разных версий постов.
         """
@@ -235,7 +264,19 @@ class Download(object):
 
 
 class Comment(object):
-    """Коммент. Возможно, удалённый, поэтому следите, чтобы значения не были None!"""
+    """Коммент. Возможно, удалённый, поэтому следите, чтобы значения не были None!
+
+    Поле ``favourited`` устарело; используйте ``comment.context.get('favourited')`` вместо него.
+
+    Поле ``vote`` переименовано в ``vote_total``.
+
+    Дополнительные значения контекста:
+
+    * ``can_vote`` (True/False) — можно ли голосовать за комментарий
+    * ``vote_value`` (-1/1/None) — голос текущего пользователя
+    * ``favourited`` (True/False) — добавлен ли комментарий в избранное
+    """
+
     def __init__(self, time, blog, post_id, comment_id, author, body, vote_total, parent_id=None,
                  post_title=None, unread=False, deleted=False, favourite=None, favourited=None,
                  utctime=None, raw_body=None, context=None, vote=None):
@@ -281,12 +322,16 @@ class Comment(object):
 
     def hashsum(self, fields=None, debug=False):
         """Считает md5-хэш от конкатенации полей коммента, разделённых нулевым байтом.
+
         Поддерживаются только следующие поля:
         comment_id, time (в UTC), author, body (как необработанный html).
-        По умолчанию используются все они. Аргумент fields — список полей для использования
-        (или любая другая коллекция, для которой работает проверка "if field in fields").
+
+        По умолчанию используются все они. Аргумент ``fields`` — список полей для использования
+        (или любая другая коллекция, для которой работает проверка ``if field in fields``).
+
         Порядок и повторения полей в этом списке значения не имеют. Неизвестные поля игнорируются.
-        При debug=True вместо хэша возвращается сырой список, используемый перед хэшированием,
+
+        При ``debug=True`` вместо хэша возвращается сырой список, используемый перед хэшированием,
         что позволит проверить правильность выбора полей.
         """
 
@@ -470,7 +515,22 @@ class TalkItem(object):
 
 
 class ActivityItem(object):
-    """Событие со страницы /stream/."""
+    """Событие со страницы /stream/.
+
+    Типы события (``obj.type``):
+
+    * ``ActivityItem.WALL_ADD`` — добавление записи на стену пользователя (на Табуне отсутствует)
+    * ``ActivityItem.POST_ADD`` — добавление поста
+    * ``ActivityItem.COMMENT_ADD`` — добавление комментария
+    * ``ActivityItem.BLOG_ADD`` — создание блога
+    * ``ActivityItem.POST_VOTE`` — голосование за пост
+    * ``ActivityItem.COMMENT_VOTE`` — голосование за комментарий
+    * ``ActivityItem.BLOG_VOTE`` — голосование за блог
+    * ``ActivityItem.USER_VOTE`` — голосование за пользователя (оценивающий в поле ``username``, оцениваемый — в ``data``)
+    * ``ActivityItem.FRIEND_ADD`` — добавление друга (добавляющий в поле ``username``, добавляемый — в ``data``)
+    * ``ActivityItem.JOIN_BLOG`` — вступление в блог (события выхода из блога на Табуне нет, ага)
+    """
+
     WALL_ADD = 0
     POST_ADD = 1
     COMMENT_ADD = 2
@@ -527,39 +587,54 @@ class ActivityItem(object):
 
 class User(object):
     """Через божественные объекты класса User осуществляется всё взаимодействие с Табуном.
-    Почти все функции могут кидаться исключением TabunResultError с текстом ошибки (который на сайте обычно показывается во всплывашке в углу).
+    Почти все методы могут кидаться исключением :class:`~tabun_api.TabunResultError`
+    с текстом ошибки (который на сайте обычно показывается во всплывашке в углу).
+    Плюс к этому может выкидываться :class:`~tabun_api.TabunError` при ошибках связи
+    и других подобных нештатных событиях.
 
     Допустимые комбинации параметров (в квадратных скобках опциональные):
 
     * login + passwd [ + session_id]
-    * session_id [+ key] - без куки key разлогинивает через некоторое время
-    * login + session_id + security_ls_key [+ key] (без запроса к серверу)
+    * session_id [+ key] — без куки key разлогинивает через некоторое время
+    * login + session_id + security_ls_key [+ key] (с такой комбинацией конструктор отработает
+      без запроса к серверу)
     * без параметров (анонимус)
 
-    Если у функции есть параметр raw_data, то через него можно передать код страницы, чтобы избежать лишнего запроса к Табуну.
-    Если есть параметр url, то при его указании открывается именно указанный url вместо формирования стандартного с помощью других параметров функции.
+    Если у метода есть параметр ``raw_data``, то через него можно передать код страницы,
+    чтобы избежать лишнего запроса к Табуну. Если есть параметр ``url``, то при его указании
+    открывается именно указанный URL вместо формирования стандартного с помощью других
+    параметров метода.
 
-    session_id - печенька (cookie), по которой идентифицируется пользователь (на самом Табуне называется TABUNSESSIONID).
-    security_ls_key - секретный ключ движка LiveStreet для отправки запросов.
-    key - печенька неизвестного мне назначения.
+    ``session_id`` — печенька (cookie), по которой идентифицируется пользователь (на самом Табуне
+    называется TABUNSESSIONID).
+
+    ``security_ls_key`` — секретный ключ движка LiveStreet для отправки POST-запросов (CSRF-токен).
+
+    ``key`` - печенька неизвестного мне назначения.
+
     Можно не париться с ними, их автоматически пришлёт сервер во время инициализации объекта.
-    А можно, например, не авторизоваться по логину и паролю, а выдрать из браузера печеньку TABUNSESSIONID, скормить в аргумент session_id и авторизоваться через неё.
+    А можно, например, не авторизоваться по логину и паролю, а выдрать из браузера печеньку
+    TABUNSESSIONID, скормить в аргумент session_id и авторизоваться через неё.
 
-    Конструктор также принимает кортеж proxy из трёх элементов (тип, хост, порт) для задания прокси-сервера. Сейчас поддерживаются только типы socks4 и socks5.
-    Вместо передачи параметра можно установить переменную окружения TABUN_API_PROXY=тип,хост,порт — конструктор её подхватит.
+    Конструктор также принимает кортеж proxy из трёх элементов ``(тип, хост, порт)`` для задания
+    прокси-сервера. Сейчас поддерживаются только типы socks4 и socks5.
+    Вместо передачи параметра можно установить переменную окружения
+    ``TABUN_API_PROXY=тип,хост,порт`` — конструктор её подхватит.
 
-    Если нужно парсить не Табун (можно частично парсить другие LiveStreet-сайты с основанным на synio шаблоном), то можно передать http_host,
-    чтобы не переопределять его во всём tabun_api.
+    Если нужно парсить не Табун (можно частично парсить другие LiveStreet-сайты с основанным
+    на synio шаблоном), то можно передать ``http_host``, чтобы не переопределять его
+    во всём tabun_api.
 
     У класса также есть следующие поля:
 
-    * username — имя пользователя или None
-    * talk_unread — число непрочитанных личных сообщений (после update_userinfo)
-    * skill — силушка (после update_userinfo)
-    * rating — кармушка (после update_userinfo)
-    * timeout — таймаут ожидания ответа от сервера (для функции urlopen, по умолчанию 20)
-    * session_id, security_ls_key, key — ну вы поняли
-    * session_cookie_name — название печеньки, в которую положить session_id (для табуна TABUNSESSIONID, для других лайвстритов PHPSESSID)
+    * ``username`` — имя пользователя или None
+    * ``talk_unread`` — число непрочитанных личных сообщений (обновляется после ``update_userinfo``)
+    * ``skill`` — силушка (после ``update_userinfo``)
+    * ``rating`` — кармушка (после ``update_userinfo``)
+    * ``timeout`` — таймаут ожидания ответа от сервера (для функции ``urlopen``, по умолчанию 20)
+    * ``session_id``, ``security_ls_key``, ``key`` — ну вы поняли
+    * ``session_cookie_name`` — название печеньки, в которую положить ``session_id``
+      (для Табуна TABUNSESSIONID, для других лайвстритов PHPSESSID)
     """
 
     session_id = None
@@ -766,12 +841,28 @@ class User(object):
         self.key = ckey.value if ckey else None
 
     def check_login(self):
-        """Генерирует исключение, если нет session_id или security_ls_key."""
+        """Генерирует исключение, если нет ``session_id`` или ``security_ls_key``."""
         if not self.session_id or not self.security_ls_key:
             raise TabunError("Not logined")
 
     def get_main_context(self, raw_data, url=None):
-        """Парсит основные параметры контекста со страницы Табуна."""
+        """Парсит основные параметры контекста со страницы Табуна.
+
+        Возвращает что-то вроде такого::
+
+            {
+                'http_host': 'https://tabun.everypony.ru',
+                'url': 'https://tabun.everypony.ru/blog/2.html',
+                'username': 'Orhideous'
+            }
+
+        :param raw_data: исходный код страницы
+        :type raw_data: bytes
+        :param url: переопределение URL контекста при необходимости
+        :type url: строка или None
+        :rtype: dict
+        """
+
         context = {'http_host': self.http_host or http_host, 'url': url}
 
         userinfo = utils.find_substring(raw_data, b'<div class="dropdown-user"', b"<nav", with_end=False)
@@ -791,7 +882,7 @@ class User(object):
         return context
 
     def build_request(self, url, data=None, headers=None, with_cookies=True):
-        """Собирает и возвращает объект Request. Используется в методе urlopen."""
+        """Собирает и возвращает объект ``Request``. Используется в методе :func:`~tabun_api.User.urlopen`."""
 
         if isinstance(url, binary):
             url = url.decode('utf-8')
@@ -853,10 +944,10 @@ class User(object):
             raise TabunError('IOError: ' + text(exc), -30, exc=exc)
 
     def send_request(self, request, redir=True, nowait=False, timeout=None):
-        """Отправляет запрос (строку со ссылкой или объект Request).
-        Возвращает результат вызова urlopen (объект urllib.addinfourl).
-        Используется в методе urlopen.
-        Если установлен query_interval, то метод может сделать паузу перед запросом
+        """Отправляет запрос (строку со ссылкой или объект ``Request``).
+        Возвращает результат вызова ``urllib.urlopen`` (объект ``urllib.addinfourl``).
+        Используется в методе ``urlopen``.
+        Если установлен ``query_interval``, то метод может сделать паузу перед запросом
         для соблюдения интервала. Таймаут на эту паузу не влияет.
         """
 
@@ -890,21 +981,33 @@ class User(object):
                 self.wait_lock.release()
 
     def urlopen(self, url, data=None, headers=None, redir=True, nowait=False, with_cookies=True, timeout=None):
-        """Отправляет HTTP-запрос и возвращает результат вызова urlopen (объект addinfourl).
-        Если указан параметр data, то отправляется POST-запрос.
-        В качестве URL может быть путь с доменом (http://tabun.everypony.ru/), без домена (/index/newall/) или объект Request.
-        Если redir установлен в False, то не будет осуществляться переход по перенаправлению (HTTP-коды 3xx).
-        К запросу добавлется печенька TABUNSESSIONID (из атрибута session_id); with_cookies=False отключает это.
-        По умолчанию соблюдает между запросами временной интервал query_interval (который по умолчанию 0);
-        при nowait=True запрос всегда отправляется немедленно.
-        Может кидаться исключением TabunError.
+        """Отправляет HTTP-запрос и возвращает результат вызова ``urllib.urlopen`` (объект ``addinfourl``).
+
+        Во избежание случайной DoS-атаки между несколькими запросами подряд имеется пауза
+        в ``user.query_interval`` секунд (по умолчанию 0; отключается через ``nowait=True``).
+
+        :param url: ссылка, на которую отправляется запрос, или сам объект ``Request``
+        :type url: строка или Request
+        :param data: содержимое тела HTTP. Если присутствует (даже пустое), то отправится POST-запрос
+        :type data: строка (utf-8) или bytes или None
+        :param headers: HTTP-заголовки (повторяться не могут)
+        :type headers: кортежи из двух строк/bytes или словарь
+        :param bool redir: следовать ли по перенаправлениям (3xx)
+        :param bool nowait: игнорирование очереди запросов (которая нужна во избежание DoS)
+        :param bool with_cookies: прикреплять ли session_id и остальные печеньки (отключайте для запросов не к Табуну)
+        :param timeout: таймаут (по умолчанию ``user.timeout``)
+        :type timeout: float или None
+        :rtype: ``urllib.addinfourl`` / ``urllib.response.addinfourl``
         """
 
         req = self.build_request(url, data, headers, with_cookies)
         return self.send_request(req, redir, nowait, timeout)
 
     def urlread(self, url, data=None, headers=None, redir=True, nowait=False, with_cookies=True, timeout=None):
-        """Как return self.urlopen(*args, **kwargs).read(), но с перехватом исключений, возникших в процессе чтения."""
+        """Как ``return self.urlopen(*args, **kwargs).read()``, но с перехватом
+        исключений, возникших в процессе чтения (см. :func:`~tabun_api.User.saferead`).
+        """
+
         req = self.build_request(url, data, headers, with_cookies)
         resp = self.send_request(req, redir, nowait, timeout)
         try:
@@ -913,9 +1016,12 @@ class User(object):
             resp.close()
 
     def saferead(self, resp):
-        """Вызывает функцию read у переданного объекта с перехватом ошибок ввода-вывода и выкидыванием TabunError вместо них.
-        Также вызывает функцию close при её наличии.
+        """Вызывает функцию read у переданного объекта с перехватом ошибок
+        ввода-вывода и выкидыванием :class:`~tabun_api.TabunError` вместо них
+        (оригинальное исключение может быть доступно через поле ``exc``).
+        Также вызывает метод ``close`` при его наличии.
         """
+
         try:
             return self._netwrap(resp.read)
         finally:
@@ -923,21 +1029,53 @@ class User(object):
                 resp.close()
 
     def send_form(self, url, fields=(), files=(), headers=None, redir=True):
-        """Формирует multipart/form-data запрос и отправляет его через функцию urlopen."""
+        """Формирует multipart/form-data запрос и отправляет его через метод
+        :func:`~tabun_api.User.urlopen` с аргументами по умолчанию.
+
+        Значения полей и файлов могут быть строками (закодируются в utf-8),
+        bytes или числами (будут преобразованы в строку).
+
+        :param url: ссылка, на которую отправляется запрос, или сам объект ``Request``
+        :type url: строка или Request
+        :param fields: простые поля запроса
+        :type fields: коллекция кортежей (название, значение)
+        :param fields: файлы запроса (MIME-тип будет выбран по расширению)
+        :type fields: коллекция кортежей (название, имя файла, значение)
+        :param headers: HTTP-заголовки (повторяться не могут)
+        :type headers: кортежи из двух строк/bytes или словарь
+        :param bool redir: следовать ли по перенаправлениям (3xx)
+        :rtype: ``urllib.addinfourl`` / ``urllib.response.addinfourl``
+        """
+
         content_type, data = utils.encode_multipart_formdata(fields, files)
         headers = dict(headers or ())
         headers['content-type'] = content_type
         return self.urlopen(url, data, headers, redir)
 
     def send_form_and_read(self, url, fields=(), files=(), headers=None, redir=True):
-        """Формирует multipart/form-data запрос, отправляет его через функцию urlopen и возвращает тело ответа."""
+        """Аналогично :func:`~tabun_api.User.send_form`, но сразу возвращает тело ответа (bytes)."""
         content_type, data = utils.encode_multipart_formdata(fields, files)
         headers = dict(headers or ())
         headers['content-type'] = content_type
         return self.urlread(url, data, headers, redir)
 
     def ajax(self, url, fields=None, files=(), headers=None, throw_if_error=True):
-        """Отправляет ajax-запрос и возвращает распарсенный json-ответ. Или кидается исключением TabunResultError в случае ошибки."""
+        """Отправляет ajax-запрос и возвращает распарсенный json-ответ.
+        Или кидается исключением :class:`~tabun_api.TabunResultError` в случае ошибки.
+
+        :param url: ссылка, на которую отправляется запрос, или сам объект ``Request``
+        :type url: строка или Request
+        :param fields: простые поля запроса
+        :type fields: коллекция кортежей (название, значение)
+        :param fields: файлы запроса (MIME-тип будет выбран по расширению)
+        :type fields: коллекция кортежей (название, имя файла, значение)
+        :param headers: HTTP-заголовки (повторяться не могут)
+        :type headers: кортежи из двух строк/bytes или словарь
+        :param bool throw_if_error: выкидывать ли TabunResultError, если придёт ошибка
+        :rtype: dict
+        :raises TabunResultError: если сервер вернёт непустой ``bStateError`` при ``throw_if_error=True``
+        """
+
         self.check_login()
         headers = dict(headers or ())
         headers['x-requested-with'] = 'XMLHttpRequest'
@@ -955,8 +1093,24 @@ class User(object):
         return data
 
     def add_post(self, blog_id, title, body, tags, draft=False, check_if_error=False):
-        """Отправляет пост и возвращает имя блога с номером поста в случае удачи или (None,None) в случае неудачи.
-        При check_if_error=True проверяет наличие поста по заголовку даже в случае ошибки (если, например, таймаут или 404, но пост, как иногда бывает, добавляется)."""
+        """Отправляет пост и возвращает имя блога с номером поста.
+
+        :param blog_id: ID блога, в который добавляется пост
+        :type blog_id: int
+        :param title: заголовок создаваемого поста
+        :type title: строка
+        :param body: текст поста
+        :type body: строка
+        :param tags: теги поста
+        :type tags: строка или коллекция строк
+        :param draft: создание в черновиках вместо публикации
+        :type draft: bool
+        :param check_if_error: проверяет наличие поста по заголовку даже в случае ошибки
+          (если, например, таймаут или 404, но пост, как иногда бывает, добавляется)
+        :type check_if_error: bool
+        :returns: кортеж ``(blog, post_id)`` или ``(None, None)`` при неудаче
+        """
+
         self.check_login()
         blog_id = int(blog_id if blog_id else 0)
 
@@ -1006,10 +1160,26 @@ class User(object):
             return parse_post_url(link)
 
     def add_poll(self, blog_id, title, choices, body, tags, draft=False, check_if_error=False):
-        """Создает опрос и возвращает имя блога с номером поста в случае удачи или
-        (None, None)  случае неудачи.
-        Вариантов ответов не может быть более 20 штук, иначе кидается исключение.
-        При check_if_error=True проверяет наличие поста по заголовку даже в случае ошибки (если, например, таймаут или 404, но пост, как иногда бывает, добавляется)."""
+        """Создает опрос и возвращает имя блога с номером поста.
+
+        :param blog_id: ID блога, в который добавляется опрос
+        :type blog_id: int
+        :param title: заголовок создаваемого поста (должен содержать сам вопрос)
+        :type title: строка
+        :param choices: варианты ответов (не более 20)
+        :type choices: коллекция строк
+        :param body: текст поста
+        :type body: строка
+        :param tags: теги поста
+        :type tags: строка или коллекция строк
+        :param draft: создание в черновиках вместо публикации
+        :type draft: bool
+        :param check_if_error: проверяет наличие поста по заголовку даже в случае ошибки
+          (если, например, таймаут или 404, но пост, как иногда бывает, добавляется)
+        :type check_if_error: bool
+        :returns: кортеж ``(blog, post_id)`` или ``(None, None)`` при неудаче
+        """
+
         if len(choices) > 20:
             raise TabunError("Can't have more than 20 choices in poll, but had %d" % len(choices))
 
@@ -1065,7 +1235,19 @@ class User(object):
             return parse_post_url(link)
 
     def create_blog(self, title, url, description, rating_limit=0, closed=False):
-        """Создаёт блог и возвращает его url-имя или None в случае неудачи."""
+        """Создаёт блог и возвращает его url-имя или None в случае неудачи.
+
+        :param title: заголовок нового блога
+        :type title: строка
+        :param url: url-имя блога (на латинице без пробелов)
+        :type url: строка
+        :param description: описание блога (допустим HTML-код)
+        :type description: строка
+        :param int rating_limit: минимальный рейтинг пользователя, при котором можно писать в блог
+        :param bool closed: сделать блог закрытым (с доступом к нему по инвайтам)
+        :rtype: строка или None
+        """
+
         self.check_login()
 
         fields = {
@@ -1086,7 +1268,18 @@ class User(object):
         return link[link.rfind('/') + 1:]
 
     def edit_blog(self, blog_id, title, description, rating_limit=0, closed=False):
-        """Редактирует блог и возвращает его url-имя или None в случае неудачи."""
+        """Редактирует блог и возвращает его url-имя или None в случае неудачи.
+
+        :param int blog_id: ID блога, который редактируется
+        :param title: заголовок блога
+        :type title: строка
+        :param description: описание блога (допустим HTML-код)
+        :type description: строка
+        :param int rating_limit: минимальный рейтинг пользователя, при котором можно писать в блог
+        :param bool closed: сделать блог закрытым (с доступом к нему по инвайтам)
+        :rtype: строка или None
+        """
+
         self.check_login()
 
         fields = {
@@ -1108,7 +1301,12 @@ class User(object):
         return link[link.rfind('/') + 1:]
 
     def delete_blog(self, blog_id):
-        """Удаляет блог и возвращает True/False в случае удачи/неудачи."""
+        """Удаляет блог и возвращает True/False в случае удачи/неудачи.
+
+        :param int blog_id: ID удалямого блога
+        :rtype: bool
+        """
+
         self.check_login()
         return self.urlopen(
             url='/blog/delete/' + text(int(blog_id)) + '/?security_ls_key=' + self.security_ls_key,
@@ -1117,8 +1315,22 @@ class User(object):
         ).getcode() / 100 == 3
 
     def preview_post(self, blog_id, title, body, tags):
-        """Возвращает HTML-код предпросмотра поста (сам пост плюс мусор типа заголовка «Предпросмотр»)."""
+        """Возвращает HTML-код предпросмотра поста (сам пост плюс мусор типа заголовка «Предпросмотр»).
+
+        :param int blog_id: ID блога, в который добавляется пост
+        :param title: заголовок создаваемого поста
+        :type title: строка
+        :param body: текст поста
+        :type body: строка
+        :param tags: теги поста
+        :type tags: строка или коллекция строк
+        :rtype: строка
+        """
+
         self.check_login()
+
+        if not isinstance(tags, text_types):
+            tags = ", ".join(tags)
 
         fields = {
             'topic_type': 'topic',
@@ -1138,7 +1350,12 @@ class User(object):
         return result['sText']
 
     def delete_post(self, post_id):
-        """Удаляет пост и возвращает True/False в случае удачи/неудачи."""
+        """Удаляет пост и возвращает True/False в случае удачи/неудачи.
+
+        :param int post_id: ID удаляемого поста
+        :rtype: bool
+        """
+
         self.check_login()
         return self.urlopen(
             url='/topic/delete/' + text(int(post_id)) + '/?security_ls_key=' + self.security_ls_key,
@@ -1147,7 +1364,15 @@ class User(object):
         ).getcode() / 100 == 3
 
     def subscribe_to_new_comments(self, post_id, subscribed, mail=None):
-        """Меняет статус подписки на новые комментарии у поста."""
+        """Меняет статус подписки на новые комментарии у поста.
+
+        :param int post_id: ID поста
+        :param bool subscribed: True — подписаться, False — отписаться
+        :param mail: неизвестно
+        :type mail: строка
+        :rtype: None
+        """
+
         self.ajax(
             '/subscribe/ajax-subscribe-toggle/',
             {
@@ -1159,11 +1384,27 @@ class User(object):
         )
 
     def toggle_blog_subscribe(self, blog_id):
-        """Подписывается на блог/отписывается от блога и возвращает новое состояние: True - подписан, False - не подписан."""
+        """Подписывается на блог/отписывается от блога и возвращает новое состояние: True - подписан, False - не подписан.
+
+        :param int blog_id: ID блога
+        :rtype: bool
+        """
+
         return self.ajax('/blog/ajaxblogjoin/', {'idBlog': int(blog_id)})['bState']
 
     def comment(self, post_id, body, reply=0, typ="blog"):
-        """Отправляет коммент и возвращает его номер. Тип - blog (посты) или talk (личные сообщения)"""
+        """Отправляет коммент и возвращает его номер.
+
+        :param int post_id: ID поста или лички, куда отправляется коммент
+        :param body: текст комментария
+        :type body: строка
+        :param int reply: ID комментария, на который отправляется ответ (0 — не является ответом)
+        :param typ: ``blog`` — пост, ``talk`` — личное сообщение
+        :type typ: строка
+        :return: ID созданного комментария
+        :rtype: int
+        """
+
         fields = {
             'comment_text': text(body),
             'reply': int(reply),
@@ -1173,7 +1414,10 @@ class User(object):
         return self.ajax("/" + (typ if typ in ("blog", "talk") else "blog") + "/ajaxaddcomment/", fields)['sCommentId']
 
     def get_recommendations(self, raw_data):
-        """Возвращает со страницы список постов, которые советует Дискорд."""
+        """Возвращает со страницы список постов, которые советует Дискорд.
+        После обновления Табуна не работает.
+        """
+
         if isinstance(raw_data, binary):
             raw_data = raw_data.decode("utf-8", "replace")
         elif not isinstance(raw_data, text):
@@ -1201,7 +1445,18 @@ class User(object):
         return posts
 
     def get_posts(self, url="/index/newall/", raw_data=None):
-        """Возвращает список постов со страницы или RSS. Если постов нет - кидает исключение TabunError("No post")."""
+        """Возвращает список постов со страницы или RSS.
+        Если постов нет — кидает исключение TabunError("No post").
+
+        Сортирует в порядке, обратном порядку на странице (т.е. на странице новые
+        посты вверху, а в возвращаемом списке новые посты в его конце).
+
+        :param url: ссылка на страницу, с которой достать посты
+        :type url: строка
+        :param bytes raw_data: код страницы (чтобы не скачивать его по ссылке)
+        :rtype: список объектов :class:`~tabun_api.Post`
+        """
+
         if not raw_data:
             resp = self.urlopen(url)
             url = resp.url
@@ -1248,10 +1503,22 @@ class User(object):
         return posts
 
     def get_post(self, post_id, blog=None, raw_data=None):
-        """Возвращает пост по номеру. Рекомендуется указать url-имя блога, чтобы избежать перенаправления и лишнего запроса.
-        Если поста нет - кидается исключением TabunError("No post"). В случае проблем с парсингом может вернуть None.
-        Также, в отличие от get_posts, добавляет can_comment в контекст.
+        """Возвращает пост по номеру.
+
+        Рекомендуется указать url-имя блога, чтобы избежать перенаправления и лишнего запроса.
+
+        Если поста нет - кидается исключением ``TabunError("No post")``.
+        В случае проблем с парсингом может вернуть ``None``.
+
+        Также, в отличие от :func:`~tabun_api.User.get_posts`, добавляет can_comment в контекст.
+
+        :param int post_id: ID скачиваемого поста
+        :param blog: url-имя блога (опционально, для оптимизации)
+        :type blog: строка
+        :param bytes raw_data: код страницы (чтобы не скачивать его)
+        :rtype: :class:`~tabun_api.Post` или ``None``
         """
+
         if blog:
             url = "/blog/" + text(blog) + "/" + text(post_id) + ".html"
         else:
@@ -1286,7 +1553,16 @@ class User(object):
         return post
 
     def get_comments(self, url="/comments/", raw_data=None):
-        """Возвращает словарь id-комментарий."""
+        """Парсит комменты со страницы по указанной ссылке.
+        Допустимы как страницы постов, так и страницы ленты комментов.
+        Но из ленты комментов доступны не все данные ``context``.
+
+        :param url: ссылка на страницу, с которой достать комменты
+        :type url: строка
+        :param bytes raw_data: код страницы (чтобы не скачивать его по ссылке)
+        :rtype: dict {id: :class:`~tabun_api.Comment`, ...}
+        """
+
         if not raw_data:
             resp = self.urlopen(url)
             url = resp.url
@@ -1432,7 +1708,16 @@ class User(object):
         return Blog(blog_id, blog, name, creator, readers, vote_total, closed, description, admins, moderators, vote_count, posts_count, created)
 
     def get_post_and_comments(self, post_id, blog=None, raw_data=None):
-        """Возвращает пост и словарь комментариев. По сути просто вызывает функции get_posts и get_comments."""
+        """Возвращает пост и словарь комментариев.
+        По сути просто вызывает метод :func:`~tabun_api.User.get_post` и :func:`~tabun_api.User.get_comments`.
+
+        :param int post_id: ID скачиваемого поста
+        :param blog: url-имя блога (опционально, для оптимизации)
+        :param bytes raw_data: код страницы (чтобы не скачивать его)
+        :return: ``(Post, {id: Comment, ...})``
+        :rtype: tuple
+        """
+
         post_id = int(post_id)
         if not raw_data:
             resp = self.urlopen("/blog/" + ((text(blog) + "/") if blog else "") + text(post_id) + ".html")
@@ -1446,10 +1731,15 @@ class User(object):
         return (post[0] if post else None), comments
 
     def get_comments_from(self, post_id, comment_id=0, typ="blog"):
-        """Возвращает словарь комментариев к посту c id больше чем `comment_id`.
+        """Возвращает словарь комментариев к посту или личке c id больше чем `comment_id`.
         На сайте используется для подгрузки новых комментариев (ajaxresponsecomment).
-        Тип - blog (пост) или talk (личные сообщения).
+
+        :param int post_id: ID поста или личного сообщения, с которого загружать комментарии
+        :param int comment_id: ID комментария, начиная с которого (но не включая его самого) запросить комментарии
+        :param typ: ``blog`` — пост, ``talk`` — личное сообщение
+        :rtype: dict {id: :class:`~tabun_api.Comment`, ...}
         """
+
         post_id = int(post_id)
         comment_id = int(comment_id) if comment_id else 0
 
@@ -1482,7 +1772,7 @@ class User(object):
         return comms
 
     def get_stream_comments(self):
-        """Возвращает «Прямой эфир» - объекты StreamItem."""
+        """Возвращает «Прямой эфир» - объекты :func:`~tabun_api.StreamItem`."""
         self.check_login()
         data = self.urlread(
             "/ajax/stream/comment/",
@@ -1555,7 +1845,18 @@ class User(object):
         return []
 
     def get_people_list(self, page=1, order_by="user_rating", order_way="desc", url=None):
-        """Возвращает список броняш - объекты UserInfo."""
+        """Загружает список пользователей со страницы ``/people/``.
+
+        :param int page: страница
+        :param order_by: сортировка (``user_rating``, ``user_skill``, ``user_login`` или ``user_id``)
+        :type order_by: строка
+        :param order_way: сортировка по возрастанию (``asc``) или убыванию (``desc``)
+        :type order_way: строка
+        :param url: ссылка, с которых скачать пользователей (если указать, игнорируются все предыдущие параметры)
+        :type url: строка
+        :rtype: список из :class:`~tabun_api.UserInfo`
+        """
+
         if not url:
             url = "/people/" + ("index/page" + text(page) + "/" if page > 1 else "")
             url += "?order=" + text(order_by)
@@ -1604,7 +1905,16 @@ class User(object):
         return peoples
 
     def get_profile(self, username=None, raw_data=None):
-        """Возвращает объект UserInfo с полной информацией о броняше."""
+        """Возвращает объект :class:`~tabun_api.UserInfo` с полной информацией о броняше."""
+
+        """Получает информацию об указанном пользователе.
+
+        :param username: имя пользователя
+        :type username: строка
+        :param bytes raw_data: код страницы (чтобы не скачивать его)
+        :rtype: :class:`~tabun_api.UserInfo`
+        """
+
         if not raw_data:
             raw_data = self.urlread("/profile/" + urequest.quote(text(username).encode('utf-8')))
 
@@ -1698,7 +2008,14 @@ class User(object):
         return UserInfo(user_id, username, realname[0] if realname else None, skill, rating, userpic, foto, gender, birthday, registered, last_activity, description[0] if description else None, blogs)
 
     def poll_answer(self, post_id, answer=-1):
-        """Проголосовать в опросе. -1 - воздержаться. Возвращает новый объект Poll."""
+        """Проголосовать в опросе. -1 - воздержаться.
+
+        :param int post_id: ID поста с опросом, в котором голосуем
+        :param int answer: порядковый номер ответа (отсчёт с нуля)
+        :return: обновлённые данные опроса
+        :rtype: :class:`~tabun_api.Poll`
+        """
+
         if answer < -1:
             answer = -1
         if post_id < 0:
@@ -1769,7 +2086,14 @@ class User(object):
 
     def save_favourite_tags(self, target_id, tags, target_type='topic'):
         """Редактирует теги избранного поста и возвращает
-        новый их список (элементы — словари с tag и url).
+        новый их список (элементы — словари с ключами tag и url).
+
+        :param int target_id: ID поста
+        :param tags: новые теги (старые будут удалены)
+        :type tags: строка или коллекция строк
+        :param target_type: неизвестно
+        :type target_type: строка
+        :rtype: список словарей
         """
 
         fields = {
@@ -1781,7 +2105,7 @@ class User(object):
         return self.ajax('/ajax/favourite/save-tags/', fields)['aTags']
 
     def edit_comment(self, comment_id, text):
-        """Редактирует комментарий и возвращает новое тело комментария."""
+        """Редактирует комментарий и возвращает новое тело комментария. После обновления Табуна не работает."""
         fields = {
             "commentId": int(comment_id),
             "text": text.encode("utf-8")
@@ -1792,7 +2116,14 @@ class User(object):
         return utils.parse_html_fragment('<div class="text">' + data['sText'] + '</div>')[0]
 
     def get_editable_post(self, post_id, raw_data=None):
-        """Возвращает blog_id, заголовок, исходный код поста, список тегов и галочку закрытия комментариев (True/False)."""
+        """Возвращает blog_id, заголовок, исходный код поста, список тегов
+        и галочку закрытия комментариев (True/False).
+
+        :param int post_id: ID поста (должен быть доступ на редактирование)
+        :param bytes raw_data: код страницы (чтобы не скачивать его)
+        :rtype: (int, строка, строка, список строк, bool)
+        """
+
         if not raw_data:
             raw_data = self.urlread("/topic/edit/" + text(int(post_id)) + "/")
 
@@ -1826,7 +2157,14 @@ class User(object):
         return blog_id, title, body, tags, forbid_comment
 
     def get_editable_blog(self, blog_id, raw_data=None):
-        """Возвращает заголовок блога, URL, тип (True - закрытый, False - открытый), описание и ограничение рейтинга."""
+        """Возвращает заголовок блога, URL, тип (True - закрытый, False - открытый),
+        описание и ограничение рейтинга.
+
+        :param int blog_id: ID блога (должен быть доступ на редактирование)
+        :param bytes raw_data: код страницы (чтобы не скачивать его)
+        :rtype: (строка, строка, bool, строка, float)
+        """
+
         if not raw_data:
             raw_data = self.urlread("/blog/edit/" + text(int(blog_id)) + "/")
 
@@ -1853,7 +2191,21 @@ class User(object):
         return blog_title, blog_url, blog_type == "close", blog_description, blog_limit_rating_topic
 
     def edit_post(self, post_id, blog_id, title, body, tags, forbid_comment=False, draft=False):
-        """Редактирует пост и возвращает его блог и номер в случае удачи или (None, None) в случае неудачи."""
+        """Редактирует пост и возвращает его блог и номер.
+
+        :param int post_id: ID редактируемого поста
+        :param int blog_id: ID блога, в который поместить пост
+        :param title: заголовок поста
+        :type title: строка
+        :param body: текст поста
+        :type body: строка
+        :param tags: теги поста
+        :type tags: строка или коллекция строк
+        :param bool forbid_comment: закрыть (True) или открыть (False) написание комментариев
+        :param bool draft: перемещение в черновики (True) или публикация из черновиков (False)
+        :return: кортеж ``(blog, post_id)`` или ``(None, None)`` при неудаче
+        """
+
         self.check_login()
         blog_id = int(blog_id if blog_id else 0)
 
@@ -1880,9 +2232,18 @@ class User(object):
         return parse_post_url(link)
 
     def invite(self, blog_id, username):
-        """Отправляет инвайт в блог с указанным номером указанному пользователю (или пользователям, если указать несколько через запятую).
-        Возвращает словарь, который содержит пары юзернейм-текст ошибки в случае, если кому-то инвайт не отправился. Если всё хорошо, то словарь пустой.
+        """Отправляет инвайт в блог с указанным номером указанному пользователю
+        (или пользователям, если указать несколько через запятую).
+
+        Возвращает словарь, который содержит пары юзернейм-текст ошибки в случае,
+        если кому-то инвайт не отправился. Если всё хорошо, то словарь пустой.
+
+        :param int blog_id: ID блога, инвайты для которого рассылаются
+        :param username: имя пользователя (можно нескольких через запятую)
+        :type username: строка
+        :rtype: dict
         """
+
         self.check_login()
 
         fields = {
@@ -1904,7 +2265,18 @@ class User(object):
         return users
 
     def add_talk(self, talk_users, title, body):
-        """Отправляет новое личное сообщение пользователям. Возвращает id созданой беседы."""
+        """Отправляет новое личное сообщение пользователям.
+
+        :param talk_users: имена пользователей, для которых создаётся сообщение (если строка, то имена через запятую)
+        :type talk_users: строка или коллекция строк
+        :param title: заголовок сообщения
+        :type title: строка
+        :param body: текст сообщения
+        :type body: строка
+        :return: ID созданного личного сообщения
+        :rtype: int
+        """
+
         if isinstance(talk_users, text_types):
             talk_users = [text(x.strip()) for x in talk_users.split(',')]
 
@@ -1929,7 +2301,7 @@ class User(object):
             return int(link.rstrip('/').rsplit('/', 1)[-1])
 
     def get_talk_list(self, page=1, raw_data=None):
-        """Возвращает список объектов Talk с личными сообщениями."""
+        """Возвращает список объектов :func:`~tabun_api.TalkItem` с личными сообщениями."""
         self.check_login()
         if not raw_data:
             raw_data = self.urlread("/talk/inbox/page{}/".format(int(page)))
@@ -1951,7 +2323,7 @@ class User(object):
         return elems
 
     def get_talk(self, talk_id, raw_data=None):
-        """Возвращает объект Talk беседы с переданным номером."""
+        """Возвращает объект :func:`~tabun_api.TalkItem` беседы с переданным номером."""
         self.check_login()
         if not raw_data:
             raw_data = self.urlread("/talk/read/" + text(int(talk_id)) + "/")

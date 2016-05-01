@@ -56,6 +56,33 @@ def parse_html_fragment(data, encoding='utf-8'):
 
 
 class HTMLFormatter(object):
+    """Гибкий и расширяемый конвертер lxml-элементов в красивые строки
+    подобно браузеру links и родственным ему.
+
+    В словаре ``params`` можно указать следующие параметры:
+
+    * ``fancy`` (True/False, по умолчанию True) — грамотно форматирует спойлеры
+      и убирает кнопку ката при наличии
+    * ``strike_mode`` (``unicode`` (по умолчанию) или ``html``) — как форматировать
+      зачёркивания
+    * ``vk_links`` (True/False, по умолчанию False) — преобразует ссылки вида
+      ``https://vk.com/foo`` в ``@foo (текст ссылки)`` для отправки во ВКонтакте
+    * ``disable_links`` (True/False, по умолчанию False) — удаляет ссылки, если
+      текст ссылки совпадает с самой ссылкой (примитивный антиспам)
+
+    Пример использования::
+
+        node = parse_html_fragment('<div>a <s>bc</s> <hr/> d   ef<br/>g<a></a>cut</div>')[0]
+        HTMLFormatter({'strike_mode': 'html'}).format(node, with_cutted=False)
+
+    Результат::
+
+        a <s>bc</s>
+        =====
+        d ef
+        g
+    """
+
     NEWLINE = -1
     block_elems = ("div", "p", "blockquote", "section", "ul", "li", "h1", "h2", "h3", "h4", "h5", "h6")
 
@@ -70,6 +97,14 @@ class HTMLFormatter(object):
                 setattr(self, k, params[k])
 
     def format(self, node, with_cutted=True):
+        """Форматирует lxml-элемент.
+
+        :param node: сам lxml-элемент
+        :param bool with_cutted: если False, обработка будет прекращена после
+          натыкания на тег-кат (когда :func:`~tabun_api.utils.is_cut` вернёт True)
+        :rtype: строка
+        """
+
         return self.format_part(node, with_cutted)[1]
 
     def format_part(self, node, with_cutted=True):
@@ -478,16 +513,19 @@ def mon2num(s):
 
 
 def is_cut(item):
-    """Возвращает True, если тег похож на кат (на момент написания это `<a></a>`)."""
+    """Возвращает True, если тег похож на кат (на момент написания это ``<a></a>``)."""
     return item.tag == "a" and not item.get("href") and not item.text_content() and not item.getchildren()
 
 
 def find_images(body, spoiler_title=True, no_other=False):
-    """Ищет картинки в lxml-элементе и возвращает их список в виде [[ссылки до ката], [ссылки после ката]].
+    """Ищет картинки в lxml-элементе и возвращает их список в виде
+    [[ссылки до ката], [ссылки после ката]].
 
-    spoiler_title (True) - включать ли картинки с заголовков спойлеров
-
-    no_other (False) не включать ли всякий мусор. Фильтрация простейшая: по наличию "smile" или "gif" в ссылке.
+    :param bool spoiler_title: включать ли картинки с заголовков спойлеров
+    :param bool no_other: исключать ли всякий мусор. Фильтрация простейшая:
+      по наличию "smile" или "gif" в ссылке, также убираются табунские аватарки
+      и навигация АльтерБРЕДаций.
+    :rtype: [list, list]
     """
 
     imgs = [[], []]
@@ -495,7 +533,7 @@ def find_images(body, spoiler_title=True, no_other=False):
 
     start = False
     for item in body.iterchildren():
-        #FIXME: не работает, если кат внутри другого тега
+        # FIXME: не работает, если кат внутри другого тега
         if not start and is_cut(item):
             start = True
             continue
@@ -554,12 +592,20 @@ def find_images(body, spoiler_title=True, no_other=False):
 # copypasted from http://code.activestate.com/recipes/146306-http-client-to-post-using-multipartform-data/
 # and modified by andreymal
 def encode_multipart_formdata(fields, files, boundary=None):
-    """
-    Возвращает кортеж (content_type, body), готовый для отправки HTTP-запроса.
+    """Возвращает кортеж (content_type, body), готовый для отправки HTTP POST--запроса.
 
-    * fields - список из элементов (имя, значение) или словарь полей формы
-    * files - список из элементов (имя, имя файла, значение) для данных, загружаемых в виде файлов
+    Значения полей и файлов могут быть строками (закодируются в utf-8),
+    bytes или числами (будут преобразованы в строку).
+
+    :param fields: простые поля запроса
+    :type fields: коллекция кортежей (название, значение) или словарь
+    :param fields: файлы запроса (MIME-тип будет выбран по расширению)
+    :type fields: коллекция кортежей (название, имя файла, значение)
+    :param boundary: boundary (по умолчанию генерируется случайные)
+    :type boundary: строка или bytes
+    :rtype: (строка, bytes)
     """
+
     if isinstance(fields, dict):
         fields = fields.items()
     if boundary is None:
@@ -609,12 +655,21 @@ def get_content_type(filename):
 
 
 def send_form(url, fields, files, timeout=None, headers=None):
-    """
-    Отправляет форму, пользуясь функцией encode_multipart_formdata(fields, files), возвращает результат вызова urlopen
+    """Отправляет форму, пользуясь функцией :func:`~tabun_api.utils.encode_multipart_formdata`.
 
-    * timeout - сколько ожидать ответа, не дождётся - кидается исключением urllib
-    * headers - дополнительные HTTP-заголовки
+    Значения полей и файлов могут быть строками (закодируются в utf-8),
+    bytes или числами (будут преобразованы в строку).
+
+    :param fields: простые поля запроса
+    :type fields: коллекция кортежей (название, значение)
+    :param fields: файлы запроса (MIME-тип будет выбран по расширению)
+    :type fields: коллекция кортежей (название, имя файла, значение)
+    :param float timeout: сколько ожидать ответа, не дождётся - кидается исключением urllib
+    :param headers: дополнительные HTTP-заголовки (повторяться не могут)
+    :type headers: кортежи из двух строк/bytes или словарь
+    :rtype: ``urllib.addinfourl`` / ``urllib.response.addinfourl``
     """
+
     content_type, data = encode_multipart_formdata(fields, files)
 
     if not isinstance(url, urequest.Request):
@@ -641,9 +696,12 @@ def send_form(url, fields, files, timeout=None, headers=None):
 
 
 def find_substring(s, start, end, extend=False, with_start=True, with_end=True):
-    """Возвращает подстроку, находящуюся между кусками строки start и end, или None, если не нашлось.
-    При extend=True кусок строки end ищется с конца (rfind).
+    """Возвращает подстроку, находящуюся между кусками строки ``start`` и ``end``,
+    или ``None``, если не нашлось.
+
+    При ``extend=True`` кусок строки end ищется с конца (``rfind``).
     """
+
     f1 = s.find(start)
     if f1 < 0:
         return
@@ -654,7 +712,21 @@ def find_substring(s, start, end, extend=False, with_start=True, with_end=True):
 
 
 def download(url, maxmem=20 * 1024 * 1024, timeout=5, waitout=15):
-    """Скачивает данные по урлу. Имеет защиту от переполнения памяти и слишком долгого ожидания, чтобы всякие боты тут не висли. В случае чего кидает IOError."""
+    """Скачивает данные по ссылке. Имеет защиту от переполнения памяти
+    и слишком долгого ожидания, чтобы всякие боты тут не висли.
+    В случае чего кидает ``IOError``.
+
+    :param url: ссылка, которую скачать
+    :type url: строка
+    :param int maxmem: допустимый максимальный размер скачиваемых данных
+    :param float timeout: как долго можно ждать ответа
+    :param float waitout: как долго можно скачивать данные
+      (простенькая защита от Slow TCP DoS Attack — timeout тут не поможет)
+    :rtype: bytes
+    """
+
+    # TODO: non-ASCII URL
+
     url = text(url)
     if url.startswith('//'):
         url = 'http:' + url
@@ -682,14 +754,20 @@ def download(url, maxmem=20 * 1024 * 1024, timeout=5, waitout=15):
 
 
 def find_good_image(urls, maxmem=20 * 1024 * 1024):
-    """Ищет годную картинку из предложенного списка ссылок и возвращает ссылку и скачанные данные картинки (файл).
-    Такой простенький фильтр смайликов и элементов оформления поста по размеру. Требует PIL или Pillow.
-    Не грузит картинки размером больше maxmem байт, дабы не вылететь от нехватки памяти.
+    """Ищет годную картинку из предложенного списка ссылок и возвращает ссылку
+    и скачанные данные картинки (файл, bytes).
+    Такой простенький фильтр смайликов и элементов оформления поста по размеру.
+
+    Требует PIL или Pillow.
+
+    Не грузит картинки размером больше maxmem байт, дабы не вылететь от
+    нехватки памяти.
     """
+
     try:
-        import Image
-    except ImportError:
         from PIL import Image
+    except ImportError:
+        import Image
     from io import BytesIO
 
     good_image = None, None
@@ -720,7 +798,18 @@ def find_good_image(urls, maxmem=20 * 1024 * 1024):
 
 
 def generate_comments_tree(comms):
-    """Строит дерево комментариев из словаря, возвращаемого функциями get_comments[_from]. Формат элемента: [(комментарий, элемент), (комментарий, элемент), ...] Возвращает само такое дерево и список номеров комментариев-сирот (по идее должен быть пустой, но мало ли)."""
+    """Строит дерево комментариев из словаря, возвращаемого функциями get_comments[_from].
+
+    Формат элемента: [(комментарий, элемент), (комментарий, элемент), ...]
+
+    Возвращает само такое дерево и список номеров комментариев-сирот
+    (по идее должен быть пустой, но мало ли).
+
+    :param comms: словарь комментариев
+    :type comms: {id: :func:`~tabun_api.Comment`}
+    :rtype: (list, list)
+    """
+
     tree_dict = {}
     tree = []
     orphans = []
@@ -740,7 +829,15 @@ def generate_comments_tree(comms):
 
 
 def parse_avatar_url(url):
-    """Парсит ссылку на аватарку и возвращает id пользователя, дату отправки, размер, расширение и какой-то номер с конца ссылки."""
+    """Парсит ссылку на аватарку и возвращает id пользователя,
+    дату отправки, размер, расширение и какой-то номер с конца ссылки.
+    Если не удалось распарсить, то всё ``None``.
+
+    :param url: ссылка
+    :type url: строка
+    :rtype: (int, "YYYY-MM-DD", (int, int), строка, int или None)
+    """
+
     match = ava_regex.search(url)
     if not match:
         return None, None, None, None, None
@@ -947,8 +1044,10 @@ def escape_comment_contents(data):
 
 def parse_datetime(s, utc=True):
     """Парсит дату-время в формате ISO 8601 и возвращает объект datetime с часовым поясом.
-    При utc=True возвращает время в UTC (без привязки к часовому поясу для совместимости с Python 2), иначе — что распарсилось.
+    При utc=True возвращает время в UTC (без привязки к часовому поясу для совместимости с Python 2),
+    иначе — что распарсилось.
     """
+
     tm = iso8601.parse_date(s)
     if not utc:
         return tm
