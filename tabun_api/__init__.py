@@ -17,7 +17,7 @@ from . import utils, compat
 from .compat import PY2, BaseCookie, urequest, text_types, text, binary
 
 
-__version__ = '0.6.5'
+__version__ = '0.7.0'
 
 #: Адрес Табуна. Именно на указанный здесь адрес направляются запросы.
 http_host = "https://tabun.everypony.ru"
