@@ -1383,7 +1383,7 @@ class User(object):
             }
         )
 
-    def toggle_blog_subscribe(self, blog_id):
+    def toggle_subscription_to_blog(self, blog_id):
         """Подписывается на блог/отписывается от блога и возвращает новое состояние: True - подписан, False - не подписан.
 
         :param int blog_id: ID блога
@@ -1392,10 +1392,15 @@ class User(object):
 
         return self.ajax('/blog/ajaxblogjoin/', {'idBlog': int(blog_id)})['bState']
 
-    def comment(self, post_id, body, reply=0, typ="blog"):
+    def toggle_blog_subscribe(self, blog_id):
+        import warnings
+        warnings.warn('TabunError(msg=...) is deprecated; use TabunError(message=...) instead of it', FutureWarning, stacklevel=2)
+        return self.toggle_subscription_to_blog(blog_id)
+
+    def comment(self, target_id=None, body=None, reply=0, typ="blog", post_id=None):
         """Отправляет коммент и возвращает его номер.
 
-        :param int post_id: ID поста или лички, куда отправляется коммент
+        :param int target_id: ID поста или лички, куда отправляется коммент
         :param body: текст комментария
         :type body: строка
         :param int reply: ID комментария, на который отправляется ответ (0 — не является ответом)
@@ -1405,10 +1410,19 @@ class User(object):
         :rtype: int
         """
 
+        if post_id is not None:
+            import warnings
+            warnings.warn('comment(post_id=...) is deprecated; use comment(target_id=...) instead of it', FutureWarning, stacklevel=2)
+            target_id = post_id
+        elif target_id is None:
+            raise TypeError('target_id can\'t be None')
+        if body is None:
+            raise TypeError('body can\'t be None')
+
         fields = {
             'comment_text': text(body),
             'reply': int(reply),
-            'cmt_target_id': int(post_id)
+            'cmt_target_id': int(target_id)
         }
 
         return self.ajax("/" + (typ if typ in ("blog", "talk") else "blog") + "/ajaxaddcomment/", fields)['sCommentId']
@@ -1730,23 +1744,30 @@ class User(object):
 
         return (post[0] if post else None), comments
 
-    def get_comments_from(self, post_id, comment_id=0, typ="blog"):
+    def get_comments_from(self, target_id=None, comment_id=0, typ="blog", post_id=None):
         """Возвращает словарь комментариев к посту или личке c id больше чем `comment_id`.
         На сайте используется для подгрузки новых комментариев (ajaxresponsecomment).
 
-        :param int post_id: ID поста или личного сообщения, с которого загружать комментарии
+        :param int target_id: ID поста или личного сообщения, с которого загружать комментарии
         :param int comment_id: ID комментария, начиная с которого (но не включая его самого) запросить комментарии
         :param typ: ``blog`` — пост, ``talk`` — личное сообщение
         :rtype: dict {id: :class:`~tabun_api.Comment`, ...}
         """
 
-        post_id = int(post_id)
+        if post_id is not None:
+            import warnings
+            warnings.warn('get_comments_from(post_id=...) is deprecated; use get_comments_from(target_id=...) instead of it', FutureWarning, stacklevel=2)
+            target_id = post_id
+        elif target_id is None:
+            raise TypeError('target_id can\'t be None')
+
+        target_id = int(target_id)
         comment_id = int(comment_id) if comment_id else 0
 
         url = "/" + (typ if typ in ("blog", "talk") else "blog") + "/ajaxresponsecomment/"
 
         try:
-            data = self.ajax(url, {'idCommentLast': comment_id, 'idTarget': post_id, 'typeTarget': 'topic'})
+            data = self.ajax(url, {'idCommentLast': comment_id, 'idTarget': target_id, 'typeTarget': 'topic'})
         except TabunResultError as exc:
             if exc.data and exc.data.get('sMsg') in (
                 "Истекло время для редактирование комментариев",
@@ -1763,11 +1784,16 @@ class User(object):
         comms_list = data['comments'].values() if data.get('comments') else data['aComments']
         for comm in comms_list:
             node = utils.parse_html_fragment(utils.escape_comment_contents(comm['html'].encode('utf-8')))
-            pcomm = parse_comment(node[0], post_id, None, comm['pid'] if 'pid' in comm else comm['idParent'])
+            pcomm = parse_comment(
+                node[0],
+                target_id if typ == 'blog' else None,
+                None,
+                comm['pid'] if 'pid' in comm else comm['idParent']
+            )
             if pcomm:
                 comms[pcomm.comment_id] = pcomm
             else:
-                logger.warning('Cannot parse ajax comment from %s', post_id)
+                logger.warning('Cannot parse ajax comment from %s', target_id)
 
         return comms
 
@@ -2231,7 +2257,7 @@ class User(object):
         link = self.send_form('/topic/edit/' + text(int(post_id)) + '/', fields, redir=False).headers.get('location')
         return parse_post_url(link)
 
-    def invite(self, blog_id, username):
+    def invite(self, blog_id, users=None, username=None):
         """Отправляет инвайт в блог с указанным номером указанному пользователю
         (или пользователям, если указать несколько через запятую).
 
@@ -2239,15 +2265,21 @@ class User(object):
         если кому-то инвайт не отправился. Если всё хорошо, то словарь пустой.
 
         :param int blog_id: ID блога, инвайты для которого рассылаются
-        :param username: имя пользователя (можно нескольких через запятую)
-        :type username: строка
+        :param users: пользователи, которым рассылаются инвайты
+        :type users: строка (с никами через запятую) или коллекция строк
         :rtype: dict
         """
+
+        if username is not None:
+            warnings.warn('invite(username=...) is deprecated; use invite(users=...) instead of it', FutureWarning, stacklevel=2)
+            users = username
+        elif not users:
+            raise TypeError('users can\'t be empty')
 
         self.check_login()
 
         fields = {
-            "users": text(username),
+            "users": users if isinstance(users, text) else ', '.join(users),
             "idBlog": text(int(blog_id) if blog_id else 0),
             'security_ls_key': self.security_ls_key,
         }
