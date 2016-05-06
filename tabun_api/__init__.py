@@ -1376,18 +1376,19 @@ class User(object):
         return link[link.rfind('/') + 1:]
 
     def delete_blog(self, blog_id):
-        """Удаляет блог и возвращает True/False в случае удачи/неудачи.
+        """Удаляет блог.
 
         :param int blog_id: ID удалямого блога
-        :rtype: bool
         """
 
         self.check_login()
-        return self.urlopen(
+        resp = self.urlopen(
             url='/blog/delete/' + text(int(blog_id)) + '/?security_ls_key=' + self.security_ls_key,
             headers={"referer": (self.http_host or http_host) + "/"},
             redir=False
-        ).getcode() // 100 == 3
+        )
+        if resp.getcode() // 100 != 3:
+            raise TabunError('Cannot delete blog', code=resp.getcode())
 
     def preview_post(self, blog_id, title, body, tags):
         """Возвращает HTML-код предпросмотра поста (сам пост плюс мусор типа заголовка «Предпросмотр»).
@@ -1425,18 +1426,19 @@ class User(object):
         return result['sText']
 
     def delete_post(self, post_id):
-        """Удаляет пост и возвращает True/False в случае удачи/неудачи.
+        """Удаляет пост.
 
         :param int post_id: ID удаляемого поста
-        :rtype: bool
         """
 
         self.check_login()
-        return self.urlopen(
+        resp = self.urlopen(
             url='/topic/delete/' + text(int(post_id)) + '/?security_ls_key=' + self.security_ls_key,
             headers={"referer": (self.http_host or http_host) + "/blog/" + text(post_id) + ".html"},
             redir=False
-        ).getcode() // 100 == 3
+        )
+        if resp.getcode() // 100 != 3:
+            raise TabunError('Cannot delete post', code=resp.getcode())
 
     def subscribe_to_new_comments(self, post_id, subscribed, mail=None):
         """Меняет статус подписки на новые комментарии у поста.
