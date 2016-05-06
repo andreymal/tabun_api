@@ -2384,6 +2384,21 @@ class User(object):
 
         return TalkItem(talk_id, recipients, False, title, date, body, author, comments, utctime)
 
+    def delete_talk(self, talk_id):
+        """Удаляет личное сообщение.
+
+        :param int talk_id: ID удаляемого письма
+        """
+
+        self.check_login()
+        resp = self.urlopen(
+            url='/talk/delete/' + text(int(talk_id)) + '/?security_ls_key=' + self.security_ls_key,
+            headers={"referer": (self.http_host or http_host) + "/talk/" + text(talk_id) + "/"},
+            redir=False
+        )
+        if resp.getcode() // 100 != 3:
+            raise TabunError('Cannot delete talk', code=resp.getcode())
+
     def get_activity(self, url='/stream/all/', raw_data=None):
         """Возвращает список последних событий."""
         if not raw_data:
