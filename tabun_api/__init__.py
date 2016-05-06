@@ -1106,6 +1106,67 @@ class User(object):
 
         return data
 
+    def upload_image_file(self, fp, title='', parse_link=False, filename=None):
+        """Загружает файл с картинкой на Табун.
+
+        :param fp: путь к файлу или файловый объект
+        :type fp: строка или file
+        :param title: заголовок картинки
+        :type title: строка
+        :param bool parse_link: если True, пытаться достать ссылку из html-кода вместо возвращения самого html-кода
+        :param filename: имя файла, если передан файловый объект (по его расширению вычисляется Content-Type)
+        :type filename: строка
+        :rtype: строка
+        """
+
+        if isinstance(fp, text_types):
+            with open(fp, 'rb') as fpt:
+                data = fpt.read()
+            filename = os.path.split(fp)[-1] or None
+        else:
+            data = fp.read()
+        assert isinstance(data, binary)
+
+        if not filename:
+            if data.startswith(b'\xff\xd8\xff\xe0'):
+                filename = 'image.jpg'
+            elif data.startswith(b'GIF8'):
+                filename = 'image.gif'
+            elif data.startswith(b'\x89PNG\r\n\x1a\n'):
+                filename = 'image.png'
+            else:
+                filename = 'rare_image.png'  # сервер сам разрулит
+
+        html = self.ajax(
+            '/ajax/upload/image/',
+            fields={'title': title},
+            files=[('img_file', filename, data)]
+        )['sText']
+        if not parse_link:
+            return html
+
+        return utils.parse_html_fragment(html)[0].get('src', '')
+
+    def upload_image_link(self, url, title='', parse_link=False):
+        """Загружает на Табун картинку по ссылке.
+
+        :param url: ссылка на файл или файловый объект
+        :type url: строка
+        :param title: заголовок картинки
+        :type title: строка
+        :param bool parse_link: если True, пытаться достать ссылку из html-кода вместо возвращения самого html-кода
+        :rtype: строка
+        """
+
+        html = self.ajax(
+            '/ajax/upload/image/',
+            fields={'title': title, 'img_url': url},
+        )['sText']
+        if not parse_link:
+            return html
+
+        return utils.parse_html_fragment(html)[0].get('src', '')
+
     def add_post(self, blog_id, title, body, tags, draft=False, check_if_error=False):
         """Отправляет пост и возвращает имя блога с номером поста.
 
