@@ -275,6 +275,8 @@ class HTMLFormatter(object):
                     return self.element_children(item, noblock=True)
 
             stop_cut, tmp = self.format_part(item, with_cutted)
+            if not tmp.strip():
+                return self.element_children(item, noblock=True)
 
             data.append(' @' + path + ' (')
             data.append(self.escape(tmp))

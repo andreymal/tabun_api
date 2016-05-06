@@ -160,6 +160,11 @@ def test_formatter_vklinks_enabled_ok():
     assert hf(html, vk_links=True) == '« @andreymal (andre&#64;&#40;ym&#41;al) »'
 
 
+def test_formatter_vklinks_enabled_empty():
+    html = '<div>«<a href="https://new.vk.com/andreymal"><img src="https://andreymal.org/files/ava.png" alt="" /></a>»</div>'
+    assert hf(html, vk_links=True) == '«»'
+
+
 def test_formatter_vklinks_enabled_invalid1():
     html = '<div>«<a href="https://new.vk.com/wall1">andre@(ym)al</a>»</div>'
     assert hf(html, vk_links=True) == '«andre&#64;&#40;ym&#41;al»'
