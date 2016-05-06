@@ -478,16 +478,37 @@ class Poll(object):
 
 
 class TalkItem(object):
-    """Личное сообщение. При чтении списка сообщений некоторые поля могут быть None."""
-    def __init__(self, talk_id, recipients, unread, title, date, body=None, author=None, comments=None, utctime=None, raw_body=None):
+    """Личное сообщение. При чтении списка сообщений некоторые поля могут быть None.
+    Учтите, что для нового письма unread = True и context['unread_comments_count'] = 0.
+
+    ``recipients_inactive`` — подмножество ``recipients``, содержащее имена пользователей,
+    удаливших свою копию сообщения.
+
+    Дополнительные параметры контекста:
+
+    * ``favourited`` (True/False): добавлено ли письмо в избранное
+    * ``last_is_incoming`` (True/False): является ли последний комментарий
+      входящим (True) или исходящим (False) (только для списка писем)
+    * ``unread_comments_count``: число непрочитанных комментариев в письме
+      (только для списка писем)
+    """
+
+    def __init__(
+        self, talk_id, recipients, unread, title, date,
+        body=None, author=None, comments=None, utctime=None,
+        recipients_inactive=(), comments_count=0, raw_body=None, context=None,
+    ):
         self.talk_id = int(talk_id)
         self.recipients = [text(x) for x in recipients]
+        self.recipients_inactive = [text(x) for x in recipients_inactive]
         self.unread = bool(unread)
         self.title = text(title)
         self.date = date
         self.author = text(author) if author else None
-        self.comments = comments if comments else []
+        self.comments = comments if comments else {}
         self.utctime = utctime
+        self.comments_count = int(comments_count)
+        self.context = context
 
         self.body, self.raw_body = utils.normalize_body(body, raw_body)
 
@@ -848,6 +869,8 @@ class User(object):
         :rtype: dict
         """
 
+        if url and url.startswith('/'):
+            url = (self.http_host or http_host) + url
         context = {'http_host': self.http_host or http_host, 'url': url}
 
         userinfo = utils.find_substring(raw_data, b'<div class="dropdown-user"', b"<nav", with_end=False)
@@ -2169,6 +2192,16 @@ class User(object):
 
         return self.ajax('/ajax/favourite/comment/', fields)['iCount']
 
+    def favourite_talk(self, talk_id, type=True):
+        """Добавляет (type=True) личное сообщение в избранное или убирает (type=False) оттуда.
+        Возвращает новое состояние (1/0)."""
+        fields = {
+            "idTalk": int(talk_id),
+            "type": "1" if type else "0"
+        }
+
+        return 1 if self.ajax('/ajax/favourite/talk/', fields)['bState'] else 0
+
     def save_favourite_tags(self, target_id, tags, target_type='topic'):
         """Редактирует теги избранного поста и возвращает
         новый их список (элементы — словари с ключами tag и url).
@@ -2393,31 +2426,62 @@ class User(object):
 
     def get_talk_list(self, page=1, raw_data=None):
         """Возвращает список объектов :class:`~tabun_api.TalkItem` с личными сообщениями."""
-        self.check_login()
+        url = "/talk/inbox/page{}/".format(int(page))
         if not raw_data:
-            raw_data = self.urlread("/talk/inbox/page{}/".format(int(page)))
-
-        raw_data = utils.find_substring(raw_data, b'<table ', b'</table>')
-        if not raw_data:
-            return []
+            self.check_login()
+            raw_data = self.urlread(url)
 
         raw_data = utils.replace_cloudflare_emails(raw_data)
-        node = utils.parse_html_fragment(raw_data)[0]
+        table = utils.find_substring(raw_data, b'<table ', b'</table>')
+        if not table:
+            return []
+        context = self.get_main_context(raw_data, url=url)
+
+        node = utils.parse_html_fragment(table)[0]
 
         elems = []
 
         for elem in node.xpath('//tr')[1:]:
-            elem = parse_talk_item(elem)
+            elem = parse_talk_item(elem, context=context)
             if elem:
                 elems.append(elem)
+            else:
+                logger.warning('Cannot parse talk item')
+
+        return elems
+
+    def get_favourited_talk_list(self, page=1, raw_data=None):
+        """Возвращает список объектов :class:`~tabun_api.TalkItem` с избранными личными сообщениями."""
+        url = "/talk/favourites/page{}/".format(int(page))
+        if not raw_data:
+            self.check_login()
+            raw_data = self.urlread(url)
+
+        raw_data = utils.replace_cloudflare_emails(raw_data)
+        table = utils.find_substring(raw_data, b'<table ', b'</table>')
+        if not table:
+            return []
+        context = self.get_main_context(raw_data, url=url)
+
+        node = utils.parse_html_fragment(table)[0]
+
+        elems = []
+
+        for elem in node.xpath('//tr')[1:]:
+            elem = parse_talk_item(elem, context=context)
+            if elem:
+                elems.append(elem)
+            else:
+                logger.warning('Cannot parse talk item')
 
         return elems
 
     def get_talk(self, talk_id, raw_data=None):
         """Возвращает объект :class:`~tabun_api.TalkItem` беседы с переданным номером."""
-        self.check_login()
+        url = "/talk/read/" + text(int(talk_id)) + "/"
         if not raw_data:
-            raw_data = self.urlread("/talk/read/" + text(int(talk_id)) + "/")
+            self.check_login()
+            raw_data = self.urlread(url)
 
         data = utils.find_substring(raw_data, b"<article ", b"</article>", extend=True)
         if not data:
@@ -2431,7 +2495,12 @@ class User(object):
             return
         body = body[0]
 
-        recipients = map(lambda x: x.text.strip(), item.xpath('div[@class="talk-search talk-recipients"]/header/a[@class!="link-dotted"]'))
+        recipients = []
+        recipients_inactive = []
+        for x in item.xpath('div[@class="talk-search talk-recipients"]/header/a[@class!="link-dotted"]'):
+            recipients.append(x.text.strip())
+            if 'inactive' in x.get('class', ''):
+                recipients_inactive.append(x.text.strip())
 
         footer = item.find("footer")
         author = footer.xpath('ul/li[@class="topic-info-author"]/a[2]/text()')[0].strip()
@@ -2439,9 +2508,19 @@ class User(object):
         utctime = utils.parse_datetime(date.get("datetime"))
         date = time.strptime(date.get("datetime")[:-6], "%Y-%m-%dT%H:%M:%S")
 
-        comments = self.get_comments(raw_data=raw_data)
+        comments = self.get_comments(url, raw_data=raw_data)
 
-        return TalkItem(talk_id, recipients, False, title, date, body, author, comments, utctime)
+        context = self.get_main_context(raw_data, url=url)
+        context['favourited'] = bool(footer.xpath('ul/li[@class="topic-info-favourite"]/i[@class="favourite active"]'))
+        context['last_is_incoming'] = None
+        context['unread_comments_count'] = 0
+
+        return TalkItem(
+            talk_id, recipients, False, title, date,
+            body, author, comments, utctime,
+            recipients_inactive=recipients_inactive, comments_count=len(comments),
+            context=context,
+        )
 
     def delete_talk(self, talk_id):
         """Удаляет личное сообщение.
@@ -3100,19 +3179,67 @@ def parse_deleted_comment(node, post_id, blog=None, context=None):
     return Comment(tm, blog, post_id, comment_id, nick, body, vote, parent_id, post_title, unread, deleted or bad, context=context)
 
 
-def parse_talk_item(node):
-    checkbox, recs, title, date = node.findall("td")
-    recipients = []
-    for x in recs.findall("a"):
-        recipients.append(x.text.strip())
-    unread = bool(title.xpath('a/strong'))
-    talk_id = title.find("a").get('href')[:-1]
-    talk_id = int(talk_id[talk_id.rfind("/") + 1:])
-    title = title.find("a").text_content()
-    date = date.text.strip()
-    date = time.strptime(utils.mon2num(date), '%d %m %Y')
+def parse_talk_item(node, context=None):
+    context = dict(context) if context else {}
 
-    return TalkItem(talk_id, recipients, unread, title, date)
+    first_cell, recs, cell_title, info = node.findall("td")
+
+    recipients = []
+    recipients_inactive = []
+    for a in recs.findall("a"):
+        recipients.append(a.text.strip())
+        if 'inactive' in a.get('class', ''):
+            recipients_inactive.append(a.text.strip())
+
+    talk_id = cell_title.find("a").get('href')[:-1]
+    talk_id = int(talk_id[talk_id.rfind("/") + 1:])
+    unread = bool(cell_title.xpath('a/strong'))
+
+    title = cell_title.find("a").text_content()
+
+    if 'cell-checkbox' in first_cell.get('class', ''):
+        # Основной список — одна вёрстка
+        date = time.strptime(utils.mon2num(info.text.strip()), '%d %m %Y')
+
+        comments_count = cell_title.find('span')
+        comments_count = int(comments_count.text.strip()) if comments_count is not None else 0
+
+        unread_count = cell_title.xpath('span[@class="new"]')
+        unread_count = int(unread_count[0].text[1:]) if unread_count else 0
+        context['unread_comments_count'] = unread_count
+        context['favourited'] = bool(info.xpath('a[@class="favourite active"]'))
+        context['last_is_incoming'] = bool(cell_title.xpath('i[@class="icon-synio-arrow-left"]'))
+
+    else:
+        # Список избранного — совсем другая вёрстка
+
+        date = time.strptime(utils.mon2num(info.text.strip()), '%d %m %Y, %H:%M')
+
+        comments_count = cell_title.find('a').tail
+        if comments_count:
+            if '+' in comments_count:
+                comments_count, unread_count = comments_count.split('+')
+                comments_count = int(comments_count.strip())
+                unread_count = int(unread_count.strip())
+            else:
+                comments_count = int(comments_count.strip() or 0)
+                unread_count = 0
+        else:
+            comments_count = 0
+            unread_count = 0
+
+        context['unread_comments_count'] = unread_count
+        context['favourited'] = None
+        if 'cell-favourite' in first_cell.get('class', ''):
+            context['favourited'] = bool(first_cell.xpath('a[@class="favourite active"]'))
+        context['last_is_incoming'] = None
+
+    return TalkItem(
+        talk_id, recipients, unread, title, date,
+        recipients_inactive=recipients_inactive,
+        comments_count=comments_count,
+        context=context,
+    )
 
 
 def parse_post_url(link):
