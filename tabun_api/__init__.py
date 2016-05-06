@@ -1312,7 +1312,7 @@ class User(object):
             url='/blog/delete/' + text(int(blog_id)) + '/?security_ls_key=' + self.security_ls_key,
             headers={"referer": (self.http_host or http_host) + "/"},
             redir=False
-        ).getcode() / 100 == 3
+        ).getcode() // 100 == 3
 
     def preview_post(self, blog_id, title, body, tags):
         """Возвращает HTML-код предпросмотра поста (сам пост плюс мусор типа заголовка «Предпросмотр»).
@@ -1361,7 +1361,7 @@ class User(object):
             url='/topic/delete/' + text(int(post_id)) + '/?security_ls_key=' + self.security_ls_key,
             headers={"referer": (self.http_host or http_host) + "/blog/" + text(post_id) + ".html"},
             redir=False
-        ).getcode() / 100 == 3
+        ).getcode() // 100 == 3
 
     def subscribe_to_new_comments(self, post_id, subscribed, mail=None):
         """Меняет статус подписки на новые комментарии у поста.
@@ -2333,7 +2333,7 @@ class User(object):
             return int(link.rstrip('/').rsplit('/', 1)[-1])
 
     def get_talk_list(self, page=1, raw_data=None):
-        """Возвращает список объектов :func:`~tabun_api.TalkItem` с личными сообщениями."""
+        """Возвращает список объектов :class:`~tabun_api.TalkItem` с личными сообщениями."""
         self.check_login()
         if not raw_data:
             raw_data = self.urlread("/talk/inbox/page{}/".format(int(page)))
@@ -2355,7 +2355,7 @@ class User(object):
         return elems
 
     def get_talk(self, talk_id, raw_data=None):
-        """Возвращает объект :func:`~tabun_api.TalkItem` беседы с переданным номером."""
+        """Возвращает объект :class:`~tabun_api.TalkItem` беседы с переданным номером."""
         self.check_login()
         if not raw_data:
             raw_data = self.urlread("/talk/read/" + text(int(talk_id)) + "/")
