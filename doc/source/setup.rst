@@ -16,3 +16,13 @@
 lxml и iso8601.
 
 Для использования SOCKS-прокси также следует установить `PySocks <https://github.com/Anorov/PySocks>`_.
+
+Для вывода предупреждений используется ``logging``. Если вам печатают
+«No handlers could be found for logger "tabun_api"», то значит ваша версия Python
+требует явной инициализации логгера, которой вы не сделали. Проще всего это
+сделать так:
+
+.. code-block:: python
+
+    import logging
+    logging.basicConfig()
