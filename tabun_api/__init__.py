@@ -14,7 +14,7 @@ from socket import timeout as socket_timeout
 from json import JSONDecoder
 
 from . import utils, compat
-from .compat import PY2, BaseCookie, urequest, text_types, text, binary
+from .compat import PY2, BaseCookie, urequest, text_types, text, binary, html_unescape
 
 
 __version__ = '0.7.0'
@@ -1082,10 +1082,24 @@ class User(object):
         fields['security_ls_key'] = self.security_ls_key
         data = self.send_form_and_read(url, fields or {}, files, headers=headers)
 
+        if data.startswith(b'<textarea>{'):
+            # Вроде это какой-то костыль для старых браузеров
+            data = utils.find_substring(data, b'>', b'</', extend=True, with_start=False, with_end=False)
+            data = html_unescape(data.decode('utf-8'))
+        else:
+            try:
+                data = data.decode('utf-8')
+            except (KeyboardInterrupt, SystemExit):
+                raise
+            except:
+                raise TabunResultError(data.decode('utf-8', 'replace'))
+
         try:
-            data = self.jd.decode(data.decode('utf-8'))
+            data = self.jd.decode(data)
+        except (KeyboardInterrupt, SystemExit):
+            raise
         except:
-            raise TabunResultError(data.decode("utf-8", "replace"))
+            raise TabunResultError(data)
 
         if throw_if_error and data['bStateError']:
             raise TabunResultError(data['sMsg'], data=data)
