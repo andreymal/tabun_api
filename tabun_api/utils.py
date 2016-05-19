@@ -4,8 +4,10 @@
 from __future__ import unicode_literals
 
 import re
+import sys
 import time
 import random
+import platform
 import mimetypes
 from hashlib import md5
 
@@ -1054,3 +1056,27 @@ def parse_datetime(s, utc=True):
     if not utc:
         return tm
     return (tm - tm.utcoffset()).replace(tzinfo=None)
+
+
+def gen_user_agent():
+    """Генерирует кусочек юзерагента с информаией о системе."""
+    # pylint: disable=E1101
+    context = {
+        'system': platform.system() or 'NA',
+        'machine': platform.machine() or 'NA',
+        'release': platform.release() or 'NA',
+        'pyi': platform.python_implementation() or 'Python',
+        'pyv': platform.python_version(),
+        'pyiv': platform.python_version(),
+        'urv': urequest.__version__,
+    }
+    if context['pyi'] == 'PyPy':
+        context['pyiv'] = '{}.{}.{}'.format(
+            sys.pypy_version_info.major,
+            sys.pypy_version_info.minor,
+            sys.pypy_version_info.micro,
+        )
+        if sys.pypy_version_info.releaselevel != 'final':
+            context['pyiv'] = context['pyiv'] + sys.pypy_version_info.releaselevel
+
+    return '({system} {machine} {release}) Python/{pyv} {pyi}/{pyiv} urllib/{urv}'.format(**context)

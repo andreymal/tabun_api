@@ -29,7 +29,7 @@ halfclosed = ("borderline", "shipping", "erpg", "gak", "RPG", "roliplay", "tears
 #: Заголовки для HTTP-запросов. Возможно, стоит менять user-agent.
 http_headers = {
     "connection": "close",
-    "user-agent": "tabun_api/%s; Linux/2.6" % __version__
+    "user-agent": "tabun_api/{} {}".format(__version__, utils.gen_user_agent()),
 }
 
 #: Регулярка для парсинга ссылки на пост.
