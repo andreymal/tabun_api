@@ -433,10 +433,32 @@ class StreamItem(object):
 
 
 class UserInfo(object):
-    """Информация о броняше."""
+    """Информация о броняше.
+
+    full=True, только если информация получена со страницы ``/profile/username/``.
+
+    Словарь ``counts`` может быть пустым или содержать None или, если доступно,
+    содержать следующие значения:
+
+    * ``publications`` — число публикаций, учитываются посты, комментарии и
+      (для своего профиля) заметки;
+    * ``posts`` — число опубликованных постов (со страницы
+      ``profile/username/created/topics или comments/``);
+    * ``comments`` — число опубликованных комментариев (со страницы
+      ``profile/username/created/topics или comments или notes/``);
+    * ``notes`` — число заметок к пользователям (со страницы
+      ``profile/username/created/topics или comments или notes/``);
+    * ``favourites`` — число добавлений в избранное;
+    * ``favourites_posts`` — число постов в избранном (со страницы
+      ``profile/username/favourites/topics или comments/``);
+    * ``favourites_comments`` — число комментариев в избранном (со страницы
+      ``profile/username/favourites/topics или comments/``);
+    * ``friends`` — число друзей.
+    """
+
     def __init__(self, user_id, username, realname, skill, rating, userpic=None, foto=None,
                  gender=None, birthday=None, registered=None, last_activity=None,
-                 description=None, blogs=None, full=False, context=None, raw_description=None):
+                 description=None, blogs=None, counts=None, full=False, context=None, raw_description=None):
         self.user_id = int(user_id)
         self.username = text(username)
         self.realname = text(realname) if realname else None
@@ -456,6 +478,7 @@ class UserInfo(object):
 
         self.description, self.raw_description = utils.normalize_body(description, raw_description)
 
+        self.counts = counts or {}
         self.full = bool(full)
         self.context = context or {}
 
@@ -2151,16 +2174,84 @@ class User(object):
         if not foto or foto.endswith('user_photo_male.png') or foto.endswith('user_photo_female.png'):
             foto = None
 
+        counts = {
+            'publications': None,
+            'posts': None,
+            'comments': None,
+            'favourites': None,
+            'favourites_posts': None,
+            'favourites_comments': None,
+            'friends': None,
+            'notes': None,
+        }
+
+        current_page = None
+
+        # Получаем основные счётчики (публикации, избранные, друзья)
+        for li in sidebar.xpath('section/ul[@class="nav nav-profile"]/li'):
+            link = li.find('a').get('href', '')
+            li_data = li.find('a').text.strip()
+            value = utils.find_substring(li_data, ' (', ')', with_start=False, with_end=False)
+            value = int(value) if value and value.isdigit() else 0
+
+            if link.endswith('/created/topics/'):
+                counts['publications'] = value
+                if li.get('class') == 'active':
+                    current_page = 'publications'
+
+            elif link.endswith('/favourites/topics/'):
+                counts['favourites'] = value
+                if li.get('class') == 'active':
+                    current_page = 'favourites'
+
+            elif link.endswith('/friends/') and not link.endswith('/profile/friends/'):  # ну а вдруг
+                counts['friends'] = value
+                if li.get('class') == 'active':
+                    current_page = 'friends'
+
+            elif li_data == 'Информация' and li.get('class') == 'active':
+                current_page = 'profile'
+
+        # Получаем более детальные счётчики, если страница позволяет
+        if current_page in ('publications', 'favourites'):
+            nav_profile = utils.find_substring(raw_data, b'<ul class="nav nav-pills nav-pills-profile">', b'</ul>')
+            if nav_profile:
+                nav_profile = utils.parse_html_fragment(nav_profile)[0]
+                tmp_posts = None
+                tmp_comments = None
+                tmp_notes = None
+
+                for li in nav_profile.findall('li'):
+                    link = li.find('a').get('href', '')
+                    li_data = li.find('a').text.strip()
+                    value = utils.find_substring(li_data, ' (', ')', with_start=False, with_end=False)
+                    value = int(value) if value and value.isdigit() else 0
+
+                    if link.endswith('/topics/'):
+                        tmp_posts = value
+                    elif link.endswith('/comments/'):
+                        tmp_comments = value
+                    elif link.endswith('/notes/'):
+                        tmp_notes = value
+
+                if current_page == 'favourites':
+                    counts['favourites_posts'] = tmp_posts
+                    counts['favourites_comments'] = tmp_comments
+                    assert tmp_notes is None
+                else:
+                    counts['posts'] = tmp_posts
+                    counts['comments'] = tmp_comments
+                    counts['notes'] = tmp_notes
+
         context = self.get_main_context(raw_data, url=url)
 
-        # TODO: количество публикаций
         # TODO: заметка
 
         return UserInfo(
             user_id, username, realname[0] if realname else None, skill,
             rating, userpic, foto, gender, birthday, registered, last_activity,
             description[0] if description else None, blogs,
-            full=full, context=context,
+            counts=counts, full=full, context=context,
         )
 
     def poll_answer(self, post_id, answer=-1):
