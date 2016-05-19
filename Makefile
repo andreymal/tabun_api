@@ -1,5 +1,8 @@
 .PHONY: clean clean-build clean-pyc clean-test clean-doc test coverage doc dist install develop
 
+PYTHON=python
+PIP=pip
+
 clean: clean-build clean-pyc clean-test clean-doc
 
 clean-build:
@@ -34,13 +37,13 @@ doc:
 	$(MAKE) -C doc html
 
 dist: clean
-	python setup.py sdist
+	$(PYTHON) setup.py sdist
 	ls -l dist
 
 install: clean
-	python setup.py install
+	$(PYTHON) setup.py install
 
 develop:
-	pip install -r requirements.txt
-	pip install -r optional-requirements.txt
-	python setup.py develop
+	$(PIP) install -r requirements.txt
+	$(PIP) install -r optional-requirements.txt
+	$(PYTHON) setup.py develop
