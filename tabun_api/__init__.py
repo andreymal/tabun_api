@@ -637,6 +637,12 @@ class User(object):
     на synio шаблоном), то можно передать ``http_host``, чтобы не переопределять его
     во всём tabun_api.
 
+    Если нужно добавить или переопределить какие-то HTTP-заголовки для конкретного объекта,
+    можно запихнуть всё нужное в словарь ``override_headers``. При этом Cookie, Content-Type,
+    X-Requested-With, Referer или ещё что-нибудь в любом случае затираются, если они нужны для
+    отправки запроса (например, формы с созданием поста). Названия заголовков не чувствительны
+    к регистру.
+
     У класса также есть следующие поля:
 
     * ``username`` — имя пользователя или None
@@ -660,6 +666,7 @@ class User(object):
     query_interval = 0
     proxy = None
     http_host = None
+    override_headers = {}
 
     def __init__(
         self, login=None, passwd=None, session_id=None, security_ls_key=None, key=None,
@@ -911,9 +918,11 @@ class User(object):
         if data is not None:
             url.data = data.encode('utf-8') if isinstance(data, text) else data
 
-        request_headers = dict(http_headers)
+        request_headers = {k.title(): v for k, v in http_headers.items()}
+        if self.override_headers:
+            request_headers.update({k.title(): v for k, v in self.override_headers.items()})
         if headers:
-            request_headers.update(headers)
+            request_headers.update({k.title(): v for k, v in headers.items()})
 
         if with_cookies and self.session_id:
             request_headers['Cookie'] = ("%s=%s; key=%s; LIVESTREET_SECURITY_KEY=%s" % (
