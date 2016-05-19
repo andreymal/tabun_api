@@ -436,7 +436,7 @@ class UserInfo(object):
     """Информация о броняше."""
     def __init__(self, user_id, username, realname, skill, rating, userpic=None, foto=None,
                  gender=None, birthday=None, registered=None, last_activity=None,
-                 description=None, blogs=None, raw_description=None):
+                 description=None, blogs=None, full=False, context=None, raw_description=None):
         self.user_id = int(user_id)
         self.username = text(username)
         self.realname = text(realname) if realname else None
@@ -455,6 +455,9 @@ class UserInfo(object):
         self.blogs['member'] = blogs.get('member', []) if blogs else []
 
         self.description, self.raw_description = utils.normalize_body(description, raw_description)
+
+        self.full = bool(full)
+        self.context = context or {}
 
     def __repr__(self):
         o = "<userinfo " + self.username + ">"
@@ -2008,23 +2011,30 @@ class User(object):
             if not userpic:
                 continue
 
-            peoples.append(UserInfo(utils.parse_avatar_url(userpic[0])[0] or -1, username[0], realname, skill[0], rating[0], userpic=userpic[0]))
+            peoples.append(UserInfo(utils.parse_avatar_url(userpic[0])[0] or -1, username[0], realname, skill[0], rating[0], userpic=userpic[0]), full=False)
 
         return peoples
 
-    def get_profile(self, username=None, raw_data=None):
-        """Возвращает объект :class:`~tabun_api.UserInfo` с полной информацией о броняше."""
-
+    def get_profile(self, username=None, url=None, raw_data=None):
         """Получает информацию об указанном пользователе.
+
+        В ``raw_data`` можно указать не только страницу с профилем пользователя, но также
+        список публикаций или комментариев и т.п. — в таком случае будет получена частичная
+        информация, доступная на этих страницах.
 
         :param username: имя пользователя
         :type username: строка
+        :param url: ссылка на страницу, с которой парсить информацию
+        :type url: строка
         :param bytes raw_data: код страницы (чтобы не скачивать его)
         :rtype: :class:`~tabun_api.UserInfo`
         """
 
+        if not url:
+            url = '/profile/' + urequest.quote(text(username).encode('utf-8')) + '/'
+
         if not raw_data:
-            raw_data = self.urlread("/profile/" + urequest.quote(text(username).encode('utf-8')))
+            raw_data = self.urlread(url)
 
         data = utils.find_substring(raw_data, b'<div id="content"', b'<!-- /content ', extend=True, with_end=False)
         if not data:
@@ -2035,33 +2045,53 @@ class User(object):
             return
         node = node[0]
 
+        # Блок в самом верху всех страниц профиля
         profile = node.xpath('div[@class="profile"]')[0]
 
         username = profile.xpath('h2[@itemprop="nickname"]/text()')[0]
         realname = profile.xpath('p[@class="user-name"]/text()')
 
         skill = float(profile.xpath('div[@class="strength"]/div[1]/text()')[0])
-        rating = profile.xpath('div[@class="vote-profile"]/div[1]')[0]
-        user_id = int(rating.get("id").rsplit("_")[-1])
-        rating = float(rating.findall('div')[1].find('span').text.strip().replace('+', ''))
+        rating_elem = profile.xpath('div[@class="vote-profile"]/div[1]')[0]
+        user_id = int(rating_elem.get("id").rsplit("_")[-1])
+        rating = float(rating_elem.findall('div')[1].find('span').text.strip().replace('+', ''))
 
-        userpic = node.xpath('div[@class="profile-info-about"]/a[1]/img')[0].get('src')
+        full = True
+
+        # Блок с основной информацией на странице /profile/xxx/
+        about = node.xpath('div[@class="profile-info-about"]')
+        if about:
+            about = about[0]
+            userpic = about.xpath('a[1]/img')[0].get('src')
+            description = about.xpath('div[@class="text"]')  # TODO: escape contents
+        else:
+            about = None
+            userpic = None
+            description = None
+            full = False
 
         birthday = None
         registered = None
         last_activity = None
         gender = None
 
-        uls = node.xpath('div[@class="wrapper"]/div[@class="profile-left"]/ul[@class="profile-dotted-list"]/li')
+        # Блок с чуть более подробной информацией на /profile/xxx/ (личное и активность)
+        profile_left = node.xpath('div[@class="wrapper"]/div[@class="profile-left"]')
+        if profile_left:
+            profile_left = profile_left[0]
+            profile_items = profile_left.xpath('ul[@class="profile-dotted-list"]/li')
+            blogs = {
+                'owner': [],
+                'admin': [],
+                'moderator': [],
+                'member': []
+            }
+        else:
+            profile_items = []
+            blogs = None
+            full = False
 
-        blogs = {
-            'owner': [],
-            'admin': [],
-            'moderator': [],
-            'member': []
-        }
-
-        for ul in uls:
+        for ul in profile_items:
             name = ul.find('span').text.strip()
             value = ul.find('strong')
             if name == 'Дата рождения:':
@@ -2070,7 +2100,7 @@ class User(object):
                 try:
                     registered = time.strptime(utils.mon2num(value.text), '%d %m %Y, %H:%M')
                 except ValueError:
-                    if username != 'guest':
+                    if username != 'guest':  # 30 ноября -0001, 00:00
                         raise
             elif name == 'Последний визит:':
                 last_activity = time.strptime(utils.mon2num(value.text), '%d %m %Y, %H:%M')
@@ -2093,27 +2123,36 @@ class User(object):
                 elif name == 'Состоит в:':
                     blogs['member'] = blist
 
-        description = node.xpath('div[@class="profile-info-about"]/div[@class="text"]')
-
-        if registered is None:
+        if registered is None and full:
             # забагованная учётка Tailsik208 со смайликом >_< (была когда-то)
+            logger.warning('Profile %s: registered date is None! Please report to andreymal.', username)
             registered = time.gmtime(0)
             description = []
 
-        foto = raw_data.find(b'id="foto-img"')
-        if foto >= 0:
-            foto = raw_data[raw_data.rfind(b'<img', 0, foto):]
-            foto = foto[:foto.find(b'</a>')]
+        # Сайдбар с фотографией и количеством публикаций
+        sidebar = utils.find_substring(raw_data, b'<aside id="sidebar">', b'</aside>')
+        if sidebar:
+            sidebar = utils.parse_html_fragment(sidebar)[0]
+            foto = sidebar.xpath('//img[@id="foto-img"]')
         else:
+            full = False
             foto = None
 
-        if foto is not None:
-            foto = utils.parse_html_fragment(foto)
-            foto = foto[0].get('src') if foto else None
-            if foto.endswith('user_photo_male.png') or foto.endswith('user_photo_female.png'):
-                foto = None
+        foto = foto[0].get('src', '') if foto else None
+        if not foto or foto.endswith('user_photo_male.png') or foto.endswith('user_photo_female.png'):
+            foto = None
 
-        return UserInfo(user_id, username, realname[0] if realname else None, skill, rating, userpic, foto, gender, birthday, registered, last_activity, description[0] if description else None, blogs)
+        context = self.get_main_context(raw_data, url=url)
+
+        # TODO: количество публикаций
+        # TODO: заметка
+
+        return UserInfo(
+            user_id, username, realname[0] if realname else None, skill,
+            rating, userpic, foto, gender, birthday, registered, last_activity,
+            description[0] if description else None, blogs,
+            full=full, context=context,
+        )
 
     def poll_answer(self, post_id, answer=-1):
         """Проголосовать в опросе. -1 - воздержаться.
