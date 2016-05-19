@@ -1059,8 +1059,10 @@ def parse_datetime(s, utc=True):
 
 
 def gen_user_agent():
-    """Генерирует кусочек юзерагента с информаией о системе."""
+    """Генерирует кусочек юзерагента с информацией о системе."""
+
     # pylint: disable=E1101
+
     context = {
         'system': platform.system() or 'NA',
         'machine': platform.machine() or 'NA',
