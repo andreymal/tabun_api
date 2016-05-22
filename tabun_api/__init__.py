@@ -460,11 +460,16 @@ class UserInfo(object):
     * ``note`` (строка или None) — заметка, оставленная текущим пользователем
     * ``can_edit_note`` (True/False/None) — можно ли редактировать заметку
       (определяется по наличию формы на странице /profile/foo/)
+    * ``can_vote`` (True/False/None) — можно ли голосовать за пользователя (изменить рейтинг)
+      (из-за багов лайвстрита корректно работает только на /profile/foo/)
+    * ``vote_value`` (1/-1/None) — плюс (1), минус (-1) или голос ещё не оставлен (None)
+      (из-за багов лайвстрита корректно работает только на /profile/foo/)
     """
 
     def __init__(self, user_id, username, realname, skill, rating, userpic=None, foto=None,
                  gender=None, birthday=None, registered=None, last_activity=None,
-                 description=None, blogs=None, counts=None, full=False, context=None, raw_description=None):
+                 description=None, blogs=None, rating_vote_count=None,
+                 counts=None, full=False, context=None, raw_description=None):
         self.user_id = int(user_id)
         self.username = text(username)
         self.realname = text(realname) if realname else None
@@ -484,6 +489,7 @@ class UserInfo(object):
 
         self.description, self.raw_description = utils.normalize_body(description, raw_description)
 
+        self.rating_vote_count = rating_vote_count
         self.counts = counts or {}
         self.full = bool(full)
         self.context = context or {}
@@ -2025,6 +2031,8 @@ class User(object):
 
         peoples = []
         base_context = self.get_main_context(raw_data, url=url)
+        base_context['can_vote'] = None
+        base_context['vote_value'] = None
 
         for tr in node.findall("tr"):
             context = base_context.copy()
@@ -2106,6 +2114,8 @@ class User(object):
             return
         node = node[0]
 
+        context = self.get_main_context(raw_data, url=url)
+
         # Блок в самом верху всех страниц профиля
         profile = node.xpath('div[@class="profile"]')[0]
 
@@ -2113,9 +2123,22 @@ class User(object):
         realname = profile.xpath('p[@class="user-name"]/text()')
 
         skill = float(profile.xpath('div[@class="strength"]/div[1]/text()')[0])
-        rating_elem = profile.xpath('div[@class="vote-profile"]/div[1]')[0]
-        user_id = int(rating_elem.get("id").rsplit("_")[-1])
-        rating = float(rating_elem.findall('div')[1].find('span').text.strip().replace('+', ''))
+
+        vote_area = profile.xpath('div[@class="vote-profile"]/div[1]')[0]
+        user_id = int(vote_area.get("id").rsplit("_")[-1])
+
+        rating = float(vote_area.findall('div')[1].find('span').text.strip().replace('+', ''))
+        rating_vote_count = profile.xpath('div[@class="vote-profile"]/div[@class="vote-label"]')[0]
+        rating_vote_count = int(rating_vote_count.text.strip().rsplit(': ', 1)[-1])
+
+        classes = tuple(vote_area.get('class', '').split())
+        context['can_vote'] = 'not-voted' in classes and 'vote-nobuttons' not in classes
+        if 'voted-up' in classes:
+            context['vote_value'] = 1
+        elif 'voted-down' in classes:
+            context['vote_value'] = -1
+        else:
+            context['vote_value'] = None
 
         full = True
 
@@ -2272,8 +2295,6 @@ class User(object):
                     counts['comments'] = tmp_comments
                     counts['notes'] = tmp_notes
 
-        context = self.get_main_context(raw_data, url=url)
-
         # Заметка
         note_elem = sidebar.xpath('//p[@id="usernote-note-text"]')
         if note_elem:
@@ -2287,6 +2308,7 @@ class User(object):
             user_id, username, realname[0] if realname else None, skill,
             rating, userpic, foto, gender, birthday, registered, last_activity,
             description[0] if description else None, blogs,
+            rating_vote_count=rating_vote_count,
             counts=counts, full=full, context=context,
         )
 
