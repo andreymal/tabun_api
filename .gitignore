@@ -19,3 +19,4 @@ sdist/
 /doc/build/
 /doc/source/.*
 ._*
+/diffs/
