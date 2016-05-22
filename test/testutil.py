@@ -38,9 +38,13 @@ templates = {
     'AUTH2_AUTHORIZED': 'auth2_authorized.html',
     'NO_SIDEBAR': 'no_sidebar.html',
     'SIDEBAR': 'sidebar.html',
+    'SIDEBAR_PROFILE': 'sidebar_profile.html',
+    'SIDEBAR_PROFILE_TOPICS': 'sidebar_profile_topics.html',
     'FOOTER': 'footer.html',
     'ACTIVITY_ITEMS': 'activity_items.html',
 }
+
+context_templates = ['AUTH1', 'AUTH2']
 
 interceptors = {}
 form_interceptors = {}
@@ -127,7 +131,7 @@ def load_file(name, ignorekeys=(), template=True):
         return data
 
     # Для этих шаблонов имеется два режима — неавторизованного и авторизованного пользователя
-    for metakey in ('AUTH1', 'AUTH2'):
+    for metakey in context_templates:
         bmetakey = b'%' + metakey.encode('utf-8') + b'%'
         if metakey not in ignorekeys and bmetakey in data:
             key = (metakey + '_GUEST') if guest_mode else (metakey + '_AUTHORIZED')
