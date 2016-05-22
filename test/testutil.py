@@ -59,6 +59,7 @@ mocks = {
     '/stream/all/': ('activity.html', None),
 }
 
+
 @pytest.yield_fixture(scope='function')
 def set_mock():
     try:
@@ -136,7 +137,7 @@ def load_file(name, ignorekeys=(), template=True):
         if metakey not in ignorekeys and bmetakey in data:
             key = (metakey + '_GUEST') if guest_mode else (metakey + '_AUTHORIZED')
             tname = templates[key]
-            data = data.replace(metakey.encode('utf-8'), load_file(tname, ignorekeys + (key,)))
+            data = data.replace(bmetakey, load_file(tname, ignorekeys + (key,)))
 
     # Пародируем шаблонизатор и включаем другие файлы в шаблон
     for key, tname in templates.items():
