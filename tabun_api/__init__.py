@@ -58,6 +58,9 @@ class TabunError(Exception):
     Если возможно (например, при ошибке ввода-вывода), присутствует атрибут ``exc``
     с оригинальным исключением. Если это ``HTTPError``, то можно, например, вызвать
     ``exc.read()`` или ``user.saferead(exc)``.
+
+    Для ошибки 404 в ``data`` содержатся первые 8192 байта ответа, которые нужно было
+    прочитать библиотеке для своих нужд.
     """
 
     def __init__(self, message=None, code=0, data=None, exc=None, msg=None):
@@ -984,11 +987,12 @@ class User(object):
         except (KeyboardInterrupt, SystemExit):
             raise
         except urequest.HTTPError as exc:
+            data = None
             if exc.getcode() == 404:
                 data = exc.read(8192)
                 if b'//projects.everypony.ru/error/main.css' in data:
-                    raise TabunError('Static 404', -404)
-            raise TabunError(code=exc.getcode(), exc=exc)
+                    raise TabunError('Static 404', -404, data=data)
+            raise TabunError(code=exc.getcode(), exc=exc, data=data)
         except urequest.URLError as exc:
             raise TabunError(exc.reason, -abs(getattr(exc.reason, 'errno', 0) or 0), exc=exc)
         except compat.HTTPException as exc:
