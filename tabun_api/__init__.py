@@ -454,6 +454,12 @@ class UserInfo(object):
     * ``favourites_comments`` — число комментариев в избранном (со страницы
       ``profile/username/favourites/topics или comments/``);
     * ``friends`` — число друзей.
+
+    Дополнительные значения контекста:
+
+    * ``note`` (строка или None) — заметка, оставленная текущим пользователем
+    * ``can_edit_note`` (True/False/None) — можно ли редактировать заметку
+      (определяется по наличию формы на странице /profile/foo/)
     """
 
     def __init__(self, user_id, username, realname, skill, rating, userpic=None, foto=None,
@@ -882,7 +888,7 @@ class User(object):
     def check_login(self):
         """Генерирует исключение, если нет ``session_id`` или ``security_ls_key``."""
         if not self.session_id or not self.security_ls_key:
-            raise TabunError("Not logined")
+            raise TabunError("Not logged in")
 
     def get_main_context(self, raw_data, url=None):
         """Парсит основные параметры контекста со страницы Табуна.
@@ -1987,7 +1993,7 @@ class User(object):
         """
         return []
 
-    def get_people_list(self, page=1, order_by="user_rating", order_way="desc", url=None):
+    def get_people_list(self, page=1, order_by="user_rating", order_way="desc", url=None, raw_data=None):
         """Загружает список пользователей со страницы ``/people/``.
 
         :param int page: страница
@@ -2005,8 +2011,9 @@ class User(object):
             url += "?order=" + text(order_by)
             url += "&order_way=" + text(order_way)
 
-        data = self.urlread(url)
-        data = utils.find_substring(data, b'<table class="table table-users', b'</table>')
+        if not raw_data:
+            raw_data = self.urlread(url)
+        data = utils.find_substring(raw_data, b'<table class="table table-users', b'</table>')
         if not data:
             return []
         node = utils.parse_html_fragment(data)
@@ -2017,8 +2024,11 @@ class User(object):
             node = node.find("tbody")
 
         peoples = []
+        base_context = self.get_main_context(raw_data, url=url)
 
         for tr in node.findall("tr"):
+            context = base_context.copy()
+
             username = tr.xpath('td[@class="cell-name"]/div/p[1]/a/text()[1]')
             if not username:
                 continue
@@ -2043,7 +2053,26 @@ class User(object):
             if not userpic:
                 continue
 
-            peoples.append(UserInfo(utils.parse_avatar_url(userpic[0])[0] or -1, username[0], realname, skill[0], rating[0], userpic=userpic[0]), full=False)
+            btns = tr.xpath('td/button')
+            note = None
+            for btn in btns:
+                if 'button-action-note' in btn.get('class'):
+                    note = btn
+                    break
+            if note is not None:
+                context['note'] = note.get('title') or None
+                if context['note']:
+                    # Лайвстрит перестарался с экранированием
+                    context['note'] = html_unescape(context['note']).strip()
+            else:
+                context['note'] = None
+            context['can_edit_note'] = None
+
+            peoples.append(UserInfo(
+                utils.parse_avatar_url(userpic[0])[0] or -1, username[0], realname,
+                skill[0], rating[0], userpic=userpic[0], full=False,
+                context=context,
+            ))
 
         return peoples
 
@@ -2245,7 +2274,14 @@ class User(object):
 
         context = self.get_main_context(raw_data, url=url)
 
-        # TODO: заметка
+        # Заметка
+        note_elem = sidebar.xpath('//p[@id="usernote-note-text"]')
+        if note_elem:
+            context['note'] = note_elem[0].text.strip() or None
+            context['can_edit_note'] = True
+        else:
+            context['note'] = None
+            context['can_edit_note'] = False  # На своей собственной учётке, например
 
         return UserInfo(
             user_id, username, realname[0] if realname else None, skill,
@@ -2253,6 +2289,84 @@ class User(object):
             description[0] if description else None, blogs,
             counts=counts, full=full, context=context,
         )
+
+    def get_notes(self, page=1, url=None, raw_data=None):
+        """Получает заметки, установленные текущим пользователем — список
+        из словарей с ключами ``username``, ``note`` и ``date``.
+
+        :param int page: страница
+        :param url: ссылка на страницу, с которой достать заметки (при наличии page игнорируется)
+        :type url: строка
+        :param bytes raw_data: код страницы (чтобы не скачивать его по ссылке)
+        """
+
+        if not self.username:
+            raise TabunError('Not logged in')
+
+        if not url:
+            url = '/profile/' + urequest.quote(text(self.username).encode('utf-8')) + '/created/notes/page' + str(int(page)) + '/'
+
+        if not raw_data:
+            raw_data = self.urlread(url)
+
+        table = utils.find_substring(raw_data, b'<table class="table table-profile-notes"', b'</table>')
+        if not table:
+            return []
+
+        result = []
+        table = utils.parse_html_fragment(table)[0]
+        for tr in table.findall('tr'):
+            username = tr.xpath('td[@class="cell-username"]/a/text()[1]')
+            if not username:
+                continue
+            username = username[0]
+
+            note = tr.xpath('td[@class="cell-note"]/text()[1]')
+            if not note:
+                continue
+            note = note[0].strip()
+
+            date = tr.xpath('td[@class="cell-date"]/text()[1]')
+            if not date:
+                continue
+            date = time.strptime(utils.mon2num(date[0].strip()), '%d %m %Y')
+
+            result.append({
+                'username': username,
+                'note': note,
+                'date': date
+            })
+        return result
+
+    def save_note(self, user_id, note):
+        """Меняет заметку у пользователя.
+
+        :param int user_id: ID пользователя, которому пишем заметку
+        :param note: Собственно заметка
+        :type note: строка
+        :return: установленная заметка (с учётом фильтрации html-тегов)
+        :rtype: строка
+        """
+
+        fields = {
+            'iUserId': text(int(user_id)),
+            'text': text(note or ''),
+        }
+
+        data = self.ajax('/profile/ajax-note-save/', fields)
+        return html_unescape(data['sText'])
+
+    def remove_note(self, user_id):
+        """Удаляет заметку у пользователя.
+
+        :param int user_id: ID пользователя, у которого удаляем заметку
+        """
+
+        fields = {
+            'iUserId': text(int(user_id)),
+        }
+
+        self.ajax('/profile/ajax-note-remove/', fields)
 
     def poll_answer(self, post_id, answer=-1):
         """Проголосовать в опросе. -1 - воздержаться.
