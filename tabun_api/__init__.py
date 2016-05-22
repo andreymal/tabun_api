@@ -990,7 +990,7 @@ class User(object):
                     raise TabunError('Static 404', -404)
             raise TabunError(code=exc.getcode(), exc=exc)
         except urequest.URLError as exc:
-            raise TabunError(exc.reason, -abs(getattr(exc.reason, 'errno', 0)), exc=exc)
+            raise TabunError(exc.reason, -abs(getattr(exc.reason, 'errno', 0) or 0), exc=exc)
         except compat.HTTPException as exc:
             raise TabunError("HTTP error", -40, exc=exc)
         except socket_timeout as exc:
