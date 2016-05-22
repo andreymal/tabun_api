@@ -6,7 +6,7 @@ from setuptools import setup
 
 setup(
     name='tabun_api',
-    version='0.7.1',
+    version='0.7.2',
     description='Tabun Client Library',
     author='andreymal',
     author_email='andriyano-31@mail.ru',

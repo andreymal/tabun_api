@@ -17,6 +17,7 @@ import sys
 import os
 import shlex
 
+import tabun_api
 import sphinx_rtd_theme
 
 # If extensions (or modules to document with autodoc) are in another directory,
@@ -62,7 +63,7 @@ author = 'andreymal'
 # built documents.
 #
 # The short X.Y version.
-version = '0.7.1'
+version = tabun_api.__version__
 # The full version, including alpha/beta/rc tags.
 release = version
 
