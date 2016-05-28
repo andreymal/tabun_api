@@ -1592,6 +1592,66 @@ class User(object):
 
         return posts
 
+    def get_pagination(self, raw_data):
+        """Возвращает со страницы номер текущей страницы и список с номерами страниц
+        и текстами ссылок (кортеж из номера и строки), которые содержатся в элементе
+        с пагинацией (``<div class="pagination">``).
+        Соответственно, первый элемент списка — номер первой страницы, последний —
+        последней страницы. Номера могут повторяться, если так в коде страницы.
+        Если пагинаций ноль или больше одного, возвращается ``(None, None)``.
+
+        :param bytes raw_data: код страницы
+        :rtype: ``(int, list)``
+        """
+
+        assert isinstance(raw_data, binary)
+        f = raw_data.find(b'<div class="pagination">')
+        if f < 0:
+            return None, None
+
+        f2 = raw_data.find(b'<div class="pagination">', f + 2)
+        if f2 >= 0:
+            logger.warning('Multiple paginations on page! If it is not tabun bug, please report to andreymal.')
+            return None, None
+
+        f = raw_data.find(b'<ul>', f + 2, f + 1500)
+        f = raw_data.find(b'<ul>', f + 2, f + 1500)  # Выдираем второй список
+        f2 = raw_data.find(b'</ul>', f + 2, f + 1500)
+
+        ul = utils.parse_html_fragment(raw_data[f:f2 + 5])[0]
+
+        pages = []
+        current_page = None
+
+        for li in ul.findall('li'):
+            a = li.find('a')
+            txt = li.text_content().strip()
+
+            href = a.get('href', '') if a is not None else None
+            if href and '?' in href:
+                href = href[:href.find('?')]
+            elif href and '#' in href:
+                href = href[:href.find('#')]
+
+            if href:
+                page = href.rstrip('/').rsplit('/page', 1)[-1]
+                if page.isdigit():
+                    page = int(page)
+                else:
+                    assert txt == 'первая'
+                    page = 1
+            else:
+                page = int(txt)
+
+            pages.append((page, txt))
+
+            if li.get('class', '') == 'active':
+                assert current_page is None
+                current_page = page
+
+        assert current_page is not None
+        return current_page, pages
+
     def get_posts(self, url="/index/newall/", raw_data=None):
         """Возвращает список постов со страницы или RSS.
         Если постов нет — кидает исключение TabunError("No post").
