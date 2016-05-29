@@ -471,7 +471,7 @@ class UserInfo(object):
 
     def __init__(self, user_id, username, realname, skill, rating, userpic=None, foto=None,
                  gender=None, birthday=None, registered=None, last_activity=None,
-                 description=None, blogs=None, rating_vote_count=None,
+                 description=None, blogs=None, rating_vote_count=None, contacts=None,
                  counts=None, full=False, context=None, raw_description=None):
         self.user_id = int(user_id)
         self.username = text(username)
@@ -493,6 +493,7 @@ class UserInfo(object):
         self.description, self.raw_description = utils.normalize_body(description, raw_description)
 
         self.rating_vote_count = rating_vote_count
+        self.contacts = contacts
         self.counts = counts or {}
         self.full = bool(full)
         self.context = context or {}
@@ -2277,6 +2278,29 @@ class User(object):
             registered = time.gmtime(0)
             description = []
 
+        # Блок с контактами
+        profile_right = node.xpath('div[@class="wrapper"]/div[@class="profile-right"]')
+
+        if profile_right:
+            contacts = []
+            for ul in profile_right[0].xpath('ul[@class="profile-contact-list"]'):
+                for li in ul.findall('li'):
+                    icon = li.find('i')
+                    a = li.find('a')
+                    label = a.text.strip() if a is not None else li.text_content().strip()
+                    ctype = icon.get('title', '') if icon is not None else ''
+
+                    if ctype not in ('phone', 'mail', 'skype', 'icq', 'www', 'twitter', 'facebook', 'vkontakte', 'odnoklassniki'):
+                        logger.warning('Unknown contact type: %s', ctype)
+
+                    contacts.append((
+                        ctype,
+                        a.get('href', '') if a is not None else None,
+                        label,
+                    ))
+        else:
+            contacts = None
+
         # Сайдбар с фотографией и количеством публикаций
         sidebar = utils.find_substring(raw_data, b'<aside id="sidebar">', b'</aside>')
         if sidebar:
@@ -2372,7 +2396,7 @@ class User(object):
             user_id, username, realname[0] if realname else None, skill,
             rating, userpic, foto, gender, birthday, registered, last_activity,
             description[0] if description else None, blogs,
-            rating_vote_count=rating_vote_count,
+            rating_vote_count=rating_vote_count, contacts=contacts,
             counts=counts, full=full, context=context,
         )
 

@@ -51,6 +51,18 @@ def test_get_profile(user, set_mock):
     }
     assert profile.full is True
 
+    assert profile.contacts == [
+        ('phone', None, '79001234567'),
+        ('mail', 'mailto:почта@example.com', 'почта@example.com'),
+        ('skype', 'skype:скайп', 'скайп'),
+        ('icq', 'http://www.icq.com/people/about_me.php?uin=7777777', '7777777'),
+        ('www', 'http://президент.рф', 'президент.рф'),
+        ('twitter', 'http://twitter.com/твиттер/', 'твиттер'),
+        ('facebook', 'http://facebook.com/фейсбук', 'фейсбук'),
+        ('vkontakte', 'http://vk.com/вк', 'вк'),
+        ('odnoklassniki', 'http://www.odnoklassniki.ru/profile/ок/', 'ок'),
+    ]
+
     assert profile.context['http_host'] == 'https://tabun.everypony.ru'
     assert profile.context['url'] == 'https://tabun.everypony.ru/profile/test/'
     assert profile.context['can_vote'] is False
@@ -83,7 +95,6 @@ def test_get_profile_topics(user, set_mock):
     assert profile.description is None
     assert profile.raw_description is None
     assert profile.rating_vote_count == 37
-    print(profile.counts)
     assert profile.counts == {
         'comments': 8696,
         'favourites': 0,
@@ -95,6 +106,8 @@ def test_get_profile_topics(user, set_mock):
         'publications': 8697,
     }
     assert profile.full is False
+
+    assert profile.contacts is None
 
     assert profile.context['http_host'] == 'https://tabun.everypony.ru'
     assert profile.context['url'] == 'https://tabun.everypony.ru/profile/test/created/topics/'
