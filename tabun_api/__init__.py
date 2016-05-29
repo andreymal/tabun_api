@@ -3481,7 +3481,7 @@ def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
             elif '#comment' in parent_id.get('href', ''):
                 parent_id = int(parent_id.get('href').rsplit('#comment', 1)[-1])
             else:
-                logger.warning('Comment %s has invalid parent link! Please report to andreymal.', comment_id, comment_link)
+                logger.warning('Comment %s has invalid parent link! Please report to andreymal.', comment_id)
                 parent_id = None
 
     vote = 0
