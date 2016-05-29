@@ -32,9 +32,14 @@ youtube_regex = re.compile(r'youtube.com\/embed\/(.{10,15})((\?)|($))')
 ava_regex = re.compile(r"\/((images)|(storage))\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/avatar_([0-9]+)x([0-9]+)\.(...)(\?([0-9]+))?")
 
 #: Регулярка для расшифровки почты, которую шифрует CloudFlare.
-cf_email = re.compile(r'<[A-z]+ class="__cf_email__".*? data-cfemail="([0-9a-f]+)".+?</script>', re.DOTALL)
+cf_email = re.compile(r'<[A-Za-z]+ class="__cf_email__".*? data-cfemail="([0-9a-f]+)".+?</script>', re.DOTALL)
 
-cf_email_b = re.compile(r'<[A-z]+ class="__cf_email__".*? data-cfemail="([0-9a-f]+)".+?</script>'.encode('utf-8'), re.DOTALL)
+cf_email_b = re.compile(r'<[A-Za-z]+ class="__cf_email__".*? data-cfemail="([0-9a-f]+)".+?</script>'.encode('utf-8'), re.DOTALL)
+
+#: Тоже регулярка для расшифровки почты, которую шифрует CloudFlare, но для ссылок.
+cf_email_a = re.compile(r'<[Aa]\s([^>]*)href="/cdn-cgi/l/email-protection#([0-9a-f]+)"\s([^>]*)>', re.DOTALL)
+
+cf_email_a_b = re.compile(r'<[Aa]\s([^>]*)href="/cdn-cgi/l/email-protection#([0-9a-f]+)"\s([^>]*)>'.encode('utf-8'), re.DOTALL)
 
 
 def parse_html(data, encoding='utf-8'):
@@ -868,10 +873,25 @@ def decode_cf_email(data):
     return result if use_bytes else result.decode('utf-8')
 
 
+def decode_cf_email_for_link(m):
+    left, data, right = m.groups()
+    result = '<a %shref="mailto:%s" %s>'
+    result = result.encode('utf-8') if isinstance(data, binary) else result
+    return result % (left, decode_cf_email(data), right)
+
+
 def replace_cloudflare_emails(data):
     """Декодирует почты, которые зашифровал CloudFlare, в html-странице."""
+
+    # В текстах
     r = cf_email if isinstance(data, text) else cf_email_b
-    return r.sub(lambda x: decode_cf_email(x.groups()[0]), data)
+    result = r.sub(lambda x: decode_cf_email(x.groups()[0]), data)
+
+    # В ссылках
+    ra = cf_email_a if isinstance(result, text) else cf_email_a_b
+    result = ra.sub(decode_cf_email_for_link, result)
+
+    return result
 
 
 def normalize_body(body=None, raw_body=None, cls='text'):
