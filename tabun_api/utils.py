@@ -875,9 +875,20 @@ def decode_cf_email(data):
 
 def decode_cf_email_for_link(m):
     left, data, right = m.groups()
-    result = '<a %shref="mailto:%s" %s>'
-    result = result.encode('utf-8') if isinstance(data, binary) else result
-    return result % (left, decode_cf_email(data), right)
+
+    mail = decode_cf_email(data)
+
+    if isinstance(data, text):
+        result = '<a {}href="mailto:{}" {}>'.format(left, mail, right)
+    else:
+        result = b''.join((
+            b'<a ', left,
+            b'href="mailto:', mail,
+            b'" ', right,
+            b'>',
+        ))
+
+    return result
 
 
 def replace_cloudflare_emails(data):
