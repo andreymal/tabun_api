@@ -3380,113 +3380,118 @@ def parse_wrapper(node):
 
 def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
     # И это тоже парсинг коммента. Не надо юзать эту функцию.
-    body = None
+
     context = dict(context) if context else {}
-    try:
-        info = node.xpath('ul[@class="comment-info"]')
-        if not info:
-            info = node.xpath('div[@class="comment-path"]/ul[@class="comment-info"]')
-        info = info[0] if info else None
-        if info is None:
-            if 'comment-deleted' not in node.get("class", "") and 'comment-bad' not in node.get("class", ""):
-                logger.warning('Comment in post %s (id=%s) has no info! Please report to andreymal.', post_id, node.get('id', 'N/A'))
-            return
 
-        comment_id = info.xpath('li[@class="comment-link"]/a')[0].get('href')
-        if '#comment' in comment_id:
-            comment_id = int(comment_id.rsplit('#comment', 1)[-1])
+    # Вытаскиваем элемент с информацией
+    info = node.xpath('ul[@class="comment-info"]')
+    if not info:
+        # В списках комментов он расположен немного по-другому
+        info = node.xpath('div[@class="comment-path"]/ul[@class="comment-info"]')
+    if not info:
+        if 'comment-deleted' not in node.get("class", "") and 'comment-bad' not in node.get("class", ""):
+            logger.warning('Comment in post %s (id=%s) has no info! Please report to andreymal.', post_id, node.get('id', 'N/A'))
+        return
+    info = info[0]
+
+    # Вытаскиваем id коммента
+    comment_link = info.xpath('li[@class="comment-link"]/a')
+    if not comment_link:
+        logger.warning('Comment in post %s (id=%s) has no link! Please report to andreymal.', post_id, node.get('id', 'N/A'))
+    comment_link = comment_link[0].get('href')
+
+    if '#comment' in comment_link:
+        comment_id = int(comment_link.rsplit('#comment', 1)[-1])
+    elif '/comments/' in comment_link:
+        comment_id = int(comment_link.rstrip('/').rsplit('/', 1)[-1])
+    else:
+        logger.warning('Comment in post %s (id=%s) has invalid link %s! Please report to andreymal.', post_id, node.get('id', 'N/A'), comment_link)
+        return
+
+    # Вытаскиваем всякую мелочёвку
+    classes = frozenset(node.get('class', '').split())
+    unread = "comment-new" in classes
+    deleted = "comment-deleted" in classes
+
+    nick = info.find("li").findall("a")[-1].text
+    tm = info.xpath('li/time[1]')[0].get('datetime')
+    utctime = utils.parse_datetime(tm)
+    tm = time.strptime(tm[:-6], "%Y-%m-%dT%H:%M:%S")  # legacy
+
+    # Вытаскиваем текст сообщения (с учётом utils.escape_comment_contents)
+    body = node.xpath('div[@class="comment-content"][1]/div')[0]
+    raw_body = None
+    if body is not None:
+        if body.get('data-escaped') == '1':
+            raw_body = body.text
         else:
-            comment_id = int(comment_id.rstrip('/').rsplit('/', 1)[-1])
+            if body.text:
+                body.text = body.text.lstrip()
+            body.tail = ""
+            if len(body) > 0 and body[-1].tail:
+                body[-1].tail = body[-1].tail.rstrip()
+            elif len(body) == 0 and body.text:
+                body.text = body.text.rstrip()
 
-        unread = "comment-new" in node.get("class", "")
-        deleted = "comment-deleted" in node.get("class", "")
-
-        # TODO: заюзать
-        is_author = "comment-author" in node.get("class", "")
-        is_self = "comment-self" in node.get("class", "")
-
-        body = node.xpath('div[@class="comment-content"][1]/div')[0]
-        raw_body = None
-        if body is not None:
-            if body.get('data-escaped') == '1':
-                raw_body = body.text
-            else:
-                if body.text:
-                    body.text = body.text.lstrip()
-                body.tail = ""
-                if len(body) > 0 and body[-1].tail:
-                    body[-1].tail = body[-1].tail.rstrip()
-                elif len(body) == 0 and body.text:
-                    body.text = body.text.rstrip()
-
-        nick = info.findall("li")[0].findall("a")[-1].text
-        tm = info.findall("li")[1].find("time").get('datetime')
-        utctime = utils.parse_datetime(tm)
-        tm = time.strptime(tm[:-6], "%Y-%m-%dT%H:%M:%S")
-
+    # Если коммент из списка комментов, мы можем вытащить заголовок поста
+    post_li = info.xpath('li/a[@class="blog-name"][1]')
+    if post_li:
+        post_li = post_li[0].getparent()
+        post_title = post_li.xpath('a[@class="comment-path-topic"]')[0].text
+        post_link = post_li.xpath('a[@class="comment-path-comments"]')[0].get('href')
+        blog, post_id = parse_post_url(post_link)  # Перезаписываем входные параметры — наше более достоверно
+        del post_link
+    else:
         post_title = None
-        try:
-            link = info.findall("li")
-            if not link or link[-1].get('id'):
-                link = info
-            else:
-                link = link[-1]
-            link1 = link.xpath('a[@class="comment-path-topic"]')[0]
-            post_title = link1.text
-            link2 = link.xpath('a[@class="comment-path-comments"]')[0]
-            link2 = link2.get('href')
-            blog, post_id = parse_post_url(link2)
-        except (KeyboardInterrupt, SystemExit):
-            raise
-        except:
-            pass
+    del post_li
 
-        if not parent_id:
-            parent_id = info.xpath('li[@class="goto goto-comment-parent"]')
-            if len(parent_id) > 0:
-                parent_id = parent_id[0].find("a")
-                if parent_id.get('onclick'):
-                    parent_id = int(parent_id.get('onclick').rsplit(",", 1)[-1].split(")", 1)[0])
-                elif '/comments/' in parent_id.get('href', ''):
-                    parent_id = int(parent_id.get('href').rsplit('/', 1)[-1])
+    # Достаём информацию о родительском комментарии
+    if parent_id is None:
+        parent_id = info.xpath('li[@class="goto goto-comment-parent"]')
+        if parent_id:
+            parent_id = parent_id[0].find("a")
+            if parent_id.get('onclick'):
+                parent_id = int(parent_id.get('onclick').rsplit(",", 1)[-1].split(")", 1)[0])
+            elif '/comments/' in parent_id.get('href', ''):
+                parent_id = int(parent_id.get('href').rsplit('/', 1)[-1])
+            elif '#comment' in parent_id.get('href', ''):
+                parent_id = int(parent_id.get('href').rsplit('#comment', 1)[-1])
             else:
+                logger.warning('Comment %s has invalid parent link! Please report to andreymal.', comment_id, comment_link)
                 parent_id = None
 
-        vote = 0
-        context['can_vote'] = None
-        context['vote_value'] = None
+    vote = 0
+    context['can_vote'] = None
+    context['vote_value'] = None
 
-        vote_area = info.xpath('li[starts-with(@id, "vote_area_comment")]')
-        if vote_area:
-            vote = vote_area[0].xpath('span[@class="vote-count"]/text()[1]')
-            vote = int(vote[0].replace("+", ""))
-            if vote_area[0].xpath('div[@class="vote-up"]'):  # проверка, что пост не из ленты (в ней классы полупустые)
-                votecls = vote_area[0].get('class', '').split()
-                # vote-expired стоит также у своих комментов, осторожно
-                context['can_vote'] = 'voted' not in votecls and 'vote-expired' not in votecls
-                if 'voted-up' in votecls:
-                    context['vote_value'] = 1
-                elif 'voted-down' in votecls:
-                    context['vote_value'] = -1
+    # Достаём информаию о рейтинге
+    vote_area = info.xpath('li[starts-with(@id, "vote_area_comment")]')
+    if vote_area:
+        vote = vote_area[0].xpath('span[@class="vote-count"]/text()[1]')
+        vote = int(vote[0].replace("+", ""))
+        if vote_area[0].xpath('div[@class="vote-up"]'):  # проверка, что пост не из ленты (в ней классы полупустые)
+            votecls = vote_area[0].get('class', '').split()
+            # vote-expired стоит также у своих комментов, осторожно
+            context['can_vote'] = 'voted' not in votecls and 'vote-expired' not in votecls
+            if 'voted-up' in votecls:
+                context['vote_value'] = 1
+            elif 'voted-down' in votecls:
+                context['vote_value'] = -1
 
-        favourited = False
-        favourite = info.xpath('li[@class="comment-favourite"]')
-        if not favourite:
+    # Достаём информацию об избранном
+    favourited = False
+    favourite = info.xpath('li[@class="comment-favourite"]')
+    if not favourite:
+        favourite = None
+    else:
+        favourited = favourite[0].find('div')
+        favourited = favourited is not None and 'active' in favourited.get('class', '')
+        favourite = favourite[0].find('span').text
+        try:
+            favourite = int(favourite) if favourite else 0
+        except:
             favourite = None
-        else:
-            favourited = favourite[0].find('div')
-            favourited = favourited is not None and 'active' in favourited.get('class', '')
-            favourite = favourite[0].find('span').text
-            try:
-                favourite = int(favourite) if favourite else 0
-            except:
-                favourite = None
-        context['favourited'] = favourited
-
-    except AttributeError:
-        return
-    except IndexError:
-        return
+    context['favourited'] = favourited
 
     if body is not None:
         return Comment(tm, blog, post_id, comment_id, nick, body if raw_body is None else None, vote, parent_id,
