@@ -46,7 +46,7 @@ test:
 
 coverage:
 	py.test --cov=tabun_api --cov-report html test
-	x-www-browser htmlcov/index.html
+	ls -lh htmlcov/index.html
 
 doc:
 	$(MAKE) -C doc html
