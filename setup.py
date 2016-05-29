@@ -1,12 +1,23 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import re
+
 from setuptools import setup
+
+
+with open('tabun_api/__init__.py', 'rb') as fp:
+    for line in fp:
+        line = line.decode('utf-8-sig')
+        m = re.search(r"^__version__ = '([^']+)'$", line)
+        if m:
+            version = m.group(1)
+            break
 
 
 setup(
     name='tabun_api',
-    version='0.7.2',
+    version=version,
     description='Tabun Client Library',
     author='andreymal',
     author_email='andriyano-31@mail.ru',
@@ -29,9 +40,11 @@ setup(
         'Programming Language :: Python :: 2',
         'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.3',
         'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: Implementation :: CPython',
+        'Programming Language :: Python :: Implementation :: PyPy',
         'Topic :: Internet :: WWW/HTTP',
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],

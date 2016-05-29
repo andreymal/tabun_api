@@ -1,7 +1,7 @@
 .PHONY: clean clean-build clean-pyc clean-test clean-doc test coverage doc dist install develop
 
-PYTHON=python
-PIP=pip
+PYTHON?=python
+PIP?=pip
 
 help:
 	@echo "tabun_api"
