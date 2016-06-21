@@ -313,6 +313,7 @@ class Comment(object):
     def __repr__(self):
         o = (
             "<" + ("deleted " if self.deleted else "") + "comment " +
+            ("with body " if self.deleted and self.body is not None else "") +
             (((self.blog or '[personal]') + "/" + text(self.post_id) + "/") if self.post_id else "") +
             text(self.comment_id) + ">"
         )
@@ -1981,16 +1982,23 @@ class User(object):
         comms_list = data['comments'].values() if data.get('comments') else data['aComments']
         for comm in comms_list:
             node = utils.parse_html_fragment(utils.escape_comment_contents(comm['html'].encode('utf-8')))
-            pcomm = parse_comment(
-                node[0],
-                target_id if typ == 'blog' else None,
-                None,
-                comm['pid'] if 'pid' in comm else comm['idParent']
-            )
+            sect = node[0]
+            post_id = target_id if typ == 'blog' else None
+            parent_id = comm['pid'] if 'pid' in comm else comm['idParent']
+
+            pcomm = parse_comment(sect, post_id, None, parent_id)
+
             if pcomm:
                 comms[pcomm.comment_id] = pcomm
             else:
-                logger.warning('Cannot parse ajax comment from %s', target_id)
+                if sect.get("id", "").find("comment_id_") == 0:
+                    pcomm = parse_deleted_comment(sect, post_id, None, parent_id)
+                    if pcomm:
+                        comms[pcomm.comment_id] = pcomm
+                    else:
+                        logger.warning('Cannot parse deleted ajax comment %s (url: %s)', sect.get('id'), url)
+                else:
+                    logger.warning('Unknown ajax comment format %s (url: %s)', sect.get('id'), url)
 
         return comms
 
@@ -3525,7 +3533,7 @@ def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
                        post_title, unread, deleted, favourite, None, utctime, raw_body, context=context)
 
 
-def parse_deleted_comment(node, post_id, blog=None, context=None):
+def parse_deleted_comment(node, post_id, blog=None, parent_id=None, context=None):
     # И это тоже парсинг коммента! Но не простого, а удалённого.
     try:
         comment_id = int(node.get("id").rsplit("_", 1)[-1])
