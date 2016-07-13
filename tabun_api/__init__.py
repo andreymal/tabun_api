@@ -1785,7 +1785,12 @@ class User(object):
 
         data = utils.find_substring(raw_data, b'<div class="comments', b'<!-- /content -->', extend=True, with_end=False)
         if not data:
-            return {}
+            f = raw_data.find(b'<div class="comments')
+            if raw_data.rstrip().endswith(b'<a href="') and f >= 0 and b'<li class="comment-link">' in raw_data[-100:]:
+                # После удаления блога с комментами ломается лента, обходим
+                data = raw_data[f:]
+            else:
+                return {}
         data = utils.replace_cloudflare_emails(data)
         escaped_data = utils.escape_comment_contents(utils.escape_topic_contents(data, True))
         div = utils.parse_html_fragment(escaped_data)
@@ -1819,7 +1824,11 @@ class User(object):
                     else:
                         logger.warning('Cannot parse deleted comment %s (url: %s)', sect.get('id'), url)
                 else:
-                    logger.warning('Unknown comment format %s (url: %s)', sect.get('id'), url)
+                    tmp = sect.xpath('//ul[@class="comment-info"]/li[starts-with(@id, "vote_area_comment")]')
+                    if tmp:
+                        logger.warning('Unknown comment format %s, it can be comment from deleted blog; skipped (url: %s)', tmp[0].get('id'), url)
+                    else:
+                        logger.warning('Unknown comment format %s (url: %s)', sect.get('id'), url)
 
         return comms
 
