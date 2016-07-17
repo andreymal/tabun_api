@@ -929,6 +929,23 @@ def normalize_body(body=None, raw_body=None, cls='text'):
     return body, text(raw_body) if raw_body is not None else None
 
 
+def html_escape(s, single_quote=False):
+    """Заменяет на html-сущности следующие символы:
+    ``&``, ``<``, ``>``, ``"``.
+    При ``single_quote=True`` ещё и ``'`` на ``&#39;``.
+    """
+
+    table = [('&', '&amp;'), ('<', '&lt;'), ('>', '&gt;'), ('"', '&quot;')]
+    if single_quote:
+        table.append(("'", '&#39;'))
+    if isinstance(s, binary):
+        table = [(a.encode('ascii'), b.encode('ascii')) for a, b in table]
+
+    for a, b in table:
+        s = s.replace(a, b)
+    return s
+
+
 def escape_topic_contents(data, may_be_short=False):
     """Экранирует содержимое постов для защиты от поехавшей вёрстки и багов lxml."""
     if not isinstance(data, binary):
@@ -979,7 +996,7 @@ def escape_topic_contents(data, may_be_short=False):
             body = body[body.find(b'</header>') + 9:].lstrip()
 
         # экранируем тело
-        body = body.replace(b'&', b'&amp;').replace(b'<', b'&lt;').replace(b'>', b'&gt;').replace(b'"', b'&quot;')
+        body = html_escape(body)
 
         # собираем страницу обратно
         buf.extend((
@@ -1063,7 +1080,7 @@ def escape_comment_contents(data):
 
         # экранируем тело
         body = data[data.find(b'>', f1, f2) + 1:f2].strip()
-        body = body.replace(b'&', b'&amp;').replace(b'<', b'&lt;').replace(b'>', b'&gt;').replace(b'"', b'&quot;')
+        body = html_escape(body)
 
         # собираем страницу обратно
         buf.extend((
@@ -1075,6 +1092,78 @@ def escape_comment_contents(data):
 
     buf.append(data[last_end:])
     return b''.join(buf)
+
+
+def escape_blog_content(data):
+    """Экранирует описание блога."""
+    if not isinstance(data, binary):
+        raise ValueError('data should be bytes')
+    f1 = 0
+    f2 = 0
+
+    # Ищем начало блока
+    div_begin = b'<div class="blog-description">'
+    f1 = data.find(b'<div class="blog-content text">')
+    if f1 >= 0:
+        f1 = data.find(div_begin, f1, f1 + 200)
+
+    # Ищем конец
+    if f1 >= 0:
+        f2 = data.find(b'<ul class="blog-info">', f1 + 1)
+        if f2 >= 0:
+            f2 = data.rfind(b'</div>', f1 + 1, f2)
+
+    if f1 < 0 or f2 < 0:
+        # Не нашли
+        return data
+
+    body = data[f1 + len(div_begin):f2].strip()
+    body = html_escape(body)
+
+    result = (
+        data[:f1],
+        b'<div class="blog-content text" data-escaped="1">',
+        body,
+        data[f2:]
+    )
+
+    return b''.join(result)
+
+
+def escape_profile_content(data):
+    """Экранирует содержимое блока «О себе» профиля."""
+    if not isinstance(data, binary):
+        raise ValueError('data should be bytes')
+    f1 = 0
+    f2 = 0
+
+    # Ищем начало блока «О себе»
+    div_begin = b'<div class="text">'
+    f1 = data.find(b'<div class="profile-info-about">')
+    if f1 >= 0:
+        f1 = data.find('<h3>О себе</h3>'.encode('utf-8'), f1, f1 + 1500)
+    if f1 >= 0:
+        f1 = data.find(div_begin, f1, f1 + 200)
+
+    # Ищем конец
+    if f1 >= 0:
+        f2 = data.find(b'</div>', f1 + 1)
+
+    if f1 < 0 or f2 < 0:
+        # Не нашли
+        return data
+
+    body = data[f1 + len(div_begin):f2].strip()
+    body = html_escape(body)
+
+    result = (
+        data[:f1],
+        b'<div class="text" data-escaped="1">',
+        body,
+        data[f2:]
+    )
+
+    return b''.join(result)
 
 
 def parse_datetime(s, utc=True):

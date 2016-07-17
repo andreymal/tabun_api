@@ -37,7 +37,7 @@ def test_get_profile(user, set_mock):
     assert profile.blogs['moderator'] == []
     assert profile.blogs['member'] == [('shipping', 'Все о шиппинге'), ('RPG', 'РПГ7. Воюем, живем, любим.'), ('borderline', 'На грани')]
     assert profile.description is not None
-    assert profile.raw_description == 'Обо мне'
+    assert profile.raw_description == 'Обо мне. Сломанный код: <a href="'
     assert profile.rating_vote_count == 37
     assert profile.counts == {
         'comments': None,

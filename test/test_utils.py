@@ -250,3 +250,19 @@ def test_replace_cloudflare_emails():
 
     assert utils.replace_cloudflare_emails(data) == result
     assert utils.replace_cloudflare_emails(data.encode('utf-8')) == result.encode('utf-8')
+
+
+def test_html_escape_nosingle_str():
+    assert utils.html_escape('&lt;"<>\'') == '&amp;lt;&quot;&lt;&gt;\''
+
+
+def test_html_escape_nosingle_bytes():
+    assert utils.html_escape(b'&lt;"<>\'') == b'&amp;lt;&quot;&lt;&gt;\''
+
+
+def test_html_escape_single_str():
+    assert utils.html_escape('&lt;"<>\'', True) == '&amp;lt;&quot;&lt;&gt;&#39;'
+
+
+def test_html_escape_single_bytes():
+    assert utils.html_escape(b'&lt;"<>\'', True) == b'&amp;lt;&quot;&lt;&gt;&#39;'

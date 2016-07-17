@@ -401,7 +401,7 @@ class Blog(object):
         self.posts_count = int(posts_count)
         self.created = created
 
-        self.description, self.raw_description = utils.normalize_body(description, raw_description)
+        self.description, self.raw_description = utils.normalize_body(description, raw_description, cls='blog-content text')
 
     def __repr__(self):
         o = "<blog " + self.blog + ">"
@@ -1883,6 +1883,7 @@ class User(object):
         blog = text(blog)
         if not raw_data:
             raw_data = self.urlread("/blog/" + text(blog) + "/")
+        raw_data = utils.escape_blog_content(raw_data)
         data = utils.find_substring(raw_data, b'<div class="blog-top">', b'<div class="nav-menu-wrapper">', with_end=False)
         data = utils.replace_cloudflare_emails(data)
 
@@ -1912,6 +1913,10 @@ class User(object):
         info = content.find("ul")
 
         description = content.find("div")
+        if description is not None and description.get('data-escaped') == '1':
+            raw_description = description.text
+        else:
+            raw_description = None
         created = time.strptime(utils.mon2num(info.xpath('li[1]/strong/text()')[0]), "%d %m %Y")
         posts_count = int(info.xpath('li[2]/strong/text()')[0])
         readers = int(info.xpath('li[3]/strong/text()')[0])
@@ -1927,7 +1932,12 @@ class User(object):
 
         creator = blog_footer.xpath("div/a[2]/text()[1]")[0]
 
-        return Blog(blog_id, blog, name, creator, readers, vote_total, closed, description, admins, moderators, vote_count, posts_count, created)
+        return Blog(
+            blog_id, blog, name, creator, readers, vote_total, closed,
+            description if description is not None and raw_description is None else None,
+            admins, moderators, vote_count, posts_count, created,
+            raw_description=raw_description,
+        )
 
     def get_post_and_comments(self, post_id, blog=None, raw_data=None):
         """Возвращает пост и словарь комментариев.
@@ -2190,6 +2200,8 @@ class User(object):
         if not raw_data:
             raw_data = self.urlread(url)
 
+        raw_data = utils.escape_profile_content(raw_data)
+
         data = utils.find_substring(raw_data, b'<div id="content"', b'<!-- /content ', extend=True, with_end=False)
         if not data:
             return
@@ -2228,15 +2240,19 @@ class User(object):
         full = True
 
         # Блок с основной информацией на странице /profile/xxx/
+        userpic = None
+        description = None
+        raw_description = None
+
         about = node.xpath('div[@class="profile-info-about"]')
         if about:
             about = about[0]
             userpic = about.xpath('a[1]/img')[0].get('src')
-            description = about.xpath('div[@class="text"]')  # TODO: escape contents
+            description = about.xpath('div[@class="text"]')
+            if description and description[0].get('data-escaped') == '1':
+                raw_description = description[0].text
         else:
             about = None
-            userpic = None
-            description = None
             full = False
 
         birthday = None
@@ -2415,9 +2431,10 @@ class User(object):
         return UserInfo(
             user_id, username, realname[0] if realname else None, skill,
             rating, userpic, foto, gender, birthday, registered, last_activity,
-            description[0] if description else None, blogs,
+            description[0] if description and raw_description is None else None, blogs,
             rating_vote_count=rating_vote_count, contacts=contacts,
             counts=counts, full=full, context=context,
+            raw_description=raw_description,
         )
 
     def get_notes(self, page=1, url=None, raw_data=None):
