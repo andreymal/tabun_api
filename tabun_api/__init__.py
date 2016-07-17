@@ -387,7 +387,7 @@ class Blog(object):
     """Блог."""
     def __init__(self, blog_id, blog, name, creator, readers=0, rating=0.0, closed=False,
                  description=None, admins=None, moderators=None, vote_count=-1, posts_count=-1,
-                 created=None, raw_description=None):
+                 created=None, avatar=None, raw_description=None):
         self.blog_id = int(blog_id)
         self.blog = text(blog)
         self.name = text(name)
@@ -400,6 +400,7 @@ class Blog(object):
         self.vote_count = int(vote_count)
         self.posts_count = int(posts_count)
         self.created = created
+        self.avatar = text(avatar)
 
         self.description, self.raw_description = utils.normalize_body(description, raw_description, cls='blog-content text')
 
@@ -1936,7 +1937,7 @@ class User(object):
             blog_id, blog, name, creator, readers, vote_total, closed,
             description if description is not None and raw_description is None else None,
             admins, moderators, vote_count, posts_count, created,
-            raw_description=raw_description,
+            avatar=avatar, raw_description=raw_description,
         )
 
     def get_post_and_comments(self, post_id, blog=None, raw_data=None):
