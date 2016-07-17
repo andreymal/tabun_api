@@ -7,6 +7,7 @@ import re
 import sys
 import time
 import random
+import logging
 import platform
 import mimetypes
 from hashlib import md5
@@ -18,6 +19,9 @@ import lxml.etree
 import iso8601
 
 from .compat import text, text_types, binary, urequest, PY2
+
+#: Логгер tabun_api.
+logger = logging.getLogger('tabun_api')
 
 #: Месяцы, для парсинга даты.
 mons = ('января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря')
@@ -1074,7 +1078,7 @@ def escape_comment_contents(data):
         if f2 >= 0:
             f2 = data.rfind(b'</div>', f1, f2)
         if f2 < 0:
-            print('Warning: cannot find </div></div>! Please report to andreymal.')
+            logger.warning('Cannot find </div></div> in escape_comment_contents! Please report to andreymal.')
             buf.append(data[prev_last_end:last_end])
             continue
 

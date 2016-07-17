@@ -41,9 +41,6 @@ post_url_regex = re.compile(r"/blog/(([A-z0-9_\-\.]{1,})/)?([0-9]{1,}).html")
 #: Регулярка для парсинга прикреплённых файлов.
 post_file_regex = re.compile(r'^Скачать \"(.+)" \(([0-9]*(\.[0-9]*)?) (Кб|Мб)\)$')
 
-#: Логгер tabun_api.
-logger = logging.getLogger(__name__)
-
 
 class NoRedirect(urequest.HTTPRedirectHandler):
     def http_error_302(self, req, fp, code, msg, headers):
@@ -833,7 +830,7 @@ class User(object):
                 self.skill = None
                 self.rating = None
             else:
-                logger.warning('update_userinfo received unknown data')
+                utils.logger.warning('update_userinfo received unknown data')
             return
 
         node = utils.parse_html_fragment(userinfo)[0]
@@ -932,7 +929,7 @@ class User(object):
             context['username'] = None
             auth_panel = utils.find_substring(raw_data, b'<ul class="auth"', b'<nav', with_end=False)
             if not auth_panel or 'Войти'.encode('utf-8') not in auth_panel:
-                logger.warning('get_main_context received unknown userinfo')
+                utils.logger.warning('get_main_context received unknown userinfo')
         else:
             f = userinfo.find(b'class="username">')
             if f >= 0:
@@ -1617,7 +1614,7 @@ class User(object):
 
         f2 = raw_data.find(b'<div class="pagination">', f + 2)
         if f2 >= 0:
-            logger.warning('Multiple paginations on page! If it is not tabun bug, please report to andreymal.')
+            utils.logger.warning('Multiple paginations on page! If it is not tabun bug, please report to andreymal.')
             return None, None
 
         f = raw_data.find(b'<ul>', f + 2, f + 1500)
@@ -1823,13 +1820,13 @@ class User(object):
                     if c:
                         comms[c.comment_id] = c
                     else:
-                        logger.warning('Cannot parse deleted comment %s (url: %s)', sect.get('id'), url)
+                        utils.logger.warning('Cannot parse deleted comment %s (url: %s)', sect.get('id'), url)
                 else:
                     tmp = sect.xpath('//ul[@class="comment-info"]/li[starts-with(@id, "vote_area_comment")]')
                     if tmp:
-                        logger.warning('Unknown comment format %s, it can be comment from deleted blog; skipped (url: %s)', tmp[0].get('id'), url)
+                        utils.logger.warning('Unknown comment format %s, it can be comment from deleted blog; skipped (url: %s)', tmp[0].get('id'), url)
                     else:
-                        logger.warning('Unknown comment format %s (url: %s)', sect.get('id'), url)
+                        utils.logger.warning('Unknown comment format %s (url: %s)', sect.get('id'), url)
 
         return comms
 
@@ -2016,9 +2013,9 @@ class User(object):
                     if pcomm:
                         comms[pcomm.comment_id] = pcomm
                     else:
-                        logger.warning('Cannot parse deleted ajax comment %s (url: %s)', sect.get('id'), url)
+                        utils.logger.warning('Cannot parse deleted ajax comment %s (url: %s)', sect.get('id'), url)
                 else:
-                    logger.warning('Unknown ajax comment format %s (url: %s)', sect.get('id'), url)
+                    utils.logger.warning('Unknown ajax comment format %s (url: %s)', sect.get('id'), url)
 
         return comms
 
@@ -2311,7 +2308,7 @@ class User(object):
 
         if registered is None and full:
             # забагованная учётка Tailsik208 со смайликом >_< (была когда-то)
-            logger.warning('Profile %s: registered date is None! Please report to andreymal.', username)
+            utils.logger.warning('Profile %s: registered date is None! Please report to andreymal.', username)
             registered = time.gmtime(0)
             description = []
 
@@ -2328,7 +2325,7 @@ class User(object):
                     ctype = icon.get('title', '') if icon is not None else ''
 
                     if ctype not in ('phone', 'mail', 'skype', 'icq', 'www', 'twitter', 'facebook', 'vkontakte', 'odnoklassniki'):
-                        logger.warning('Unknown contact type: %s', ctype)
+                        utils.logger.warning('Unknown contact type: %s', ctype)
 
                     contacts.append((
                         ctype,
@@ -2847,7 +2844,7 @@ class User(object):
             if elem:
                 elems.append(elem)
             else:
-                logger.warning('Cannot parse talk item')
+                utils.logger.warning('Cannot parse talk item')
 
         return elems
 
@@ -2873,7 +2870,7 @@ class User(object):
             if elem:
                 elems.append(elem)
             else:
-                logger.warning('Cannot parse talk item')
+                utils.logger.warning('Cannot parse talk item')
 
         return elems
 
@@ -3452,14 +3449,14 @@ def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
         info = node.xpath('div[@class="comment-path"]/ul[@class="comment-info"]')
     if not info:
         if 'comment-deleted' not in node.get("class", "") and 'comment-bad' not in node.get("class", ""):
-            logger.warning('Comment in post %s (id=%s) has no info! Please report to andreymal.', post_id, node.get('id', 'N/A'))
+            utils.logger.warning('Comment in post %s (id=%s) has no info! Please report to andreymal.', post_id, node.get('id', 'N/A'))
         return
     info = info[0]
 
     # Вытаскиваем id коммента
     comment_link = info.xpath('li[@class="comment-link"]/a')
     if not comment_link:
-        logger.warning('Comment in post %s (id=%s) has no link! Please report to andreymal.', post_id, node.get('id', 'N/A'))
+        utils.logger.warning('Comment in post %s (id=%s) has no link! Please report to andreymal.', post_id, node.get('id', 'N/A'))
     comment_link = comment_link[0].get('href')
 
     if '#comment' in comment_link:
@@ -3467,7 +3464,7 @@ def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
     elif '/comments/' in comment_link:
         comment_id = int(comment_link.rstrip('/').rsplit('/', 1)[-1])
     else:
-        logger.warning('Comment in post %s (id=%s) has invalid link %s! Please report to andreymal.', post_id, node.get('id', 'N/A'), comment_link)
+        utils.logger.warning('Comment in post %s (id=%s) has invalid link %s! Please report to andreymal.', post_id, node.get('id', 'N/A'), comment_link)
         return
 
     # Вытаскиваем всякую мелочёвку
@@ -3519,7 +3516,7 @@ def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
             elif '#comment' in parent_id.get('href', ''):
                 parent_id = int(parent_id.get('href').rsplit('#comment', 1)[-1])
             else:
-                logger.warning('Comment %s has invalid parent link! Please report to andreymal.', comment_id)
+                utils.logger.warning('Comment %s has invalid parent link! Please report to andreymal.', comment_id)
                 parent_id = None
 
     vote = 0
@@ -3571,7 +3568,7 @@ def parse_deleted_comment(node, post_id, blog=None, parent_id=None, context=None
     deleted = "comment-deleted" in node.get("class", "")
     bad = "comment-bad" in node.get("class", "")  # вроде обещалось, что это временно, поэтому пусть пока тут
     if not deleted and not bad:
-        logger.warning('Deleted comment %s is not deleted! Please report to andreymal.', comment_id)
+        utils.logger.warning('Deleted comment %s is not deleted! Please report to andreymal.', comment_id)
     body = None
     nick = None
     tm = None
