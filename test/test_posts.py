@@ -215,18 +215,26 @@ def test_add_post_error(set_mock, user):
 
 def test_post_hashsum_default(user):
     p = user.get_posts('/')
+    oldver_fields = ('post_id', 'time', 'draft', 'author', 'blog', 'title', 'body', 'tags')
     assert p[0].post_id == 100000
-    assert p[0].hashsum() == 'e93efead3145c59b9aac26037b9c5fcf'
+    assert p[0].hashsum(oldver_fields) == 'e93efead3145c59b9aac26037b9c5fcf'
     assert p[1].post_id == 131909
-    assert p[1].hashsum() == 'b6147c9ba6dbc7e8e07db958390108bd'
+    assert p[1].hashsum(oldver_fields) == 'b6147c9ba6dbc7e8e07db958390108bd'
     assert p[2].post_id == 131911
-    assert p[2].hashsum() == '33b7a175c45eea8e5f68f4bc885f324b'
+    assert p[2].hashsum(oldver_fields) == '33b7a175c45eea8e5f68f4bc885f324b'
     assert p[3].post_id == 131915
-    assert p[3].hashsum() == '51b480ee57ee3166750e4f15f6a48f1f'
+    assert p[3].hashsum(oldver_fields) == '51b480ee57ee3166750e4f15f6a48f1f'
     assert p[4].post_id == 131904
-    assert p[4].hashsum() == 'd28e3ff695cd4cdc1f63e5919da95516'
+    assert p[4].hashsum(oldver_fields) == 'd28e3ff695cd4cdc1f63e5919da95516'
     assert p[5].post_id == 131937
-    assert p[5].hashsum() == '93ef694d929b03b2f48b702ef68ce77b'
+    assert p[5].hashsum(oldver_fields) == '93ef694d929b03b2f48b702ef68ce77b'
+
+    assert p[0].hashsum() == '2f452e09ee106a2beeb5a48927ad72b3'
+    assert p[1].hashsum() == '5308ccc03831ea4f4f3f3661440fcc75'
+    assert p[2].hashsum() == 'fb329febe4d073359b1d974098557994'
+    assert p[3].hashsum() == 'bed41b4d1ab3fa5b6b340f186067d6d5'
+    assert p[4].hashsum() == '2c49d10769e1fb28cb78cfaf8ac6cd0e'
+    assert p[5].hashsum() == '6c35ba542fd4f65ab9aac97943ca6672'
 
 
 def test_post_hashsum_part(user):

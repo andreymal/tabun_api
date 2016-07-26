@@ -154,6 +154,9 @@ class Post(object):
 
         self.body, self.raw_body = utils.normalize_body(body, raw_body, cls='topic-content text')
 
+        if self.short != (self.cut_text is not None):
+            utils.logger.warning('Post %d: self.short != (self.cut_text is not None)! If you don\'t use tabun_api.Post constructor directly, please report to andreymal.', post_id)
+
         if favourited is not None:
             warnings.warn('Post(favourited=...) is deprecated; use context["favourited"] instead of it', FutureWarning, stacklevel=2)
             self.context['favourited'] = bool(favourited)
@@ -173,12 +176,14 @@ class Post(object):
         return self.__repr__().decode('utf-8', 'replace')
 
     def hashsum(self, fields=None, debug=False):
-        """Считает md5-хэш от конкатенации полей поста, разделённых нулевым байтом.
+        """Считает md5-хэш от конкатенации полей поста (в utf-8), разделённых нулевым байтом.
 
         Поддерживаются только следующие поля:
-        post_id, time (в UTC), draft, author, blog, title, body (как необработанный html), tags.
+        post_id, time (в UTC, в формате ``%Y-%m-%dT%H:%M:%SZ``), draft, author, blog, title,
+        cut_text, body (как необработанный html), tags.
 
-        По умолчанию используются все они.
+        По умолчанию используются все они. Если требуется одинаковость хэшей независимо
+        от версии tabun_api, рекомендуется прописать список полей явно.
 
         Аргумент ``fields`` — список полей для использования
         (или любая другая коллекция, для которой работает проверка ``if field in fields``).
@@ -195,7 +200,7 @@ class Post(object):
 
         buf = []
 
-        # Not used: vote_count vote_total comments_count short private blog_name poll favourite download context
+        # Not used: vote_count vote_total comments_count private blog_name poll favourite download context
 
         if fields is None or 'post_id' in fields:
             buf.append(text(self.post_id))
@@ -206,7 +211,7 @@ class Post(object):
         if fields is None or 'draft' in fields:
             buf.append('1' if self.draft else '0')
 
-        for field in ('author', 'blog', 'title'):
+        for field in ('author', 'blog', 'title', 'cut_text'):
             if fields is None or field in fields:
                 buf.append(getattr(self, field, None) or '')
 
@@ -317,12 +322,15 @@ class Comment(object):
         return o.encode('utf-8') if PY2 else o
 
     def hashsum(self, fields=None, debug=False):
-        """Считает md5-хэш от конкатенации полей коммента, разделённых нулевым байтом.
+        """Считает md5-хэш от конкатенации полей коммента (в utf-8), разделённых нулевым байтом.
 
         Поддерживаются только следующие поля:
-        comment_id, time (в UTC), author, body (как необработанный html).
+        comment_id, time (в UTC, в формате ``%Y-%m-%dT%H:%M:%SZ``), author, body (как необработанный html).
 
-        По умолчанию используются все они. Аргумент ``fields`` — список полей для использования
+        По умолчанию используются все они. Если требуется одинаковость хэшей независимо
+        от версии tabun_api, рекомендуется прописать список полей явно.
+
+        Аргумент ``fields`` — список полей для использования
         (или любая другая коллекция, для которой работает проверка ``if field in fields``).
 
         Порядок и повторения полей в этом списке значения не имеют. Неизвестные поля игнорируются.
