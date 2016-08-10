@@ -63,6 +63,12 @@ class TabunError(Exception):
     прочитать библиотеке для своих нужд.
     """
 
+    URL_ERROR = -50
+    HTTP_ERROR = -40
+    IO_ERROR = -30
+    TIMEOUT = -20
+    STATIC_404 = -404
+
     def __init__(self, message=None, code=0, data=None, exc=None, msg=None):
         if msg is not None:
             assert message is None
@@ -995,23 +1001,21 @@ class User(object):
                     return func(*args, **kwargs)
             else:
                 return func(*args, **kwargs)
-        except (KeyboardInterrupt, SystemExit):
-            raise
         except urequest.HTTPError as exc:
             data = None
             if exc.getcode() == 404:
-                data = exc.read(8192)
+                data = self._netwrap(exc.read, 8192)
                 if b'//projects.everypony.ru/error/main.css' in data:
-                    raise TabunError('Static 404', -404, data=data)
+                    raise TabunError('Static 404', TabunError.STATIC_404, data=data)
             raise TabunError(code=exc.getcode(), exc=exc, data=data)
         except urequest.URLError as exc:
-            raise TabunError(exc.reason, -abs(getattr(exc.reason, 'errno', 0) or 0), exc=exc)
+            raise TabunError(exc.reason, TabunError.URL_ERROR, exc=exc)
         except compat.HTTPException as exc:
-            raise TabunError("HTTP error", -40, exc=exc)
+            raise TabunError("HTTP error", TabunError.HTTP_ERROR, exc=exc)
         except socket_timeout as exc:
-            raise TabunError("Timeout", -20, exc=exc)
+            raise TabunError("Timeout", TabunError.TIMEOUT, exc=exc)
         except IOError as exc:
-            raise TabunError('IOError: ' + text(exc), -30, exc=exc)
+            raise TabunError('IOError: ' + text(exc), TabunError.TIMEOUT, exc=exc)
 
     def send_request(self, request, redir=True, nowait=False, timeout=None):
         """Отправляет запрос (строку со ссылкой или объект ``Request``).
