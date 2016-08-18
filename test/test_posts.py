@@ -175,12 +175,12 @@ def test_get_post_other_blog_2(set_mock, user):
     assert user.get_post(132085, 'blog').blog is None
 
 
-@pytest.mark.parametrize("blog_id,blog,result_url,draft,tags", [
-    (6, 'news', 'https://tabun.everypony.ru/blog/news/1.html', False, ['Т2', 'Т3']),
-    (6, 'news', 'https://tabun.everypony.ru/blog/news/1.html', False, ['Т2, Т3']),
-    (None, None, 'https://tabun.everypony.ru/blog/1.html', True, ['Т2', 'Т3'])
+@pytest.mark.parametrize("blog_id,blog,result_url,draft,tags,forbid_comment", [
+    (6, 'news', 'https://tabun.everypony.ru/blog/news/1.html', False, ['Т2', 'Т3'], False),
+    (6, 'news', 'https://tabun.everypony.ru/blog/news/1.html', False, ['Т2, Т3'], True),
+    (None, None, 'https://tabun.everypony.ru/blog/1.html', True, ['Т2', 'Т3'], False)
 ])
-def test_add_post_ok(form_intercept, set_mock, user, blog_id, blog, result_url, draft, tags):
+def test_add_post_ok(form_intercept, set_mock, user, blog_id, blog, result_url, draft, tags, forbid_comment):
     set_mock({
         '/topic/add/': (None, {
             'headers': {'location': result_url},
@@ -198,15 +198,92 @@ def test_add_post_ok(form_intercept, set_mock, user, blog_id, blog, result_url, 
             assert data.get('submit_topic_save') == ['Сохранить в черновиках'.encode('utf-8')]
         else:
             assert data.get('submit_topic_publish') == ['Опубликовать'.encode('utf-8')]
+        if forbid_comment:
+            assert data.get('topic_forbid_comment') == [b'1']
+        else:
+            assert 'topic_forbid_comment' not in data
 
-    result = user.add_post(blog_id, 'Т0', 'Б1', tags, draft)
+    result = user.add_post(blog_id, 'Т0', 'Б1', tags, forbid_comment, draft=draft)
     assert result == (blog, 1)
 
 
-def test_add_post_error(set_mock, user):
-    set_mock({'/topic/add/': 'topic_add_error.html'})
+@pytest.mark.parametrize("blog_id,blog,result_url,draft,tags,forbid_comment", [
+    (6, 'news', 'https://tabun.everypony.ru/blog/news/1.html', False, ['Т2', 'Т3'], False),
+    (6, 'news', 'https://tabun.everypony.ru/blog/news/1.html', False, ['Т2, Т3'], True),
+    (None, None, 'https://tabun.everypony.ru/blog/1.html', True, ['Т2', 'Т3'], False)
+])
+def test_add_poll_ok(form_intercept, set_mock, user, blog_id, blog, result_url, draft, tags, forbid_comment):
+    set_mock({
+        '/question/add/': (None, {
+            'headers': {'location': result_url},
+            'status': 302, 'status_msg': 'Found'
+        }
+    )})
+    @form_intercept('/question/add/')
+    def poll_add(data, headers):
+        assert data.get('blog_id') == [text(blog_id if blog_id is not None else 0).encode('utf-8')]
+        assert data.get('security_ls_key') == [b'0123456789abcdef0123456789abcdef']
+        assert data.get('topic_title') == ['Т0'.encode('utf-8')]
+        assert data.get('answer[]') == [b'foo', b'bar']
+        assert data.get('topic_text') == ['Б1'.encode('utf-8')]
+        assert data.get('topic_tags') == ['Т2, Т3'.encode('utf-8')]
+        if draft:
+            assert data.get('submit_topic_save') == ['Сохранить в черновиках'.encode('utf-8')]
+        else:
+            assert data.get('submit_topic_publish') == ['Опубликовать'.encode('utf-8')]
+        if forbid_comment:
+            assert data.get('topic_forbid_comment') == [b'1']
+        else:
+            assert 'topic_forbid_comment' not in data
+
+    result = user.add_poll(blog_id, 'Т0', ('foo', 'bar'), 'Б1', tags, forbid_comment, draft=draft)
+    assert result == (blog, 1)
+
+
+def test_add_poll_error(set_mock, user):
+    set_mock({'/question/add/': 'topic_add_error.html'})
     with pytest.raises(api.TabunResultError) as excinfo:
-        user.add_post(None, '', '', [])
+        user.add_poll(None, '', ('foo', 'bar'), '', [])
+    # TODO: test len(choices) > 20
+    assert excinfo.value.message == 'Поле Заголовок слишком короткое (минимально допустимо 2 символов)'
+
+
+@pytest.mark.parametrize("blog_id,blog,result_url,draft,tags,forbid_comment", [
+    (6, 'news', 'https://tabun.everypony.ru/blog/news/1.html', False, ['Т2', 'Т3'], False),
+    (6, 'news', 'https://tabun.everypony.ru/blog/news/1.html', False, ['Т2, Т3'], True),
+    (None, None, 'https://tabun.everypony.ru/blog/1.html', True, ['Т2', 'Т3'], False)
+])
+def test_edit_post_ok(form_intercept, set_mock, user, blog_id, blog, result_url, draft, tags, forbid_comment):
+    set_mock({
+        '/topic/edit/1/': (None, {
+            'headers': {'location': result_url},
+            'status': 302, 'status_msg': 'Found'
+        }
+    )})
+    @form_intercept('/topic/edit/1/')
+    def topic_edit(data, headers):
+        assert data.get('blog_id') == [text(blog_id if blog_id is not None else 0).encode('utf-8')]
+        assert data.get('security_ls_key') == [b'0123456789abcdef0123456789abcdef']
+        assert data.get('topic_title') == ['Т0'.encode('utf-8')]
+        assert data.get('topic_text') == ['Б1'.encode('utf-8')]
+        assert data.get('topic_tags') == ['Т2, Т3'.encode('utf-8')]
+        if draft:
+            assert data.get('submit_topic_save') == ['Сохранить в черновиках'.encode('utf-8')]
+        else:
+            assert data.get('submit_topic_publish') == ['Опубликовать'.encode('utf-8')]
+        if forbid_comment:
+            assert data.get('topic_forbid_comment') == [b'1']
+        else:
+            assert 'topic_forbid_comment' not in data
+
+    result = user.edit_post(1, blog_id, 'Т0', 'Б1', tags, forbid_comment, draft=draft)
+    assert result == (blog, 1)
+
+
+def test_edit_post_error(set_mock, user):
+    set_mock({'/topic/edit/1/': 'topic_add_error.html'})
+    with pytest.raises(api.TabunResultError) as excinfo:
+        user.edit_post(1, None, '', '', [])
     assert excinfo.value.message == 'Поле Заголовок слишком короткое (минимально допустимо 2 символов)'
 
 

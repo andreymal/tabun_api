@@ -1241,8 +1241,9 @@ class User(object):
 
         return utils.parse_html_fragment(html)[0].get('src', '')
 
-    def add_post(self, blog_id, title, body, tags, draft=False, check_if_error=False):
-        """Отправляет пост и возвращает имя блога с номером поста.
+    def add_post(self, blog_id, title, body, tags, *args, **kwargs):
+        """Отправляет пост и возвращает имя блога с номером поста. Может кидаться
+        исключением :class:`~tabun_api.TabunResultError` при невалидном посте.
 
         :param blog_id: ID блога, в который добавляется пост
         :type blog_id: int
@@ -1252,13 +1253,40 @@ class User(object):
         :type body: строка
         :param tags: теги поста
         :type tags: строка или коллекция строк
-        :param draft: создание в черновиках вместо публикации
-        :type draft: bool
-        :param check_if_error: проверяет наличие поста по заголовку даже в случае ошибки
+        :param bool forbid_comment: закрыть (True) или открыть (False) написание комментариев
+        :param bool draft: если True, то создание в черновиках вместо публикации
+        :param bool check_if_error: проверяет наличие поста по заголовку даже в случае ошибки
           (если, например, таймаут или 404, но пост, как иногда бывает, добавляется)
-        :type check_if_error: bool
         :returns: кортеж ``(blog, post_id)`` или ``(None, None)`` при неудаче
         """
+
+        # tmp: forbid_comment=False, draft=False, check_if_error=False
+        if args:
+            if 'draft' not in kwargs:
+                # Обратная совместимость такая обратная, эх-эх
+                warnings.warn('Arguments of add_post and add_poll methods were changed; please use `draft=True/False` instead of positional argument', FutureWarning, stacklevel=2)
+
+                forbid_comment = False
+                draft = args[0]
+                if len(args) == 2:
+                    # args=(draft, check_if_error), kwargs={}
+                    check_if_error = args[1]
+                elif len(args) > 2:
+                    raise TypeError
+                else:
+                    # args=(draft,), kwargs={check_if_error}
+                    check_if_error = kwargs.get('check_if_error', False)
+            else:
+                if len(args) != 1:
+                    raise TypeError
+                forbid_comment = args[0]
+                draft = kwargs.get('draft', False)
+                check_if_error = kwargs.get('check_if_error', False)
+        else:
+            # args=(), kwargs={forbid_comment, draft, check_if_error}
+            forbid_comment = kwargs.get('forbid_comment', False)
+            draft = kwargs.get('draft', False)
+            check_if_error = kwargs.get('check_if_error', False)
 
         self.check_login()
         blog_id = int(blog_id if blog_id else 0)
@@ -1274,6 +1302,9 @@ class User(object):
             'topic_text': text(body),
             'topic_tags': text(tags)
         }
+        if forbid_comment:
+            fields['topic_forbid_comment'] = '1'
+
         if draft:
             fields['submit_topic_save'] = "Сохранить в черновиках"
         else:
@@ -1296,20 +1327,21 @@ class User(object):
 
             try:
                 posts = self.get_posts(url)
-            except:
+            except TabunError:
                 posts = []
             posts.reverse()
 
             for post in posts[:2]:
-                if posts and post.title == text(title) and post.author == self.username:
+                if post and post.title == text(title) and post.author == self.username:
                     return post.blog, post.post_id
 
             raise
         else:
             return parse_post_url(link)
 
-    def add_poll(self, blog_id, title, choices, body, tags, draft=False, check_if_error=False):
-        """Создает опрос и возвращает имя блога с номером поста.
+    def add_poll(self, blog_id, title, choices, body, tags, *args, **kwargs):
+        """Создает опрос и возвращает имя блога с номером поста. Может кидаться
+        исключением :class:`~tabun_api.TabunResultError` при невалидном посте.
 
         :param blog_id: ID блога, в который добавляется опрос
         :type blog_id: int
@@ -1321,16 +1353,40 @@ class User(object):
         :type body: строка
         :param tags: теги поста
         :type tags: строка или коллекция строк
-        :param draft: создание в черновиках вместо публикации
-        :type draft: bool
-        :param check_if_error: проверяет наличие поста по заголовку даже в случае ошибки
+        :param bool forbid_comment: закрыть (True) или открыть (False) написание комментариев
+        :param bool draft: если True, то создание в черновиках вместо публикации
+        :param bool check_if_error: проверяет наличие поста по заголовку даже в случае ошибки
           (если, например, таймаут или 404, но пост, как иногда бывает, добавляется)
-        :type check_if_error: bool
         :returns: кортеж ``(blog, post_id)`` или ``(None, None)`` при неудаче
         """
 
-        if len(choices) > 20:
-            raise TabunError("Can't have more than 20 choices in poll, but had %d" % len(choices))
+        # tmp: forbid_comment=False, draft=False, check_if_error=False
+        if args:
+            if 'draft' not in kwargs:
+                # Обратная совместимость такая обратная, эх-эх
+                warnings.warn('Arguments of add_post and add_poll methods were changed; please use `draft=True/False` instead of positional argument', FutureWarning, stacklevel=2)
+
+                forbid_comment = False
+                draft = args[0]
+                if len(args) == 2:
+                    # args=(draft, check_if_error), kwargs={}
+                    check_if_error = args[1]
+                elif len(args) > 2:
+                    raise TypeError
+                else:
+                    # args=(draft,), kwargs={check_if_error}
+                    check_if_error = kwargs.get('check_if_error', False)
+            else:
+                if len(args) != 1:
+                    raise TypeError
+                forbid_comment = args[0]
+                draft = kwargs.get('draft', False)
+                check_if_error = kwargs.get('check_if_error', False)
+        else:
+            # args=(), kwargs={forbid_comment, draft, check_if_error}
+            forbid_comment = kwargs.get('forbid_comment', False)
+            draft = kwargs.get('draft', False)
+            check_if_error = kwargs.get('check_if_error', False)
 
         self.check_login()
         blog_id = int(blog_id if blog_id else 0)
@@ -1353,6 +1409,8 @@ class User(object):
             fields.append(('submit_topic_save', "Сохранить в черновиках"))
         else:
             fields.append(('submit_topic_publish', "Опубликовать"))
+        if forbid_comment:
+            fields.append(('topic_forbid_comment', '1'))
 
         try:
             result = self.send_form('/question/add/', fields, redir=False)
@@ -1371,15 +1429,15 @@ class User(object):
 
             try:
                 posts = self.get_posts(url)
-            except:
+            except TabunError:
                 posts = []
             posts.reverse()
 
             for post in posts[:2]:
-                if posts and post.title == text(title) and post.author == self.username:
+                if post and post.title == text(title) and post.author == self.username:
                     return post.blog, post.post_id
 
-            return None, None
+            raise
         else:
             return parse_post_url(link)
 
@@ -2718,8 +2776,9 @@ class User(object):
 
         return blog_title, blog_url, blog_type == "close", blog_description, blog_limit_rating_topic
 
-    def edit_post(self, post_id, blog_id, title, body, tags, forbid_comment=False, draft=False):
-        """Редактирует пост и возвращает его блог и номер.
+    def edit_post(self, post_id, blog_id, title, body, tags, forbid_comment=False, draft=False, check_if_error=False):
+        """Редактирует пост и возвращает его блог и номер. Может кидаться
+        исключением :class:`~tabun_api.TabunResultError` при невалидном посте.
 
         :param int post_id: ID редактируемого поста
         :param int blog_id: ID блога, в который поместить пост
@@ -2731,6 +2790,10 @@ class User(object):
         :type tags: строка или коллекция строк
         :param bool forbid_comment: закрыть (True) или открыть (False) написание комментариев
         :param bool draft: перемещение в черновики (True) или публикация из черновиков (False)
+        :param bool check_if_error: проверяет наличие поста по заголовку даже в случае ошибки
+          (если, например, таймаут или 404, но пост, как иногда бывает, добавляется). Учтите, что
+          в отличие от ``add_post`` здесь при проверке будет загружен сам пост, что может привести
+          к слёту подсветки новых комментариев
         :return: кортеж ``(blog, post_id)`` или ``(None, None)`` при неудаче
         """
 
@@ -2756,8 +2819,32 @@ class User(object):
         else:
             fields['submit_topic_publish'] = "Опубликовать"
 
-        link = self.send_form('/topic/edit/' + text(int(post_id)) + '/', fields, redir=False).headers.get('location')
-        return parse_post_url(link)
+        try:
+            result = self.send_form('/topic/edit/' + text(int(post_id)) + '/', fields, redir=False)
+            data = self.saferead(result)
+            error = utils.find_substring(data, b'<ul class="system-message-error">', b'</ul>', with_start=False, with_end=False)
+            if error and b':' in error:
+                error = utils.find_substring(error.decode('utf-8', 'replace'), ':', '</li>', extend=True, with_start=False, with_end=False).strip()
+                raise TabunResultError(error)
+            link = result.headers.get('location')
+        except TabunResultError:
+            raise
+        except TabunError:
+            if not check_if_error or not self.username:
+                raise
+
+            try:
+                post = self.get_post(int(post_id))
+            except TabunError:
+                post = None
+
+            if post and post.title == text(title) and post.author == self.username:
+                return post.blog, post.post_id
+
+            raise
+        else:
+            return parse_post_url(link)
+
 
     def invite(self, blog_id, users=None, username=None):
         """Отправляет инвайт в блог с указанным номером указанному пользователю
