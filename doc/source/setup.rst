@@ -3,19 +3,20 @@
 
 Через pip::
 
-    pip install git+https://github.com/andreymal/tabun_api.git#egg=tabun_api[imageutils]
+    pip install git+https://github.com/andreymal/tabun_api.git#egg=tabun_api[full]
 
-``imageutils`` подтянет `Pillow <https://pillow.readthedocs.org/>`_ для работы функции
-:func:`~tabun_api.utils.find_good_image`, выбирающей картинки по их разрешению.
+``full`` подтянет `Pillow <https://pillow.readthedocs.org/>`_ для работы функции
+:func:`~tabun_api.utils.find_good_image`, выбирающей картинки по их разрешению,
+`PySocks <https://github.com/Anorov/PySocks>`_ для возможности работы с прокси-
+сервером и `Js2Py <https://github.com/PiotrDabkowski/Js2Py>`_ для обхода защиты
+CloudFlare.
 
-Если это не нужно, то Pillow можно не ставить::
+Если всё это не нужно, то можно их не ставить::
 
     pip install git+https://github.com/andreymal/tabun_api.git#egg=tabun_api
 
 А ещё можно просто закинуть каталог ``tabun_api`` куда требуется, не забыв установить
 lxml и iso8601.
-
-Для использования SOCKS-прокси также следует установить `PySocks <https://github.com/Anorov/PySocks>`_.
 
 Для вывода предупреждений используется ``logging``. Если вам печатают
 «No handlers could be found for logger "tabun_api"», то значит ваша версия Python

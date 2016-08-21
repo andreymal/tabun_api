@@ -14,6 +14,10 @@ with open('tabun_api/__init__.py', 'rb') as fp:
             version = m.group(1)
             break
 
+imageutils_require = ['Pillow>=3.0']
+proxy_require = ['PySocks>=1.5']
+cf_require = ['Js2Py>=0.39']
+
 
 setup(
     name='tabun_api',
@@ -28,8 +32,10 @@ setup(
     zip_safe=False,
     install_requires=['lxml>=3.3', 'iso8601>=0.1.10'],
     extras_require={
-        'imageutils': ['Pillow>=3.0'],
-        'proxy': ['PySocks>=1.5'],
+        'imageutils': imageutils_require,
+        'proxy': proxy_require,
+        'cf': cf_require,
+        'full': imageutils_require + proxy_require + cf_require,
     },
     classifiers=[
         'Development Status :: 4 - Beta',

@@ -8,7 +8,7 @@ from __future__ import unicode_literals
 import pytest
 import lxml.html
 from tabun_api import utils
-from tabun_api.compat import text
+from tabun_api.compat import PY2, text, binary
 
 from testutil import user
 
@@ -266,3 +266,28 @@ def test_html_escape_single_str():
 
 def test_html_escape_single_bytes():
     assert utils.html_escape(b'&lt;"<>\'', True) == b'&amp;lt;&quot;&lt;&gt;&#39;'
+
+
+def test_get_cookies_dict():
+    from io import BytesIO
+    if PY2:
+        from httplib import HTTPMessage
+    else:
+        from http.client import parse_headers
+
+    fp = BytesIO(
+        b'Set-Cookie: a=b; path=/\r\n'
+        b'Set-Cookie: c=d; path=/\r\n'
+        b'\r\n'
+    )
+
+    if PY2:
+        msg = HTTPMessage(fp)
+    else:
+        msg = parse_headers(fp)
+
+    cookies = utils.get_cookies_dict(msg)
+    assert cookies == {'a': 'b', 'c': 'd'}
+    for k, v in cookies.items():
+        assert isinstance(k, text)
+        assert isinstance(v, text)

@@ -1,0 +1,50 @@
+%HEADER1%
+    
+    <title>Вход на сайт / Табун - место, где пасутся брони</title>
+    
+    <meta name="description" content="Блогосфера фандома My Little Pony: Friendship is Magic">
+    <meta name="keywords" content="пони, брони, my little pony, friendship is magic">
+
+%HEADER2%
+
+%BODY%
+%NO_SIDEBAR%
+                
+<script type="text/javascript">
+    jQuery(document).ready(function($){
+        $('#login-form').bind('submit',function(){
+            ls.user.login('login-form');
+            return false;
+        });
+        $('#login-form-submit').attr('disabled',false);
+    });
+</script>
+
+<h2 class="page-header">Авторизация</h2>
+
+
+
+<form action="https://tabun.everypony.ru/login/" method="POST" id="login-form">
+    
+
+    <p><label for="login">Логин или эл. почта</label>
+    <input type="text" id="login" name="login" class="input-text input-width-200" /></p>
+    
+    <p><label for="password">Пароль</label>
+    <input type="password" id="password" name="password" class="input-text input-width-200" />
+    <small class="validate-error-hide validate-error-login"></small></p>
+    
+    <p><label><input type="checkbox" name="remember" checked class="input-checkbox" /> Запомнить меня</label></p>
+    
+    
+
+    <button type="submit"  name="submit_login" class="button button-primary" id="login-form-submit" disabled="disabled">Войти</button>
+
+        
+    <br />
+    <br />
+    <a href="https://tabun.everypony.ru/registration/">Регистрация</a><br />
+    <a href="https://tabun.everypony.ru/login/reminder/">Напомнить пароль</a>
+</form>
+
+%FOOTER%

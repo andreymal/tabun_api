@@ -18,7 +18,7 @@ import lxml.etree
 # import html5lib
 import iso8601
 
-from .compat import text, text_types, binary, urequest, PY2
+from .compat import text, text_types, binary, urequest, PY2, BaseCookie
 
 #: Логгер tabun_api.
 logger = logging.getLogger('tabun_api')
@@ -1206,3 +1206,28 @@ def gen_user_agent():
             context['pyiv'] = context['pyiv'] + sys.pypy_version_info.releaselevel
 
     return '({system} {machine} {release}) Python/{pyv} {pyi}/{pyiv} urllib/{urv}'.format(**context)
+
+
+def get_cookies_dict(headers):
+    """Возвращает словарь с печеньками, взятыми из HTTP-заголовков ``Set-Cookie``.
+    Ключи и значения — Unicode-строки (``unicode`` в Python 2, ``str`` в Python 3).
+
+    :param http.client.HTTPMessage headers: объект с HTTP-заголовками
+    :rtype: dict
+    """
+
+    cook = BaseCookie()
+    if PY2:
+        cook.load(headers.get("set-cookie") or b'')
+    else:
+        for x in headers.get_all("set-cookie") or ():
+            cook.load(x)
+
+    result = {}
+    for k, v in cook.items():
+        v = v.value
+        if PY2:
+            k = k.decode('utf-8')
+            v = v.decode('utf-8')
+        result[k] = v
+    return result

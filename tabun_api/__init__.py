@@ -695,8 +695,18 @@ class User(object):
     Если нужно добавить или переопределить какие-то HTTP-заголовки для конкретного объекта,
     можно запихнуть всё нужное в словарь ``override_headers``. При этом Cookie, Content-Type,
     X-Requested-With, Referer или ещё что-нибудь в любом случае затираются, если они нужны для
-    отправки запроса (например, формы с созданием поста). Названия заголовков не чувствительны
+    отправки запроса (например, формы с созданием поста). Для установки дополнительных Cookie
+    можно воспользоваться атрибутом ``extra_cookies``. Названия заголовков не чувствительны
     к регистру.
+
+    Иногда CloudFlare внезапно хочет узнать, что клиент является нормальным браузером, и
+    вместо Табуна присылает JavaScript-задачку. Здесь она автоматически решается при помощи
+    `Js2Py <https://pypi.python.org/pypi/Js2Py>`_, если он установлен (``pip install Js2Py``).
+    Вы можете прописать  конструкторе ``avoid_cf=False``, чтобы отключить решение задачки
+    (в таком случае будут выпадать ошибки 503) или ``avoid_cf=True``, и в таком случае будет
+    выкидываться исключение ``ImportError`` при отсутствующем Js2Py. Обход CloudFlare работает
+    только при отправке запросов через методы :func:`~tabun_api.User.urlopen`
+    или :func:`~tabun_api.User.urlread`.
 
     У класса также есть следующие поля:
 
@@ -722,10 +732,11 @@ class User(object):
     proxy = None
     http_host = None
     override_headers = {}
+    sleep_func = time.sleep
 
     def __init__(
         self, login=None, passwd=None, session_id=None, security_ls_key=None, key=None,
-        proxy=None, http_host=None, session_cookie_name='TABUNSESSIONID', phpsessid=None
+        proxy=None, http_host=None, session_cookie_name='TABUNSESSIONID', avoid_cf=None, phpsessid=None
     ):
         if phpsessid is not None:
             warnings.warn('phpsessid is deprecated; use session_id instead of it', FutureWarning, stacklevel=2)
@@ -733,6 +744,20 @@ class User(object):
 
         self.http_host = text(http_host).rstrip('/') if http_host else None
         self.session_cookie_name = text(session_cookie_name)
+
+        self.extra_cookies = {}
+
+        if avoid_cf is None:
+            # None — опциональный обход CF, только если установлен js2py
+            try:
+                import js2py
+            except ImportError:
+                avoid_cf = False
+            else:
+                avoid_cf = True
+        elif avoid_cf:
+            import js2py
+        self.avoid_cf = bool(avoid_cf)
 
         self.jd = JSONDecoder()
         self.lock = threading.Lock()
@@ -755,29 +780,22 @@ class User(object):
             return
 
         if not self.session_id or not security_ls_key:
-            resp = self.urlopen("/")
+            resp = self.urlopen('/login/', redir=False)
+            if resp.code // 100 == 3:
+                resp = self.urlopen('/')
             data = self._netwrap(resp.read, 1024 * 25)
             resp.close()
 
-            cook = BaseCookie()
-            if PY2:
-                cook.load(resp.headers.get("set-cookie") or b'')
-            else:
-                for x in resp.headers.get_all("set-cookie") or ():
-                    cook.load(x)
+            cookies = utils.get_cookies_dict(resp.headers)
             if not self.session_id:
-                self.session_id = cook.get(self.session_cookie_name)
-                if self.session_id:
-                    self.session_id = self.session_id.value
+                self.session_id = cookies.get(self.session_cookie_name)
             if not self.key:
-                ckey = cook.get("key")
-                self.key = ckey.value if ckey else None
+                self.key = cookies.get('key')
 
             self.update_userinfo(data)
 
-            if self.security_ls_key == b'LIVESTREET_SECURITY_KEY':  # old security fix by Random
-                csecurity_ls_key = cook.get("LIVESTREET_SECURITY_KEY")
-                self.security_ls_key = csecurity_ls_key.value if csecurity_ls_key else None
+            if self.security_ls_key == 'LIVESTREET_SECURITY_KEY':  # old security fix by Random
+                self.security_ls_key = cookies.get('LIVESTREET_SECURITY_KEY')
 
         if login and passwd:
             self.login(login, passwd)
@@ -897,7 +915,11 @@ class User(object):
         if self.security_ls_key:
             query += "&security_ls_key=" + urequest.quote(self.security_ls_key)
 
-        resp = self.urlopen("/login/ajax-login", query, {"X-Requested-With": "XMLHttpRequest", "content-type": "application/x-www-form-urlencoded"})
+        resp = self.urlopen("/login/ajax-login", query, {
+            "X-Requested-With": "XMLHttpRequest",
+            "content-type": "application/x-www-form-urlencoded",
+            "Referer": (self.http_host or http_host) + "/login/",
+        })
         data = self.saferead(resp)
         if data[0] not in (b"{", 123):
             raise TabunResultError(data.decode("utf-8", "replace"))
@@ -906,10 +928,9 @@ class User(object):
             raise TabunResultError(data.get("sMsg", ""))
         self.username = login
 
-        cook = BaseCookie()
-        cook.load(resp.headers.get("set-cookie", ""))
-        ckey = cook.get("key")
-        self.key = ckey.value if ckey else None
+        cookies = utils.get_cookies_dict(resp.headers)
+        if 'key' in cookies:
+            self.key = cookies.get('key')
 
     def check_login(self):
         """Генерирует исключение, если нет ``session_id`` или ``security_ls_key``."""
@@ -980,9 +1001,17 @@ class User(object):
             request_headers.update({k.title(): v for k, v in headers.items()})
 
         if with_cookies and self.session_id:
-            request_headers['Cookie'] = ("%s=%s; key=%s; LIVESTREET_SECURITY_KEY=%s" % (
-                self.session_cookie_name, self.session_id, self.key, self.security_ls_key
-            )).encode('utf-8')
+            cookiedict = {
+                self.session_cookie_name: self.session_id,
+                'key': self.key,
+                'LIVESTREET_SECURITY_KEY': self.security_ls_key,
+            }
+        else:
+            cookiedict = {}
+        cookiedict.update(self.extra_cookies)
+        cookie = '; '.join('{}={}'.format(k, v) for k, v in cookiedict.items())
+        if cookie:
+            request_headers['Cookie'] = cookie
 
         for header, value in request_headers.items():
             if not isinstance(header, str):  # py2 and py3
@@ -1054,7 +1083,90 @@ class User(object):
             if not nowait:
                 self.wait_lock.release()
 
-    def urlopen(self, url, data=None, headers=None, redir=True, nowait=False, with_cookies=True, timeout=None):
+    def start_cf_avoiding(self, resp):
+        import js2py
+
+        data = self._netwrap(resp.read)
+
+        # Загружаем печеньки CloudFlare
+        self.extra_cookies.update(utils.get_cookies_dict(resp.headers))
+
+        # Парсим форму, которую будем отправлять через 5 секунд
+        form = utils.find_substring(
+            data,
+            b'<form id="challenge-form"',
+            b'</form>',
+            with_start=True,
+            with_end=True,
+        )
+        if not form:
+            return False
+        form = utils.parse_html_fragment(form)[0]
+
+        # Творим магию джаваскрипта, предварительно отцепив её от браузерных переменных
+        # 0. В оригинале достаётся хост через DOM, мы же пихаем сами
+        t = self.http_host or http_host
+        if '://' in t:
+            t = t.split('://', 1)[-1]
+        t = t.strip('/').replace('"', '\\"').replace('\n', '\\n')
+
+        # 1. Выковыриваем сам js-код
+        f1 = data.find(b'var s,t,o,p,b,r,e,a,k,i,n,g,f')
+        if f1 < 0:
+            return
+        f2 = data.find(b'.value = ', f1, f1 + 5000)
+        if f2 < 0:
+            return
+        f2 = data.find(b';', f2 + 5, f2 + 5000)
+        if f2 < 0:
+            return
+        jscode = data[f1:f2 + 1].decode('utf-8', 'replace')
+
+        # 2. В оригинале ответ устанавливается в форму, но нам нужно его получить сюда
+        f1 = jscode.rfind('.value =')
+        f1 = jscode.rfind(';', 0, f1)
+        f2 = jscode.find('=', f1, f1 + 5000)
+        jscode = jscode[:f1 + 1] + ' ' + jscode[f2 + 1:]
+
+        # 3. Подставляем загруженный выше хост вместо работы с DOM
+        f1 = jscode.find(" = document.createElement('div')")
+        f1 = jscode.rfind(';', 0, f1)
+        f2 = jscode.find("('challenge-form');", f1 + 5)
+        jscode = jscode[:f1 + 1] + 'var t = "' + t + '";' + jscode[f2 + 19:]
+
+        # 4. Выполняем код и профит
+        answer = js2py.eval_js(jscode)
+
+        # Собираем ссылку для ответа
+        url = form.get('action') + '?'
+        for inp in form.findall('input'):
+            url += urequest.quote(inp.get('name').encode('utf-8'))
+            if inp.get('name') == 'jschl_answer':
+                url += '=' + text(answer or '')
+            elif inp.get('value'):
+                url += '=' + urequest.quote(inp.get('value'))
+            url += '&'
+        url = url.rstrip('&')
+
+        # CloudFlare требует ждать перед отправкой ответа; ждём
+        self.sleep_func(4)
+
+        # Отвечаем
+        try:
+            resp2 = self.urlopen(url, redir=False, avoid_cf=False)
+        except TabunError as exc:
+            if exc.code == 503:
+                return False
+            else:
+                raise
+
+        # В ответе CloudFlare просит поставить ещё печенек
+        self.extra_cookies.update(utils.get_cookies_dict(resp2.headers))
+
+        return resp2.code // 100 == 3
+
+
+    def urlopen(self, url, data=None, headers=None, redir=True, nowait=False, with_cookies=True, timeout=None, avoid_cf=None):
         """Отправляет HTTP-запрос и возвращает результат вызова ``urllib.urlopen`` (объект ``addinfourl``).
 
         Во избежание случайной DoS-атаки между несколькими запросами подряд имеется пауза
@@ -1068,22 +1180,31 @@ class User(object):
         :type headers: кортежи из двух строк/bytes или словарь
         :param bool redir: следовать ли по перенаправлениям (3xx)
         :param bool nowait: игнорирование очереди запросов (которая нужна во избежание DoS)
-        :param bool with_cookies: прикреплять ли session_id и остальные печеньки (отключайте для запросов не к Табуну)
+        :param bool with_cookies: прикреплять ли session_id и остальные печеньки
+          (отключайте для запросов не к Табуну) (печеньки из ``extra_cookies`` прикрепляются в любом случае)
         :param timeout: таймаут (по умолчанию ``user.timeout``)
         :type timeout: float или None
+        :param bool avoid_cf: переопределяет значение поля ``avoid_cf`` (см. конструктор)
         :rtype: ``urllib.addinfourl`` / ``urllib.response.addinfourl``
         """
+        if avoid_cf is None:
+            avoid_cf = self.avoid_cf
+        for i in range(10):
+            try:
+                req = self.build_request(url, data, headers, with_cookies)
+                return self.send_request(req, redir, nowait, timeout)
+            except TabunError as exc:
+                if i >= 9 or not avoid_cf or exc.code != 503 or not isinstance(exc.exc, urequest.HTTPError) or not exc.exc.headers.get('CF-RAY'):
+                    raise
+                # Обход DDoS Protection от CloudFlare
+                self.start_cf_avoiding(exc.exc)
 
-        req = self.build_request(url, data, headers, with_cookies)
-        return self.send_request(req, redir, nowait, timeout)
-
-    def urlread(self, url, data=None, headers=None, redir=True, nowait=False, with_cookies=True, timeout=None):
+    def urlread(self, url, data=None, headers=None, redir=True, nowait=False, with_cookies=True, timeout=None, avoid_cf=None):
         """Как ``return self.urlopen(*args, **kwargs).read()``, но с перехватом
         исключений, возникших в процессе чтения (см. :func:`~tabun_api.User.saferead`).
         """
 
-        req = self.build_request(url, data, headers, with_cookies)
-        resp = self.send_request(req, redir, nowait, timeout)
+        resp = self.urlopen(url, data, headers, redir, nowait, with_cookies, timeout, avoid_cf)
         try:
             return self._netwrap(resp.read)
         finally:

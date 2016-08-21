@@ -52,6 +52,7 @@ current_mocks = {}
 
 mocks = {
     '/': ('index.html', None),
+    '/login/': ('login.html', None),
     '/blog/132085.html': ('132085.html', None),
     '/blog/borderline/138982.html': ('138982.html', None),
     '/blog/138983.html': ('138983.html', None),
@@ -218,7 +219,14 @@ def build_response(req_url, result_path, optparams=None):
 
 class UserTest(api.User):
     def __init__(self, *args, **kwargs):
+        if 'avoid_cf' not in kwargs:
+            kwargs['avoid_cf'] = False  # Чтобы не тратить время на импорт js2py
+        self.sleeps = [0, 0.0]
         super(UserTest, self).__init__(*args, **kwargs)
+
+    def sleep_func(self, tm):
+        self.sleeps[0] += 1
+        self.sleeps[1] += tm
 
     def test_open(self, fullurl, data=None, timeout=None):
         if isinstance(fullurl, (text, binary)):
