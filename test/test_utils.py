@@ -291,3 +291,26 @@ def test_get_cookies_dict():
     for k, v in cookies.items():
         assert isinstance(k, text)
         assert isinstance(v, text)
+
+
+def test_is_module_available_ok():
+    assert utils.is_module_available('os') is True
+
+
+def test_is_module_available_notfound():
+    import string
+    import random
+    rndmod = ''.join(random.choice(string.ascii_letters) for _ in range(random.randrange(16, 64)))
+    assert utils.is_module_available(rndmod) is False
+
+
+def test_is_module_available_submodule_ok():
+    assert utils.is_module_available('json.decoder') is True
+
+
+def test_is_module_available_submodule_notfound():
+    import string
+    import random
+    rndmod = ''.join(random.choice(string.ascii_letters) for _ in range(random.randrange(8, 24)))
+    rndmod = 'json.' + rndmod
+    assert utils.is_module_available(rndmod) is False

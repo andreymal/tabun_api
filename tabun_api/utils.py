@@ -1231,3 +1231,37 @@ def get_cookies_dict(headers):
             v = v.decode('utf-8')
         result[k] = v
     return result
+
+
+def is_module_available(name):
+    """Проверяет доступность модуля для импорта, при этом не импортируя его.
+
+    :param str name: имя модуля
+    :rtype: bool
+    """
+
+    if PY2 and isinstance(name, text):
+        name = name.encode('utf-8')
+    elif not isinstance(name, text):
+        name = name.decode('utf-8')
+
+    if PY2:
+        import imp
+        path = None
+        try:
+            for x in name.split('.'):
+                if path is not None:
+                    path = [path]
+                path = imp.find_module(x, path)[1]
+            return True
+        except ImportError:
+            return False
+
+    elif sys.version_info < (3, 4):
+        import importlib
+        return importlib.find_loader(name) is not None
+
+    else:
+        # >= 3.4
+        import importlib.util
+        return importlib.util.find_spec(name) is not None

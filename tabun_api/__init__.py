@@ -749,14 +749,10 @@ class User(object):
 
         if avoid_cf is None:
             # None — опциональный обход CF, только если установлен js2py
-            try:
-                import js2py
-            except ImportError:
-                avoid_cf = False
-            else:
-                avoid_cf = True
+            avoid_cf = utils.is_module_available('js2py')
         elif avoid_cf:
-            import js2py
+            if not utils.is_module_available('js2py'):
+                raise ImportError("No module named 'js2py'")
         self.avoid_cf = bool(avoid_cf)
 
         self.jd = JSONDecoder()
