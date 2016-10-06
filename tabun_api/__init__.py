@@ -290,7 +290,7 @@ class Comment(object):
                  utctime=None, raw_body=None, context=None, vote=None):
         self.time = time
         self.blog = text(blog) if blog else None
-        self.post_id = int(post_id) if post_id else None
+        self.post_id = int(post_id) if post_id is not None else None
         self.comment_id = int(comment_id)
         self.author = text(author) if author else None
         self.vote_total = int(vote_total) if vote_total is not None else None
@@ -411,7 +411,7 @@ class Blog(object):
         self.vote_count = int(vote_count)
         self.posts_count = int(posts_count)
         self.created = created
-        self.avatar = text(avatar)
+        self.avatar = text(avatar) if avatar else None
 
         self.description, self.raw_description = utils.normalize_body(description, raw_description, cls='blog-content text')
 
@@ -1667,6 +1667,8 @@ class User(object):
         }
 
         data = self.send_form_and_read('/ajax/preview/topic/', fields, (), headers={'x-requested-with': 'XMLHttpRequest'})
+        if data == b'Hacking attemp!':
+            raise TabunResultError('Hacking attemp!')
         node = utils.parse_html_fragment(data)[0]
         data = node.text
         result = self.jd.decode(data)
@@ -3235,7 +3237,7 @@ def parse_activity(item):
         typ = ActivityItem.POST_ADD
         href = item.xpath('a[2]')[0].get('href')
         blog, post_id = parse_post_url(href)
-        title = item.xpath('a[2]/text()[1]')[0]
+        title = item.xpath('a[2]')[0].text or ''
 
     elif 'stream-item-type-add_comment' in classes:
         typ = ActivityItem.COMMENT_ADD
@@ -3244,26 +3246,26 @@ def parse_activity(item):
         comment_id = int(href[href.rfind("#comment") + 8:])
         data = item.xpath('div/text()')
         data = data[0] if data else None
-        title = item.xpath('a[2]/text()[1]')[0]
+        title = item.xpath('a[2]')[0].text or ''
 
     elif 'stream-item-type-add_blog' in classes:
         typ = ActivityItem.BLOG_ADD
         href = item.xpath('a[2]')[0].get('href')[:-1]
         blog = href[href.rfind('/') + 1:]
-        title = item.xpath('a[2]/text()[1]')[0]
+        title = item.xpath('a[2]')[0].text or ''
 
     elif 'stream-item-type-vote_topic' in classes:
         typ = ActivityItem.POST_VOTE
         href = item.xpath('a[2]')[0].get('href')
         blog, post_id = parse_post_url(href)
-        title = item.xpath('a[2]/text()[1]')[0]
+        title = item.xpath('a[2]')[0].text or ''
 
     elif 'stream-item-type-vote_comment' in classes:
         typ = ActivityItem.COMMENT_VOTE
         href = item.xpath('a[2]')[0].get('href')
         blog, post_id = parse_post_url(href)
         comment_id = int(href[href.rfind("#comment") + 8:])
-        title = item.xpath('a[2]/text()[1]')[0]
+        title = item.xpath('a[2]')[0].text or ''
 
     elif 'stream-item-type-vote_blog' in classes:
         typ = ActivityItem.BLOG_VOTE
@@ -3275,7 +3277,7 @@ def parse_activity(item):
             data = data[:data.find('/')]
         else:
             blog = href[href.rfind('/') + 1:]
-        title = item.xpath('a[2]/text()[1]')[0]
+        title = item.xpath('a[2]')[0].text or ''
 
     elif 'stream-item-type-vote_user' in classes:
         typ = ActivityItem.USER_VOTE
@@ -3289,7 +3291,7 @@ def parse_activity(item):
         typ = ActivityItem.JOIN_BLOG
         href = item.xpath('a[2]')[0].get('href')[:-1]
         blog = href[href.rfind('/') + 1:]
-        title = item.xpath('a[2]/text()[1]')[0]
+        title = item.xpath('a[2]')[0].text or ''
 
     elif 'stream-item-type-add_wall' in classes:
         typ = ActivityItem.WALL_ADD
