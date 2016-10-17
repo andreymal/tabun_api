@@ -917,7 +917,7 @@ class User(object):
             "Referer": (self.http_host or http_host) + "/login/",
         })
         data = self.saferead(resp)
-        if data[0] not in (b"{", 123):
+        if data.lstrip()[0] not in (b"{", 123):
             raise TabunResultError(data.decode("utf-8", "replace"))
         data = self.jd.decode(data.decode('utf-8'))
         if data.get('bStateError'):
