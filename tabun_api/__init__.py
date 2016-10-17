@@ -779,7 +779,7 @@ class User(object):
             resp = self.urlopen('/login/', redir=False)
             if resp.code // 100 == 3:
                 resp = self.urlopen('/')
-            data = self._netwrap(resp.read, 1024 * 25)
+            data = self._netwrap(resp.read)  # LIVESTREET_SECURITY_KEY в конце страницы и нужен нам
             resp.close()
 
             cookies = utils.get_cookies_dict(resp.headers)
@@ -836,7 +836,7 @@ class User(object):
 
     def update_security_ls_key(self, raw_data):
         """Выдирает security_ls_key из страницы. Вызывается из update_userinfo."""
-        pos = raw_data.find(b"var LIVESTREET_SECURITY_KEY =")
+        pos = raw_data.rfind(b"var LIVESTREET_SECURITY_KEY =")
         if pos > 0:
             ls_key = raw_data[pos:]
             ls_key = ls_key[ls_key.find(b"'") + 1:]
