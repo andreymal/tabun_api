@@ -142,14 +142,8 @@
         <div class="folding"></div>
         
         <div id="comment_content_id_9444642" class="comment-content">
-            <div class=" text">
-                К1
-            </div>
+            <div class="text current">К1</div>
         </div>
-
-        <div id="info_edit_9444642" class="info_edit"  style="display: none;">
-                    </div>
-        
         <ul class="comment-info">
             <li class="comment-author comment-topic-author" title="Автор">
                 <a href="http://tabun.everypony.ru/profile/test/"><img src="http://tabun.everypony.ru/uploads/images/00/36/59/2013/02/04/avatar_24x24.gif" alt="avatar" class="comment-avatar" /></a>
@@ -160,8 +154,6 @@
                     30 мая 2015, 19:15
                 </time>
             </li>
-            
-            
                                     
                 <li id="vote_area_comment_9444642" class="vote vote-expired">
                     <div class="vote-up" onclick="return ls.vote.vote(9444642,this,1,'comment');"></div>
@@ -180,19 +172,15 @@
                 </a>
             </li>
             
-                        <li class="goto goto-comment-child"><a href="#" title="Обратно к ответу">↓</a></li>
-            
-                                                <li><a href="#" onclick="ls.comments.toggleCommentForm(9444642); return false;" class="reply-link link-dotted">Ответить</a></li>
-                                            <li class="edit"><a href="#" onclick="ls.comments.showform(this, 9444642); return false;">Редактировать</a></li>
-    <li class="save"><a href="#" onclick="ls.comments.edit(this, 9444642); return false;">Сохранить</a></li>
-    <li class="cancel"><a href="#" onclick="ls.comments.cancel(this, 9444642); return false;">Отменить</a></li>
-
-                        
-                <li class="comment-hide">
-                                            <a href="javascript:void(0)" onclick="return ls.comments.hide(9444642)">Скрыть</a>     
-                                    </li>
-
-                    </ul>
+                        <li class="goto goto-comment-child"><a href="#" title="Обратно к ответу">↓</a>
+            </li>
+                                                <li>
+                        <a href="#" onclick="ls.comments.toggleCommentForm(9444642); return false;" class="reply-link link-dotted">Ответить</a>
+                    </li>
+                
+                
+                        <li class="modify-notice"></li>
+        </ul>
         
 </section>
  
@@ -276,14 +264,8 @@
         <div class="folding"></div>
         
         <div id="comment_content_id_9444653" class="comment-content">
-            <div class=" text">
-                К4
-            </div>
+            <div class="text current">К4</div>
         </div>
-
-        <div id="info_edit_9444653" class="info_edit"  style="display: none;">
-                    </div>
-        
         <ul class="comment-info">
             <li class="comment-author comment-topic-author" title="Автор">
                 <a href="http://tabun.everypony.ru/profile/test/"><img src="http://tabun.everypony.ru/uploads/images/00/36/59/2013/02/04/avatar_24x24.gif" alt="avatar" class="comment-avatar" /></a>
@@ -315,18 +297,22 @@
             </li>
             
                             <li class="goto goto-comment-parent"><a href="#" onclick="ls.comments.goToParentComment(9444653,9444652); return false;" title="Ответ на">↑</a></li>
-                        <li class="goto goto-comment-child"><a href="#" title="Обратно к ответу">↓</a></li>
-            
-                                                <li><a href="#" onclick="ls.comments.toggleCommentForm(9444653); return false;" class="reply-link link-dotted">Ответить</a></li>
-                                            <li class="edit"><a href="#" onclick="ls.comments.showform(this, 9444653); return false;">Редактировать</a></li>
-    <li class="save"><a href="#" onclick="ls.comments.edit(this, 9444653); return false;">Сохранить</a></li>
-    <li class="cancel"><a href="#" onclick="ls.comments.cancel(this, 9444653); return false;">Отменить</a></li>
-
-                        
-                <li class="comment-hide">
-                                            <a href="javascript:void(0)" onclick="return ls.comments.hide(9444653)">Скрыть</a>     
-                                    </li>
-
+                        <li class="goto goto-comment-child"><a href="#" title="Обратно к ответу">↓</a>
+            </li>
+                                                <li>
+                        <a href="#" onclick="ls.comments.toggleCommentForm(9444653); return false;" class="reply-link link-dotted">Ответить</a>
+                    </li>
+                
+                
+                
+                    <li class="comment-edit-bw"><a href="#" class="link-dotted" onclick="return ls.comments.toggleEditForm(9444653, true, false);">Изменить</a></li>
+                    <li class="comment-save-edit-bw"><a href="#" class="link-dotted" onclick="return ls.comments.saveEdit(9444653);">Сохранить</a></li>
+                    <li class="comment-preview-edit-bw"><a href="#" class="link-dotted" onclick="return ls.comments.previewEdit(9444653);">Предпросмотр</a></li>
+                    <li class="comment-cancel-edit-bw"><a href="#" class="link-dotted" onclick="return ls.comments.toggleEditForm(9444653, false);">Отмена</a></li>
+                
+                
+                        <li class="modify-notice"></li>
+        </ul>
                     </ul>
         
 </section>
