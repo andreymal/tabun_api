@@ -41,9 +41,9 @@ cf_email = re.compile(r'<[A-Za-z]+ class="__cf_email__".*? data-cfemail="([0-9a-
 cf_email_b = re.compile(r'<[A-Za-z]+ class="__cf_email__".*? data-cfemail="([0-9a-f]+)".+?</script>'.encode('utf-8'), re.DOTALL)
 
 #: Тоже регулярка для расшифровки почты, которую шифрует CloudFlare, но для ссылок.
-cf_email_a = re.compile(r'<[Aa]\s([^>]*)href="/cdn-cgi/l/email-protection#([0-9a-f]+)"\s([^>]*)>', re.DOTALL)
+cf_email_a = re.compile(r'<[Aa]\s([^>]*)href="/cdn-cgi/l/email-protection#([0-9a-f]+)"(\s[^>]*)?>', re.DOTALL)
 
-cf_email_a_b = re.compile(r'<[Aa]\s([^>]*)href="/cdn-cgi/l/email-protection#([0-9a-f]+)"\s([^>]*)>'.encode('utf-8'), re.DOTALL)
+cf_email_a_b = re.compile(r'<[Aa]\s([^>]*)href="/cdn-cgi/l/email-protection#([0-9a-f]+)"(\s[^>]*)?>'.encode('utf-8'), re.DOTALL)
 
 
 def parse_html(data, encoding='utf-8'):
@@ -883,12 +883,12 @@ def decode_cf_email_for_link(m):
     mail = decode_cf_email(data)
 
     if isinstance(data, text):
-        result = '<a {}href="mailto:{}" {}>'.format(left, mail, right)
+        result = '<a {}href="mailto:{}"{}>'.format(left or '', mail, right or '')
     else:
         result = b''.join((
-            b'<a ', left,
+            b'<a ', left or b'',
             b'href="mailto:', mail,
-            b'" ', right,
+            b'"', right or b'',
             b'>',
         ))
 
