@@ -1691,6 +1691,29 @@ class User(object):
         if resp.getcode() // 100 != 3:
             raise TabunError('Cannot delete post', code=resp.getcode())
 
+    def preview_comment(self, body, fix=False, save=False):
+        """Возвращает HTML-код предпросмотра комментария.
+
+        :param body: текст комментария
+        :type body: строка
+        :param bool fix: если False, то предпросмотр для создания комментария,
+          если True, то для редактирования
+        :param bool save: неизвестно
+        :rtype: строка
+        """
+
+        self.check_login()
+
+        fields = {
+            'security_ls_key': self.security_ls_key,
+            'text': text(body),
+            'fix': '1' if fix else '0',
+            'save': '1' if save else '0',
+        }
+
+        data = self.ajax('/ajax/preview/text/', fields, ())
+        return data['sText']
+
     def subscribe_to_new_comments(self, post_id, subscribed, mail=None):
         """Меняет статус подписки на новые комментарии у поста.
 
@@ -2809,16 +2832,32 @@ class User(object):
 
         return self.ajax('/ajax/favourite/save-tags/', fields)['aTags']
 
-    def edit_comment(self, comment_id, text):
-        """Редактирует комментарий и возвращает новое тело комментария. После обновления Табуна не работает."""
+    def edit_comment(self, comment_id, body, set_lock=False):
+        """Редактирует комментарий и возвращает кортеж из трёх строк: новый
+        (или старый, если изменений нет) html-код комментария, сообщение
+        с информацией для пользователя и некий ``notice``. В исключении
+        :class:`~tabun_api.TabunResultError` в словаре `data` доступно поле
+        ``newText``, тоже содержащее тело комментария даже в случае ошибки.
+
+        :param int comment_id: ID комментария, который редактируем
+        :param body: новый текст комментария
+        :type body: строка
+        :param bool set_lock: неизвестно
+        :rtype: (строка, строка или None, строка или None)
+        """
+
         fields = {
-            "commentId": int(comment_id),
-            "text": text.encode("utf-8")
+            'idComment': int(comment_id),
+            'newText': body.encode('utf-8'),
+            'setLock': '1' if set_lock else '0',
         }
 
-        data = self.ajax('/role_ajax/savecomment/', fields)
-        # TODO: raw_body
-        return utils.parse_html_fragment('<div class="text">' + data['sText'] + '</div>')[0]
+        data = self.ajax('/ajax/comment/edit/', fields)
+        return (
+            data['newText'],
+            data.get('sMsg', None),
+            data.get('notice', None),
+        )
 
     def get_editable_post(self, post_id, raw_data=None):
         """Возвращает blog_id, заголовок, исходный код поста, список тегов
@@ -3685,6 +3724,10 @@ def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
         utils.logger.warning('Comment in post %s (id=%s) has invalid link %s! Please report to andreymal.', post_id, node.get('id', 'N/A'), comment_link)
         return
 
+    # Определяем, коммент из поста или из ленты (в ленте не все данные есть)
+    vote_area = info.xpath('li[starts-with(@id, "vote_area_comment")]')
+    is_full_comment = vote_area and vote_area[0].xpath('div[@class="vote-up"]')
+
     # Вытаскиваем всякую мелочёвку
     classes = frozenset(node.get('class', '').split())
     unread = "comment-new" in classes
@@ -3737,16 +3780,21 @@ def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
                 utils.logger.warning('Comment %s has invalid parent link! Please report to andreymal.', comment_id)
                 parent_id = None
 
+    # Достаём информацию о редактировании
+    context['can_edit'] = bool(info.xpath('li[@class="comment-edit-bw"]'))
+    if not context['can_edit'] and not is_full_comment:
+        # Для коммента из ленты отсутствие кнопки ничего не значит
+        context['can_edit'] = None
+
     vote = 0
     context['can_vote'] = None
     context['vote_value'] = None
 
     # Достаём информаию о рейтинге
-    vote_area = info.xpath('li[starts-with(@id, "vote_area_comment")]')
     if vote_area:
         vote = vote_area[0].xpath('span[@class="vote-count"]/text()[1]')
         vote = int(vote[0].replace("+", ""))
-        if vote_area[0].xpath('div[@class="vote-up"]'):  # проверка, что пост не из ленты (в ней классы полупустые)
+        if is_full_comment:  # проверка, что пост не из ленты (в ней классы полупустые)
             votecls = vote_area[0].get('class', '').split()
             # vote-expired стоит также у своих комментов, осторожно
             context['can_vote'] = 'voted' not in votecls and 'vote-expired' not in votecls

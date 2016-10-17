@@ -74,6 +74,46 @@ def test_add_comment_fail(set_mock, user):
     assert excinfo.value.message == err
 
 
+def test_edit_comment_ok(form_intercept, set_mock, user):
+    set_mock({'/ajax/comment/edit/': (
+        None,
+        {'data': '{"newText": "тест2", "notice": null, "sMsgTitle": null, "sMsg": "Комментарий изменён", "bStateError": false}'.encode('utf-8')},
+    )})
+
+    @form_intercept('/ajax/comment/edit/')
+    def edit_comment(data, headers):
+        assert headers.get('content-type', '').startswith(b'multipart/form-data; boundary=-')
+
+        assert data.get('security_ls_key') == [b'0123456789abcdef0123456789abcdef']
+        assert data.get('idComment') == [b'777']
+        assert data.get('newText') == ['тест2'.encode('utf-8')]
+        assert data.get('setLock') == [b'0']
+
+    assert user.edit_comment(777, 'тест2') == ('тест2', 'Комментарий изменён', None)
+
+
+def test_edit_comment_error(form_intercept, set_mock, user):
+    set_mock({'/ajax/comment/edit/': (
+        None,
+        {'data': '{"newText": "тест", "notice": null, "sMsgTitle": "Ошибка доступа", "sMsg": "Вы не можете изменять чужой комментарий, срок редактирования которого истёк", "bStateError": true}'.encode('utf-8')},
+    )})
+
+    @form_intercept('/ajax/comment/edit/')
+    def edit_comment(data, headers):
+        assert headers.get('content-type', '').startswith(b'multipart/form-data; boundary=-')
+
+        assert data.get('security_ls_key') == [b'0123456789abcdef0123456789abcdef']
+        assert data.get('idComment') == [b'777']
+        assert data.get('newText') == ['тест2'.encode('utf-8')]
+        assert data.get('setLock') == [b'0']
+
+    with pytest.raises(api.TabunResultError) as excinfo:
+        user.edit_comment(777, 'тест2')
+
+    assert excinfo.value.message == 'Вы не можете изменять чужой комментарий, срок редактирования которого истёк'
+    assert excinfo.value.data.get('newText') == 'тест'
+
+
 # Тесты hashsum гарантируют обратную совместимость, так что лучше их не трогать
 
 
