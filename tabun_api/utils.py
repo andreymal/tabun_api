@@ -526,7 +526,10 @@ def mon2num(s):
 
 
 def is_cut(item):
-    """Возвращает True, если тег похож на кат (на момент написания это ``<a></a>``)."""
+    """Возвращает True, если тег похож на кат (на момент написания это
+    ``<a id="cut"></a>`` (новый) или ``<a></a>`` (старый)).
+    """
+
     return item.tag == "a" and not item.get("href") and not item.text_content() and not item.getchildren()
 
 
