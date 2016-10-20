@@ -1049,7 +1049,9 @@ def escape_comment_contents(data):
         # Выделяем текст коммента
         f1 = data.find(b'class="comment-content">', sect_start, sect_end)
         if f1 >= 0:
-            f = data.find(b'<div class=" text">', f1, f1 + 150)
+            f = data.find(b'<div class="text current">', f1, f1 + 150)
+            if f < 0:
+                f = data.find(b'<div class=" text">', f1, f1 + 150)
             if f < 0:
                 f1 = data.find(b'<div class="text">', f1, f1 + 150)
             else:
