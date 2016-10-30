@@ -56,6 +56,29 @@ def clean_dynamic_data(data, user):
         flags=re.DOTALL,
     )
 
+    # Денежку иногда донатят
+    # Прямой эфир на то и прямой, чтобы постоянно обновляться
+    f = data.find(b'<section class="block block-type-donations">')
+    if f >= 0:
+        f = data.find(b'<ul class="donation-list', f + 1, f + 600)
+    if f >= 0:
+        f = data.find(b'<', f + 1, f + 600)
+    if f >= 0:
+        f2 = data.find(b'</ul>', f + 1, f + 25000)
+        if f2 >= 0:
+            data = data[:f] + data[f2:]
+
+    # Разум Табуна каждый раз новый
+    f = data.find('<header class="block-header sep"><h3>Разум Табуна</h3></header>'.encode('utf-8'))
+    if f >= 0:
+        f = data.find(b'<div class="quote', f + 1, f + 600)
+    if f >= 0:
+        f = data.find(b'<', f + 1, f + 600)
+    if f >= 0:
+        f2 = data.find(b'</div>', f + 1, f + 25000)
+        if f2 >= 0:
+            data = data[:f] + data[f2:]
+
     return data
 
 
@@ -74,6 +97,9 @@ def diffs(args):
         ('/blog/service/6599.html', '403.html'),
         ('/blog/87325.html', '87325.html'),
         ('/profile/Jelwid/', 'Jelwid.html'),
+        ('/page/rules/', 'rules.html'),
+        ('/page/faq/', 'faq.html'),
+        ('/page/faq/editor/', 'faq_editor.html'),
     ]
 
     downloaded = []
