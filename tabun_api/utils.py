@@ -729,7 +729,7 @@ def find_substring(s, start, end, extend=False, with_start=True, with_end=True):
     return s[f1 + (0 if with_start else len(start)):f2 + (len(end) if with_end else 0)]
 
 
-def download(url, maxmem=20 * 1024 * 1024, timeout=5, waitout=15):
+def download(url, maxmem=20 * 1024 * 1024, timeout=5, waitout=15, headers=None):
     """Скачивает данные по ссылке. Имеет защиту от переполнения памяти
     и слишком долгого ожидания, чтобы всякие боты тут не висли.
     В случае чего кидает ``IOError``.
@@ -748,9 +748,22 @@ def download(url, maxmem=20 * 1024 * 1024, timeout=5, waitout=15):
     url = text(url)
     if url.startswith('//'):
         url = 'http:' + url
-    req = urequest.urlopen(url.encode("utf-8") if PY2 else url, timeout=timeout)
 
-    size = req.headers.get('content-length')
+    req = urequest.Request(url.encode("utf-8") if PY2 else url)
+
+    request_headers = {}
+    if headers:
+        request_headers.update({k.title(): v for k, v in headers.items()})
+    for header, value in request_headers.items():
+        if not isinstance(header, str):  # py2 and py3
+            header = str(header)
+        if isinstance(value, text):
+            value = value.encode('utf-8')
+        req.add_header(header, value)
+
+    resp = urequest.urlopen(req, timeout=timeout)
+
+    size = resp.headers.get('content-length')
     if size and size.isdigit() and int(size) > maxmem:
         raise IOError("Too big")
 
@@ -760,13 +773,13 @@ def download(url, maxmem=20 * 1024 * 1024, timeout=5, waitout=15):
     while 1:
         if len(data) > maxmem:
             raise IOError("Too big")
-        tmp = req.read(64 * 1024)
+        tmp = resp.read(64 * 1024)
         if not tmp:
             break
         data += tmp
         if time.time() - start_dwnl >= waitout:
             raise IOError("Too long")
-    req.close()
+    resp.close()
 
     return data
 
