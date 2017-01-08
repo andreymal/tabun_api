@@ -5,6 +5,7 @@ from __future__ import print_function, unicode_literals
 
 import os
 import re
+import ssl
 import time
 import logging
 import warnings
@@ -708,6 +709,14 @@ class User(object):
     только при отправке запросов через методы :func:`~tabun_api.User.urlopen`
     или :func:`~tabun_api.User.urlread`.
 
+    В ``ssl_params`` можно передать дополнительный параметр с настройками SSL. На данный момент
+    параметр всего один — ``verify_mode``:
+
+    * ``skip_all`` — не проверять SSL-сертификаты серверов вообще
+    * ``skip_current_host`` — не проверять SSL-сертификат только того сервера, который прописан
+      в ``http_host``
+    * любое другое значение — проверять все SSL-сертификаты
+
     У класса также есть следующие поля:
 
     * ``username`` — имя пользователя или None
@@ -733,10 +742,16 @@ class User(object):
     http_host = None
     override_headers = {}
     sleep_func = time.sleep
+    opener = None
+    noredir = None
+    opener_nossl = None
+    noredir_nossl = None
 
     def __init__(
         self, login=None, passwd=None, session_id=None, security_ls_key=None, key=None,
-        proxy=None, http_host=None, session_cookie_name='TABUNSESSIONID', avoid_cf=None, phpsessid=None
+        proxy=None, http_host=None, session_cookie_name='TABUNSESSIONID', avoid_cf=None,
+        ssl_params=None,
+        phpsessid=None
     ):
         if phpsessid is not None:
             warnings.warn('phpsessid is deprecated; use session_id instead of it', FutureWarning, stacklevel=2)
@@ -759,7 +774,7 @@ class User(object):
         self.lock = threading.Lock()
         self.wait_lock = threading.Lock()
 
-        self.configure_opener(proxy)
+        self.configure_opener(proxy, ssl_params)
 
         # init
         self.last_query_time = 0
@@ -810,7 +825,9 @@ class User(object):
         warnings.warn('phpsessid is deprecated; use session_id instead of it', FutureWarning, stacklevel=2)
         self.session_id = value
 
-    def configure_opener(self, proxy=None):
+    def configure_opener(self, proxy=None, ssl_params=None):
+        ssl_params = ssl_params or {}
+
         handlers = []
 
         if proxy is None and os.getenv('TABUN_API_PROXY') and os.getenv('TABUN_API_PROXY').count(',') == 2:
@@ -819,6 +836,8 @@ class User(object):
             proxy = proxy.split(',') if isinstance(proxy, text_types) else list(proxy)[:3]
 
         if proxy:
+            # FIXME: а тут настройки SSL игнорируются
+            # https://github.com/Anorov/PySocks/issues/36
             if proxy[0] not in ('socks4', 'socks5'):
                 raise NotImplementedError('I can use only socks proxies now')
             proxy[2] = int(proxy[2])
@@ -830,9 +849,23 @@ class User(object):
                 handlers.append(SocksiPyHandler(socks.PROXY_TYPE_SOCKS4, proxy[1], proxy[2]))
             self.proxy = proxy
 
-        # for thread safety
         self.opener = urequest.build_opener(*handlers)
         self.noredir = urequest.build_opener(*(handlers + [NoRedirect]))
+
+        # Если просят пропускать проверку SSL-сертификата сервера
+        if ssl_params.get('verify_mode') in ('skip_all', 'skip_current_host'):
+            try:
+                ctx_sv = ssl.create_default_context()
+            except AttributeError:
+                utils.logger.warning('Cannot call ssl.create_default_context()! Looks like you use Python<=3.3. SSL params will be ignored.')
+            else:
+                ctx_sv.check_hostname = False
+                ctx_sv.verify_mode = ssl.CERT_NONE
+                h_sv = urequest.HTTPSHandler(context=ctx_sv)
+
+                self.opener_nossl = urequest.build_opener(*handlers + [h_sv])
+                self.noredir_nossl = urequest.build_opener(*handlers + [h_sv, NoRedirect])
+        self.ssl_params = ssl_params
 
     def update_security_ls_key(self, raw_data):
         """Выдирает security_ls_key из страницы. Вызывается из update_userinfo."""
@@ -1074,7 +1107,22 @@ class User(object):
             if timeout is None:
                 timeout = self.timeout
 
-            return self._netwrap(self.opener.open if redir else self.noredir.open, request, timeout=timeout, _lock=True)
+            url = request.get_full_url()
+            if isinstance(url, binary):
+                url = url.decode('utf-8')
+
+            opener = self.opener if redir else self.noredir
+
+            # Иногда бывает надо пропускать проверку SSL-сертификата
+            if self.opener_nossl and self.noredir_nossl:
+                if self.ssl_params.get('verify_mode') == 'skip_all':
+                    opener = self.opener_nossl if redir else self.noredir_nossl
+                elif self.ssl_params.get('verify_mode') == 'skip_current_host':
+                    if url == (self.http_host or http_host) or url.startswith((self.http_host or http_host) + '/'):
+                        opener = self.opener_nossl if redir else self.noredir_nossl
+
+            return self._netwrap(opener.open, request, timeout=timeout, _lock=True)
+
         finally:
             if not nowait:
                 self.wait_lock.release()
