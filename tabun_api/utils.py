@@ -36,14 +36,19 @@ youtube_regex = re.compile(r'youtube.com\/embed\/(.{10,15})((\?)|($))')
 ava_regex = re.compile(r"\/((images)|(storage))\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/avatar_([0-9]+)x([0-9]+)\.(...)(\?([0-9]+))?")
 
 #: Регулярка для расшифровки почты, которую шифрует CloudFlare.
-cf_email = re.compile(r'<[A-Za-z]+ class="__cf_email__".*? data-cfemail="([0-9a-f]+)".+?</script>', re.DOTALL)
+cf_email = re.compile(r'<[A-Za-z]+ class="__cf_email__".*? data-cfemail="([0-9a-f]+)".+?</[A-Za-z]+>', re.DOTALL)
 
-cf_email_b = re.compile(r'<[A-Za-z]+ class="__cf_email__".*? data-cfemail="([0-9a-f]+)".+?</script>'.encode('utf-8'), re.DOTALL)
+cf_email_b = re.compile(r'<[A-Za-z]+ class="__cf_email__".*? data-cfemail="([0-9a-f]+)".+?</[A-Za-z]+>'.encode('utf-8'), re.DOTALL)
 
 #: Тоже регулярка для расшифровки почты, которую шифрует CloudFlare, но для ссылок.
 cf_email_a = re.compile(r'<[Aa]\s([^>]*)href="/cdn-cgi/l/email-protection#([0-9a-f]+)"(\s[^>]*)?>', re.DOTALL)
 
 cf_email_a_b = re.compile(r'<[Aa]\s([^>]*)href="/cdn-cgi/l/email-protection#([0-9a-f]+)"(\s[^>]*)?>'.encode('utf-8'), re.DOTALL)
+
+#: Регулярка, убирающая скрипты расшифровки почты от CloudFlare.
+cf_email_s = re.compile(r'<script.{1,2048}getAttribute\(.data-cfemail.\).{1,2048}</script>', re.DOTALL)
+
+cf_email_s_b = re.compile(r'<script.{1,2048}getAttribute\(.data-cfemail.\).{1,2048}</script>'.encode('utf-8'), re.DOTALL)
 
 
 def parse_html(data, encoding='utf-8'):
@@ -916,13 +921,20 @@ def decode_cf_email_for_link(m):
 def replace_cloudflare_emails(data):
     """Декодирует почты, которые зашифровал CloudFlare, в html-странице."""
 
+    is_text = isinstance(data, text)
+
     # В текстах
-    r = cf_email if isinstance(data, text) else cf_email_b
+    r = cf_email if is_text else cf_email_b
     result = r.sub(lambda x: decode_cf_email(x.groups()[0]), data)
 
     # В ссылках
-    ra = cf_email_a if isinstance(result, text) else cf_email_a_b
+    ra = cf_email_a if is_text else cf_email_a_b
     result = ra.sub(decode_cf_email_for_link, result)
+
+    # Убираем <script>
+
+    rs = cf_email_s if is_text else cf_email_s_b
+    result = rs.sub('' if is_text else b'', result)
 
     return result
 
