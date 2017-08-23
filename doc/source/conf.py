@@ -55,7 +55,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'tabun_api'
-copyright = '2016, andreymal'
+copyright = '2017, andreymal'
 author = 'andreymal'
 
 # The version info for the project you're documenting, acts as replacement for
