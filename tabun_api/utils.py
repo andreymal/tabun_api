@@ -612,7 +612,8 @@ def find_images(body, spoiler_title=True, no_other=False):
     return links
 
 
-# copypasted from http://code.activestate.com/recipes/146306-http-client-to-post-using-multipartform-data/
+# copypasted from:
+# https://github.com/ActiveState/code/tree/5cf284892339de263d760babf6a15a9675843d94/recipes/Python/146306_Http_client_POST_using
 # and modified by andreymal
 def encode_multipart_formdata(fields, files, boundary=None):
     """Возвращает кортеж (content_type, body), готовый для отправки HTTP POST--запроса.
