@@ -36,9 +36,9 @@ youtube_regex = re.compile(r'youtube.com\/embed\/(.{10,15})((\?)|($))')
 ava_regex = re.compile(r"\/((images)|(storage))\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/([0-9]+)\/avatar_([0-9]+)x([0-9]+)\.(...)(\?([0-9]+))?")
 
 #: Регулярка для расшифровки почты, которую шифрует CloudFlare.
-cf_email = re.compile(r'<[A-Za-z]+ class="__cf_email__".*? data-cfemail="([0-9a-f]+)".+?</[A-Za-z]+>', re.DOTALL)
+cf_email = re.compile(r'<[A-Za-z]+( href="/cdn-cgi/l/email-protection")? class="__cf_email__".*? data-cfemail="([0-9a-f]+)".+?</[A-Za-z]+>', re.DOTALL)
 
-cf_email_b = re.compile(r'<[A-Za-z]+ class="__cf_email__".*? data-cfemail="([0-9a-f]+)".+?</[A-Za-z]+>'.encode('utf-8'), re.DOTALL)
+cf_email_b = re.compile(r'<[A-Za-z]+( href="/cdn-cgi/l/email-protection")? class="__cf_email__".*? data-cfemail="([0-9a-f]+)".+?</[A-Za-z]+>'.encode('utf-8'), re.DOTALL)
 
 #: Тоже регулярка для расшифровки почты, которую шифрует CloudFlare, но для ссылок.
 cf_email_a = re.compile(r'<[Aa]\s([^>]*)href="/cdn-cgi/l/email-protection#([0-9a-f]+)"(\s[^>]*)?>', re.DOTALL)
@@ -926,7 +926,7 @@ def replace_cloudflare_emails(data):
 
     # В текстах
     r = cf_email if is_text else cf_email_b
-    result = r.sub(lambda x: decode_cf_email(x.groups()[0]), data)
+    result = r.sub(lambda x: decode_cf_email(x.groups()[1]), data)
 
     # В ссылках
     ra = cf_email_a if is_text else cf_email_a_b

@@ -230,50 +230,6 @@ def test_parse_datetime_2014_03():
     assert utils.parse_datetime('2014-10-26T01:00:00+03:00').strftime('%Y-%m-%d %H:%M:%S') == '2014-10-25 22:00:00'
 
 
-def test_replace_cloudflare_emails():
-    data = (
-        '''<a left="1" href="/cdn-cgi/l/email-protection#ff2f402f412e782e7d2f4fbf869ed18d8a" right="2">'''
-        '''<span class="__cf_email__" data-cfemail="c818771876194f194a187888b1a9e6babd">[email&#160;protected]</span>'''
-        '''<script data-cfhash='f9e31' type="text/javascript">/* <![CDATA[ */!'''
-        '''function(t,e,r,n,c,a,p){try{t=document.currentScript||function(){'''
-        '''for(t=document.getElementsByTagName('script'),e=t.length;e--;)'''
-        '''if(t[e].getAttribute('data-cfhash'))return t[e]}();if(t&&(c=t.previousSibling))'''
-        '''{p=t.parentNode;if(a=c.getAttribute('data-cfemail')){'''
-        '''for(e='',r='0x'+a.substr(0,2)|0,n=2;a.length-n;n+=2)'''
-        '''e+='%'+('0'+('0x'+a.substr(n,2)^r).toString(16)).slice(-2);'''
-        '''p.replaceChild(document.createTextNode(decodeURIComponent(e)),c)'''
-        '''}p.removeChild(t)}}catch(u){}}()'''
-        '''/* ]]> */</script></a>'''
-    )
-
-    result = '<a left="1" href="mailto:почта@ya.ru" right="2">почта@ya.ru</a>'
-
-    assert utils.replace_cloudflare_emails(data) == result
-    assert utils.replace_cloudflare_emails(data.encode('utf-8')) == result.encode('utf-8')
-
-
-def test_replace_cloudflare_emails_2():
-    data = (
-        '''<a href="/cdn-cgi/l/email-protection#ff2f402f412e782e7d2f4fbf869ed18d8a">'''
-        '''<div class="__cf_email__" data-cfemail="c818771876194f194a187888b1a9e6babd">[email&#160;protected]</div>'''
-        '''<script data-cfhash='f9e31' type="text/javascript">/* <![CDATA[ */!'''
-        '''function(t,e,r,n,c,a,p){try{t=document.currentScript||function(){'''
-        '''for(t=document.getElementsByTagName('script'),e=t.length;e--;)'''
-        '''if(t[e].getAttribute('data-cfhash'))return t[e]}();if(t&&(c=t.previousSibling))'''
-        '''{p=t.parentNode;if(a=c.getAttribute('data-cfemail')){'''
-        '''for(e='',r='0x'+a.substr(0,2)|0,n=2;a.length-n;n+=2)'''
-        '''e+='%'+('0'+('0x'+a.substr(n,2)^r).toString(16)).slice(-2);'''
-        '''p.replaceChild(document.createTextNode(decodeURIComponent(e)),c)'''
-        '''}p.removeChild(t)}}catch(u){}}()'''
-        '''/* ]]> */</script></a>'''
-    )
-
-    result = '<a href="mailto:почта@ya.ru">почта@ya.ru</a>'
-
-    assert utils.replace_cloudflare_emails(data) == result
-    assert utils.replace_cloudflare_emails(data.encode('utf-8')) == result.encode('utf-8')
-
-
 def test_html_escape_nosingle_str():
     assert utils.html_escape('&lt;"<>\'') == '&amp;lt;&quot;&lt;&gt;\''
 
