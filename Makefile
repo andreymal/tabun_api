@@ -61,4 +61,5 @@ install: clean
 develop:
 	$(PIP) install -r requirements.txt
 	$(PIP) install -r optional-requirements.txt
+	$(PIP) install -r dev-requirements.txt
 	$(PYTHON) setup.py develop
