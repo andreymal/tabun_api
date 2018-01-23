@@ -1,18 +1,19 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import io
 import re
 
 from setuptools import setup
 
 
-with open('tabun_api/__init__.py', 'rb') as fp:
+with io.open('tabun_api/__init__.py', 'r', encoding='utf-8-sig') as fp:
     for line in fp:
-        line = line.decode('utf-8-sig')
         m = re.search(r"^__version__ = '([^']+)'$", line)
         if m:
             version = m.group(1)
             break
+
 
 imageutils_require = ['Pillow>=3.0']
 proxy_require = ['PySocks>=1.5']
