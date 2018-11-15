@@ -776,7 +776,7 @@ class User(object):
             warnings.warn('phpsessid is deprecated; use session_id instead of it', FutureWarning, stacklevel=2)
             session_id = phpsessid
 
-        self.http_host = text(http_host).rstrip('/') if http_host else None
+        self.http_host = text(http_host or globals()['http_host']).rstrip('/')
         self.session_cookie_name = text(session_cookie_name)
 
         self.extra_cookies = {}
@@ -846,7 +846,7 @@ class User(object):
 
     def __repr__(self):
         result = '<tabun_api.User http_host={!r} username={!r}>'.format(
-            self.http_host or http_host,
+            self.http_host,
             self.username,
         )
         if PY2:
@@ -968,14 +968,14 @@ class User(object):
         query = "login=" + urequest.quote(login.encode('utf-8'))
         query += "&password=" + urequest.quote(password.encode('utf-8'))
         query += "&remember=" + ("on" if remember else "off")
-        query += "&return-path=" + urequest.quote(return_path if return_path else (self.http_host or http_host) + "/")
+        query += "&return-path=" + urequest.quote(return_path if return_path else self.http_host + "/")
         if self.security_ls_key:
             query += "&security_ls_key=" + urequest.quote(self.security_ls_key)
 
         resp = self.urlopen("/login/ajax-login", query, {
             "X-Requested-With": "XMLHttpRequest",
             "content-type": "application/x-www-form-urlencoded",
-            "Referer": (self.http_host or http_host) + "/login/",
+            "Referer": self.http_host + "/login/",
         })
         data = self.saferead(resp)
         if data.lstrip()[0] not in (b"{", 123):
@@ -1013,9 +1013,9 @@ class User(object):
         """
 
         if url and url.startswith('/'):
-            url = (self.http_host or http_host) + url
+            url = self.http_host + url
         context = {
-            'http_host': self.http_host or http_host,
+            'http_host': self.http_host,
             'url': url,
             'username': None,
         }
@@ -1045,7 +1045,7 @@ class User(object):
                     x.encode('utf-8') if PY2 else x
                 )) for x in url)
             if url.startswith('/'):
-                url = (self.http_host or http_host) + url
+                url = self.http_host + url
             elif not url.startswith('http://') and not url.startswith('https://'):
                 raise ValueError('Invalid URL: not http and not https')
             url = urequest.Request(url.encode('utf-8') if PY2 else url)
@@ -1147,7 +1147,7 @@ class User(object):
                 if self.ssl_params.get('verify_mode') == 'skip_all':
                     opener = self.opener_nossl if redir else self.noredir_nossl
                 elif self.ssl_params.get('verify_mode') == 'skip_current_host':
-                    if url == (self.http_host or http_host) or url.startswith((self.http_host or http_host) + '/'):
+                    if url == self.http_host or url.startswith(self.http_host + '/'):
                         opener = self.opener_nossl if redir else self.noredir_nossl
 
             return self._netwrap(opener.open, request, timeout=timeout, _lock=True)
@@ -1178,7 +1178,7 @@ class User(object):
 
         # Творим магию джаваскрипта, предварительно отцепив её от браузерных переменных
         # 0. В оригинале достаётся хост через DOM, мы же пихаем сами
-        t = self.http_host or http_host
+        t = self.http_host
         if '://' in t:
             t = t.split('://', 1)[-1]
         t = t.strip('/').replace('"', '\\"').replace('\n', '\\n')
@@ -1733,7 +1733,7 @@ class User(object):
         self.check_login()
         resp = self.urlopen(
             url='/blog/delete/' + text(int(blog_id)) + '/?security_ls_key=' + self.security_ls_key,
-            headers={"referer": (self.http_host or http_host) + "/"},
+            headers={"referer": self.http_host + "/"},
             redir=False
         )
         if resp.getcode() // 100 != 3:
@@ -1785,7 +1785,7 @@ class User(object):
         self.check_login()
         resp = self.urlopen(
             url='/topic/delete/' + text(int(post_id)) + '/?security_ls_key=' + self.security_ls_key,
-            headers={"referer": (self.http_host or http_host) + "/blog/" + text(post_id) + ".html"},
+            headers={"referer": self.http_host + "/blog/" + text(post_id) + ".html"},
             redir=False
         )
         if resp.getcode() // 100 != 3:
@@ -3269,7 +3269,7 @@ class User(object):
         self.check_login()
         resp = self.urlopen(
             url='/talk/delete/' + text(int(talk_id)) + '/?security_ls_key=' + self.security_ls_key,
-            headers={"referer": (self.http_host or http_host) + "/talk/" + text(talk_id) + "/"},
+            headers={"referer": self.http_host + "/talk/" + text(talk_id) + "/"},
             redir=False
         )
         if resp.getcode() // 100 != 3:
