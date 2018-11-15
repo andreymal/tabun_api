@@ -15,16 +15,6 @@
 
 .. autodata:: tabun_api.post_file_regex
 
-----------
-Исключения
-----------
-
-.. autoexception:: tabun_api.TabunError
-   :members:
-
-.. autoexception:: tabun_api.TabunResultError
-   :members:
-
 -----------------------------
 Самое главное тут: класс User
 -----------------------------

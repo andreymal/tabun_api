@@ -8,6 +8,7 @@
 
    setup
    main
+   errors
    utils
    compat
    examples
