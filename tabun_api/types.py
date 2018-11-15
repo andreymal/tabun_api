@@ -41,7 +41,7 @@ class Post(object):
                  vote_count, vote_total, body, tags, comments_count=None, comments_new_count=None,
                  short=False, private=False, blog_name=None, poll=None, favourite=0, favourited=None,
                  download=None, utctime=None, raw_body=None, cut_text=None, context=None):
-        self.time = time
+        self._time = time
         self.blog = text(blog) if blog else None
         self.post_id = int(post_id)
         self.author = text(author)
@@ -165,6 +165,16 @@ class Post(object):
         warnings.warn('post.comments_new_count is deprecated; use post.context.get("unread_comments_count") instead of it', FutureWarning, stacklevel=2)
         self.context['unread_comments_count'] = value
 
+    @property
+    def time(self):
+        warnings.warn('post.time is deprecated; use post.utctime instead of it', FutureWarning, stacklevel=2)
+        return self._time
+
+    @time.setter
+    def time(self, value):
+        warnings.warn('post.time is deprecated; use post.utctime instead of it', FutureWarning, stacklevel=2)
+        self._time = value
+
 
 class Download(object):
     """Прикрепленный к посту файл (в новом Табуне) или ссылка (в старом Табуне)."""
@@ -195,7 +205,7 @@ class Comment(object):
     def __init__(self, time, blog, post_id, comment_id, author, body, vote_total, parent_id=None,
                  post_title=None, unread=False, deleted=False, favourite=None, favourited=None,
                  utctime=None, raw_body=None, context=None, vote=None):
-        self.time = time
+        self._time = time
         self.blog = text(blog) if blog else None
         self.post_id = int(post_id) if post_id is not None else None
         self.comment_id = int(comment_id)
@@ -299,6 +309,16 @@ class Comment(object):
     def favourited(self, value):
         warnings.warn('comment.favourited is deprecated; use comment.context.get("favourited") instead of it', FutureWarning, stacklevel=2)
         self.context['favourited'] = value
+
+    @property
+    def time(self):
+        warnings.warn('comment.time is deprecated; use comment.utctime instead of it', FutureWarning, stacklevel=2)
+        return self._time
+
+    @time.setter
+    def time(self, value):
+        warnings.warn('comment.time is deprecated; use comment.utctime instead of it', FutureWarning, stacklevel=2)
+        self._time = value
 
 
 class Blog(object):
