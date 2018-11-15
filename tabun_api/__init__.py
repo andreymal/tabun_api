@@ -825,6 +825,15 @@ class User(object):
         warnings.warn('phpsessid is deprecated; use session_id instead of it', FutureWarning, stacklevel=2)
         self.session_id = value
 
+    def __repr__(self):
+        result = '<tabun_api.User http_host={!r} username={!r}>'.format(
+            self.http_host or http_host,
+            self.username,
+        )
+        if PY2:
+            result = result.encode('utf-8')
+        return result
+
     def configure_opener(self, proxy=None, ssl_params=None):
         ssl_params = ssl_params or {}
 
