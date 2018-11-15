@@ -1,8 +1,8 @@
 Примеры
 =======
 
-Все примеры написаны под Python 3. Для Python 2 нужно поменять `input`
-на `raw_input` и перед примерами выполнить:
+Все примеры написаны под Python 3. Для Python 2 нужно поменять ``input``
+на ``raw_input`` и перед примерами выполнить:
 
 .. code-block:: python
 
@@ -175,7 +175,7 @@
         if message == "ping":
             return "pong"
         elif message == "time":
-            return time.strftime("%Y-%m-%d :%H:%M:%S")
+            return time.strftime("%Y-%m-%d %H:%M:%S")
 
     user = api.User("guest", "123456")
 
