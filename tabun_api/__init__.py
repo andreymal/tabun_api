@@ -24,7 +24,7 @@ __version__ = '0.7.6'
 #: Адрес Табуна. Именно на указанный здесь адрес направляются запросы.
 http_host = "https://tabun.everypony.ru"
 
-#: Список полузакрытых блогов. В tabun_api нигде не используется, но может использоваться в использующих его программах.
+#: Список полузакрытых блогов.
 halfclosed = (
     "shipping", "RPG", "borderline", "gak", "ponymanie", "erpg", "tearsfromthemoon",
     "abode_Clan", "knifemanes", "zootopia",
@@ -397,16 +397,21 @@ class Comment(object):
 
 class Blog(object):
     """Блог."""
-    def __init__(self, blog_id, blog, name, creator, readers=0, rating=0.0, closed=False,
+
+    OPEN = 0
+    CLOSED = 1
+    HALFCLOSED = 2
+
+    def __init__(self, blog_id, blog, name, creator, readers=0, rating=0.0, status=0,
                  description=None, admins=None, moderators=None, vote_count=-1, posts_count=-1,
-                 created=None, avatar=None, raw_description=None):
+                 created=None, avatar=None, raw_description=None, closed=None):
         self.blog_id = int(blog_id)
         self.blog = text(blog)
         self.name = text(name)
         self.creator = text(creator)
         self.readers = int(readers)
         self.rating = int(rating)
-        self.closed = bool(closed)
+        self.status = int(status)
         self.admins = admins
         self.moderators = moderators
         self.vote_count = int(vote_count)
@@ -415,6 +420,10 @@ class Blog(object):
         self.avatar = text(avatar) if avatar else None
 
         self.description, self.raw_description = utils.normalize_body(description, raw_description, cls='blog-content text')
+
+        if closed is not None:
+            warnings.warn('Blog(closed=...) is deprecated; use status instead of it', FutureWarning, stacklevel=2)
+            self.status = self.CLOSED if closed else self.OPEN
 
     def __repr__(self):
         o = "<blog " + self.blog + ">"
@@ -429,6 +438,16 @@ class Blog(object):
     @property
     def url(self):
         return http_host + '/blog/' + self.blog + '/'
+
+    @property
+    def closed(self):
+        warnings.warn('blog.closed is deprecated; use blog.status instead of it', FutureWarning, stacklevel=2)
+        return self.status != self.OPEN
+
+    @closed.setter
+    def closed(self, value):
+        warnings.warn('blog.closed is deprecated; use blog.status instead of it', FutureWarning, stacklevel=2)
+        self.status = self.CLOSED if value else self.OPEN
 
 
 class StreamItem(object):
@@ -1617,7 +1636,7 @@ class User(object):
         else:
             return parse_post_url(link)
 
-    def create_blog(self, title, url, description, rating_limit=0, closed=False):
+    def create_blog(self, title, url, description, rating_limit=0, status=0, closed=None):
         """Создаёт блог и возвращает его url-имя или None в случае неудачи.
 
         :param title: заголовок нового блога
@@ -1627,9 +1646,20 @@ class User(object):
         :param description: описание блога (допустим HTML-код)
         :type description: строка
         :param int rating_limit: минимальный рейтинг пользователя, при котором можно писать в блог
-        :param bool closed: сделать блог закрытым (с доступом к нему по инвайтам)
+        :param int status: 0 - открытый блог, 1 - закрытый
         :rtype: строка или None
         """
+
+        if closed is not None:
+            warnings.warn('create_blog(closed=...) is deprecated; use status instead of it', FutureWarning, stacklevel=2)
+            status = Blog.CLOSED if closed else Blog.OPEN
+
+        if status == 0:
+            blog_type = 'open'
+        elif status == 1:
+            blog_type = 'close'
+        else:
+            raise ValueError('Unsupported blog status: {!r}'.format(status))
 
         self.check_login()
 
@@ -1637,7 +1667,7 @@ class User(object):
             'security_ls_key': self.security_ls_key,
             "blog_title": text(title),
             "blog_url": text(url),
-            "blog_type": "close" if closed else "open",
+            "blog_type": blog_type,
             "blog_description": text(description),
             "blog_limit_rating_topic": text(int(rating_limit)),
             "submit_blog_add": "Сохранить"
@@ -1650,7 +1680,7 @@ class User(object):
             link = link[:-1]
         return link[link.rfind('/') + 1:]
 
-    def edit_blog(self, blog_id, title, description, rating_limit=0, closed=False):
+    def edit_blog(self, blog_id, title, description, rating_limit=0, status=0, closed=False):
         """Редактирует блог и возвращает его url-имя или None в случае неудачи.
 
         :param int blog_id: ID блога, который редактируется
@@ -1659,9 +1689,20 @@ class User(object):
         :param description: описание блога (допустим HTML-код)
         :type description: строка
         :param int rating_limit: минимальный рейтинг пользователя, при котором можно писать в блог
-        :param bool closed: сделать блог закрытым (с доступом к нему по инвайтам)
+        :param int status: 0 - открытый блог, 1 - закрытый
         :rtype: строка или None
         """
+
+        if closed is not None:
+            warnings.warn('create_blog(closed=...) is deprecated; use status instead of it', FutureWarning, stacklevel=2)
+            status = Blog.CLOSED if closed else Blog.OPEN
+
+        if status == 0:
+            blog_type = 'open'
+        elif status == 1:
+            blog_type = 'close'
+        else:
+            raise ValueError('Unsupported blog status: {!r}'.format(status))
 
         self.check_login()
 
@@ -1669,7 +1710,7 @@ class User(object):
             'security_ls_key': self.security_ls_key,
             "blog_title": text(title),
             "blog_url": "",
-            "blog_type": "close" if closed else "open",
+            "blog_type": blog_type,
             "blog_description": text(description),
             "blog_limit_rating_topic": text(int(rating_limit)),
             "avatar_delete": "",
@@ -2143,7 +2184,14 @@ class User(object):
 
             creator = tr.xpath('td[@class="cell-name"]/span[@class="user-avatar"]/a')[-1].text
 
-            blogs.append(Blog(blog_id, blog, name, creator, readers, rating, closed))
+            if not closed:
+                blog_status = Blog.OPEN
+            elif blog in halfclosed:
+                blog_status = Blog.HALFCLOSED
+            else:
+                blog_status = Blog.CLOSED
+
+            blogs.append(Blog(blog_id, blog, name, creator, readers, rating, blog_status))
 
         return blogs
 
@@ -2165,7 +2213,14 @@ class User(object):
         blog_footer = node[0].xpath('div[@id="blog"]/footer[@class="blog-footer"]')[0]
 
         name = blog_top.xpath('h2/text()[1]')[0].rstrip()
+
         closed = len(blog_top.xpath('h2/i[@class="icon-synio-topic-private"]')) > 0
+        if not closed:
+            blog_status = Blog.OPEN
+        elif blog in halfclosed:
+            blog_status = Blog.HALFCLOSED
+        else:
+            blog_status = Blog.CLOSED
 
         vote_item = blog_top.xpath('div/div[@class="vote-item vote-count"]')[0]
         vote_count = int(vote_item.get("title", "0").rsplit(" ", 1)[-1])
@@ -2202,7 +2257,7 @@ class User(object):
         creator = blog_footer.xpath("div/a[2]/text()[1]")[0]
 
         return Blog(
-            blog_id, blog, name, creator, readers, vote_total, closed,
+            blog_id, blog, name, creator, readers, vote_total, blog_status,
             description if description is not None and raw_description is None else None,
             admins, moderators, vote_count, posts_count, created,
             avatar=avatar, raw_description=raw_description,
