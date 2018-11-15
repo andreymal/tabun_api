@@ -150,7 +150,7 @@ class Post(object):
         self.short = bool(short)
         self.private = bool(private)
         self.blog_name = text(blog_name) if blog_name else None
-        self.poll = poll
+        self.poll = poll or None
         self.favourite = int(favourite) if favourite is not None else None
         if download and (not isinstance(download, Download) or download.post_id != self.post_id):
             raise ValueError
@@ -892,7 +892,7 @@ class User(object):
                 self.rating = None
             else:
                 utils.logger.warning('update_userinfo received unknown data')
-            return
+            return None
 
         node = utils.parse_html_fragment(userinfo)[0]
         dd_user = node.xpath('//*[@id="dropdown-user"]')
@@ -901,7 +901,7 @@ class User(object):
             self.talk_count = 0
             self.skill = None
             self.rating = None
-            return
+            return None
         dd_user = dd_user[0]
 
         username = dd_user.xpath('a[2]/text()[1]')
@@ -912,7 +912,7 @@ class User(object):
             self.talk_count = 0
             self.skill = None
             self.rating = None
-            return
+            return None
 
         talk_count = dd_user.xpath('ul/li[@class="item-messages"]/a[@class="new-messages"]/text()')
         if not talk_count:
@@ -986,21 +986,22 @@ class User(object):
 
         if url and url.startswith('/'):
             url = (self.http_host or http_host) + url
-        context = {'http_host': self.http_host or http_host, 'url': url}
+        context = {
+            'http_host': self.http_host or http_host,
+            'url': url,
+            'username': None,
+        }
 
         userinfo = utils.find_substring(raw_data, b'<div class="dropdown-user"', b"<nav", with_end=False)
-        if not userinfo:
-            context['username'] = None
-            auth_panel = utils.find_substring(raw_data, b'<ul class="auth"', b'<nav', with_end=False)
-            if not auth_panel or 'Войти'.encode('utf-8') not in auth_panel:
-                utils.logger.warning('get_main_context received unknown userinfo')
-        else:
+        if userinfo:
             f = userinfo.find(b'class="username">')
             if f >= 0:
                 username = userinfo[userinfo.find(b'>', f) + 1:userinfo.find(b'</', f)]
                 context['username'] = username.decode('utf-8').strip()
-            else:
-                context['username'] = None
+        else:
+            auth_panel = utils.find_substring(raw_data, b'<ul class="auth"', b'<nav', with_end=False)
+            if not auth_panel or 'Войти'.encode('utf-8') not in auth_panel:
+                utils.logger.warning('get_main_context received unknown userinfo')
 
         return context
 
@@ -1318,6 +1319,7 @@ class User(object):
         self.check_login()
         headers = dict(headers or ())
         headers['x-requested-with'] = 'XMLHttpRequest'
+        fields = dict(fields or ())
         fields['security_ls_key'] = self.security_ls_key
         data = self.send_form_and_read(url, fields or {}, files, headers=headers)
 
@@ -2059,12 +2061,12 @@ class User(object):
         raw_comms = []
 
         for node in div.findall("div"):
-            if node.get('class') == 'comment-wrapper':
+            if 'comment-wrapper' in node.get('class', '').split():
                 raw_comms.extend(parse_wrapper(node))
 
         # for /comments/ page
         for sect in div.findall("section"):
-            if "comment" in sect.get('class', ''):
+            if "comment" in sect.get('class', '').split():
                 raw_comms.append(sect)
 
         comms = {}
@@ -2082,7 +2084,7 @@ class User(object):
                     else:
                         utils.logger.warning('Cannot parse deleted comment %s (url: %s)', sect.get('id'), url)
                 else:
-                    tmp = sect.xpath('//ul[@class="comment-info"]/li[starts-with(@id, "vote_area_comment")]')
+                    tmp = sect.xpath('.//ul[@class="comment-info"]/li[starts-with(@id, "vote_area_comment")]')
                     if tmp:
                         utils.logger.warning('Unknown comment format %s, it can be comment from deleted blog; skipped (url: %s)', tmp[0].get('id'), url)
                     else:
@@ -2215,10 +2217,10 @@ class User(object):
             raw_data = self.saferead(resp)
             del resp
 
-        post = self.get_posts(url=url, raw_data=raw_data)
+        post = self.get_post(post_id, blog, raw_data=raw_data)
         comments = self.get_comments(url=url, raw_data=raw_data)
 
-        return (post[0] if post else None), comments
+        return post, comments
 
     def get_comments_from(self, target_id=None, comment_id=0, typ="blog", post_id=None):
         """Возвращает словарь комментариев к посту или личке c id больше чем `comment_id`.
@@ -2890,7 +2892,7 @@ class User(object):
         :param int comment_id: ID комментария, который редактируем
         :param body: новый текст комментария
         :type body: строка
-        :param bool set_lock: неизвестно
+        :param bool set_lock: заблокировать дальнейшее изменение
         :rtype: (строка, строка или None, строка или None)
         """
 
@@ -3510,7 +3512,7 @@ def parse_post(item, context=None):
         for fav_ntag_li in ntags.xpath('*[starts-with(@class, "topic-tags-user")]'):
             fav_ntag = fav_ntag_li.find('a')
             if fav_ntag is not None and fav_ntag.text:
-                fav_tags.append({'tag': fav_ntag.get('href'), 'url': fav_ntag.text})
+                fav_tags.append({'url': fav_ntag.get('href'), 'tag': fav_ntag.text})
 
     tags_btn = ntags.xpath('span[starts-with(@class, "topic-tags-edit")]')
     can_save_favourite_tags = tags_btn and 'display:none' not in tags_btn[0].get('style', '') and 'display: none' not in tags_btn[0].get('style', '')
@@ -3538,8 +3540,7 @@ def parse_post(item, context=None):
     fav = footer.xpath('ul[@class="topic-info"]/li[starts-with(@class, "topic-info-favourite")]')[0]
     favourited = fav.get('class').endswith(' active')
     if not favourited:
-        i = fav.find('i')
-        favourited = i is not None and i.get('class', '').endswith(' active')
+        favourited = bool(fav.xpath('*[@class="favourite active"]'))
     favourite = fav.xpath('span[@class="favourite-count"]/text()')
     try:
         favourite = int(favourite[0]) if favourite and favourite[0] else 0
@@ -3730,15 +3731,17 @@ def parse_wrapper(node):
     # Парсинг коммента. Не надо юзать эту функцию.
     comms = []
     nodes = [node]
-    while len(nodes) > 0:
+    while nodes:
         node = nodes.pop(0)
         sect = node.find("section")
         if not sect.get('class'):
             break
-        if "comment" not in sect.get('class'):
+        if 'comment' not in sect.get('class', '').split():
             break
         comms.append(sect)
-        nodes.extend(node.xpath('div[@class="comment-wrapper"]'))
+        for node2 in node.findall('div'):
+            if 'comment-wrapper' in node2.get('class', '').split():
+                nodes.append(node2)
     return comms
 
 
@@ -3876,7 +3879,7 @@ def parse_deleted_comment(node, post_id, blog=None, parent_id=None, context=None
     try:
         comment_id = int(node.get("id").rsplit("_", 1)[-1])
     except:
-        return
+        return None
     context = dict(context) if context else {}
     unread = "comment-new" in node.get("class", "")
     deleted = "comment-deleted" in node.get("class", "")
