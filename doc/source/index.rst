@@ -8,6 +8,7 @@
 
    setup
    main
+   types
    errors
    utils
    compat
