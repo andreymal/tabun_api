@@ -406,7 +406,7 @@ class Blog(object):
 
     def __init__(self, blog_id, blog, name, creator, readers=0, rating=0.0, status=0,
                  description=None, admins=None, moderators=None, vote_count=-1, posts_count=-1,
-                 created=None, avatar=None, raw_description=None, closed=None):
+                 created=None, avatar=None, raw_description=None, context=None, closed=None):
         self.blog_id = int(blog_id)
         self.blog = text(blog)
         self.name = text(name)
@@ -420,6 +420,7 @@ class Blog(object):
         self.posts_count = int(posts_count)
         self.created = created
         self.avatar = text(avatar) if avatar else None
+        self.context = context or {}
 
         self.description, self.raw_description = utils.normalize_body(description, raw_description, cls='blog-content text')
 
@@ -439,7 +440,10 @@ class Blog(object):
 
     @property
     def url(self):
-        return http_host + '/blog/' + self.blog + '/'
+        host = self.context.get('http_host')
+        if not host:
+            raise ValueError('http_host is not available')
+        return host + '/blog/' + self.blog + '/'
 
     @property
     def closed(self):
@@ -2123,14 +2127,16 @@ class User(object):
             url += "?order=" + text(order_by)
             url += "&order_way=" + text(order_way)
 
-        data = self.urlread(url)
-        data = utils.find_substring(data, b'<table class="table table-blogs', b'</table>')
+        raw_data = self.urlread(url)
+        data = utils.find_substring(raw_data, b'<table class="table table-blogs', b'</table>')
         node = utils.parse_html_fragment(data)
         if not node:
             return []
         node = node[0]
         if node.find("tbody") is not None:
             node = node.find("tbody")
+
+        context = self.get_main_context(raw_data, url=url)
 
         blogs = []
 
@@ -2165,15 +2171,16 @@ class User(object):
             else:
                 blog_status = Blog.CLOSED
 
-            blogs.append(Blog(blog_id, blog, name, creator, readers, rating, blog_status))
+            blogs.append(Blog(blog_id, blog, name, creator, readers, rating, blog_status, context=dict(context)))
 
         return blogs
 
     def get_blog(self, blog, raw_data=None):
         """Возвращает информацию о блоге. Функция не доделана."""
         blog = text(blog)
+        url = "/blog/" + text(blog) + "/"
         if not raw_data:
-            raw_data = self.urlread("/blog/" + text(blog) + "/")
+            raw_data = self.urlread(url)
         raw_data = utils.escape_blog_content(raw_data)
         data = utils.find_substring(raw_data, b'<div class="blog-top">', b'<div class="nav-menu-wrapper">', with_end=False)
         data = utils.replace_cloudflare_emails(data)
@@ -2235,6 +2242,7 @@ class User(object):
             description if description is not None and raw_description is None else None,
             admins, moderators, vote_count, posts_count, created,
             avatar=avatar, raw_description=raw_description,
+            context=self.get_main_context(raw_data, url=url),
         )
 
     def get_post_and_comments(self, post_id, blog=None, raw_data=None):
