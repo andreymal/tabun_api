@@ -236,7 +236,9 @@ class Post(object):
 
     @property
     def url(self):
-        host = self.context.get('http_host') or http_host
+        host = self.context.get('http_host')
+        if not host:
+            raise ValueError('http_host is not available')
         return host + '/blog/' + ((self.blog + '/') if self.blog else '') + text(self.post_id) + '.html'
 
     @property
@@ -1949,6 +1951,9 @@ class User(object):
         :rtype: список объектов :class:`~tabun_api.Post`
         """
 
+        if url.startswith('/'):
+            url = self.http_host + url
+
         if not raw_data:
             resp = self.urlopen(url)
             url = resp.url
@@ -1969,7 +1974,7 @@ class User(object):
 
             # TODO: заюзать новое экранирование
             for item in items:
-                post = parse_rss_post(item)
+                post = parse_rss_post(item, context={'http_host': self.http_host, 'username': self.username, 'url': url})
                 if post:
                     posts.append(post)
 
@@ -2274,7 +2279,7 @@ class User(object):
         target_id = int(target_id)
         comment_id = int(comment_id) if comment_id else 0
 
-        url = "/" + (typ if typ in ("blog", "talk") else "blog") + "/ajaxresponsecomment/"
+        url = self.http_host + "/" + (typ if typ in ("blog", "talk") else "blog") + "/ajaxresponsecomment/"
 
         try:
             data = self.ajax(url, {'idCommentLast': comment_id, 'idTarget': target_id, 'typeTarget': 'topic'})
@@ -2288,6 +2293,12 @@ class User(object):
             else:
                 raise
 
+        context = {
+            'http_host': self.http_host,
+            'url': url,
+            'username': self.username,  # вроде бы эта функция всё равно недоступна для незарегистрированных
+        }
+
         comms = {}
         # comments/pid для Табуна, aComments/idParent для остальных LiveStreet
         # (При отсутствии комментариев в comments почему-то возвращается список вместо словаря)
@@ -2298,13 +2309,13 @@ class User(object):
             post_id = target_id if typ == 'blog' else None
             parent_id = comm['pid'] if 'pid' in comm else comm['idParent']
 
-            pcomm = parse_comment(sect, post_id, None, parent_id)
+            pcomm = parse_comment(sect, post_id, None, parent_id, context=context)
 
             if pcomm:
                 comms[pcomm.comment_id] = pcomm
             else:
                 if sect.get("id", "").find("comment_id_") == 0:
-                    pcomm = parse_deleted_comment(sect, post_id, None, parent_id)
+                    pcomm = parse_deleted_comment(sect, post_id, None, parent_id, context=context)
                     if pcomm:
                         comms[pcomm.comment_id] = pcomm
                     else:
@@ -2356,7 +2367,8 @@ class User(object):
 
     def get_stream_topics(self):
         """Возвращает список последних постов (без самого содержимого постов, только автор, дата, заголовки и число комментариев)."""
-        data = self.ajax('/ajax/stream/topic/')
+        url = self.http_host + '/ajax/stream/topic/'
+        data = self.ajax(url)
         node = utils.parse_html_fragment(data['sText'])
         if not node:
             return []
@@ -2377,7 +2389,7 @@ class User(object):
             items.append(Post(
                 time=None, blog=blog, post_id=post_id, author=author, title=title, draft=False,
                 vote_count=None, vote_total=None, body=None, tags=[], comments_count=comments_count,
-                context=None
+                context={'http_host': self.http_host, 'url': url, 'username': self.username}
             ))
 
         return items
@@ -3696,7 +3708,7 @@ def parse_poll(poll):
         return Poll(-1, -1, items)
 
 
-def parse_rss_post(item):
+def parse_rss_post(item, context=None):
     # Парсинг rss. Не надо юзать эту функцию.
     link = text(item.find("link").text)
 
@@ -3741,7 +3753,7 @@ def parse_rss_post(item):
             continue
         tags.append(text(ntag.text))
 
-    return Post(post_time, blog, post_id, author, title, False, 0, 0, node, tags, short=len(nextbtn) > 0, private=private)
+    return Post(post_time, blog, post_id, author, title, False, 0, 0, node, tags, short=len(nextbtn) > 0, private=private, context=context)
 
 
 def parse_wrapper(node):
