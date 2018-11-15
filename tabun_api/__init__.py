@@ -3758,20 +3758,27 @@ def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
     # И это тоже парсинг коммента. Не надо юзать эту функцию.
 
     context = dict(context) if context else {}
+    classes = frozenset(node.get('class', '').split())
 
     # Вытаскиваем элемент с информацией
-    info = node.xpath('ul[@class="comment-info"]')
+    info = node.xpath('*[@class="comment-info"]')
     if not info:
         # В списках комментов он расположен немного по-другому
-        info = node.xpath('div[@class="comment-path"]/ul[@class="comment-info"]')
+        # (актуально только для старого Табуна, в новом обёртка убрана)
+        info = node.xpath('div[@class="comment-path"]/*[@class="comment-info"]')
     if not info:
-        if 'comment-deleted' not in node.get("class", "") and 'comment-bad' not in node.get("class", ""):
+        if 'comment-deleted' not in classes and 'comment-bad' not in classes:
             utils.logger.warning('Comment in post %s (id=%s) has no info! Please report to andreymal.', post_id, node.get('id', 'N/A'))
         return
     info = info[0]
 
     # Вытаскиваем id коммента
-    comment_link = info.xpath('li[@class="comment-link"]/a')
+    # Новый Табун
+    comment_link = info.xpath('a[starts-with(@class, "comment-link")]')
+    if not comment_link:
+        # Старый Табун
+        comment_link = info.xpath('li[starts-with(@class, "comment-link")]/a')
+
     if not comment_link:
         utils.logger.warning('Comment in post %s (id=%s) has no link! Please report to andreymal.', post_id, node.get('id', 'N/A'))
     comment_link = comment_link[0].get('href')
@@ -3785,16 +3792,20 @@ def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
         return
 
     # Определяем, коммент из поста или из ленты (в ленте не все данные есть)
-    vote_area = info.xpath('li[starts-with(@id, "vote_area_comment")]')
-    is_full_comment = vote_area and vote_area[0].xpath('div[@class="vote-up"]')
+    vote_area = info.xpath('*[starts-with(@id, "vote_area_comment")][1]')
+    is_full_comment = bool(vote_area and vote_area[0].xpath('div[contains(@class, "vote-up")]'))
 
     # Вытаскиваем всякую мелочёвку
-    classes = frozenset(node.get('class', '').split())
     unread = "comment-new" in classes
     deleted = "comment-deleted" in classes
 
-    nick = info.find("li").findall("a")[-1].text
-    tm = info.xpath('li/time[1]')[0].get('datetime')
+    nick = info.xpath('*[starts-with(@class, "comment-author")]')[0]
+    if not nick.get('href'):
+        # Старый Табун
+        nick = nick.findall('a')[-1]
+    nick = nick.text
+
+    tm = info.xpath('.//time[1]')[0].get('datetime')
     utctime = utils.parse_datetime(tm)
     tm = time.strptime(tm[:-6], "%Y-%m-%dT%H:%M:%S")  # legacy
 
@@ -3814,7 +3825,7 @@ def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
                 body.text = body.text.rstrip()
 
     # Если коммент из списка комментов, мы можем вытащить заголовок поста
-    post_li = info.xpath('li/a[@class="blog-name"][1]')
+    post_li = info.xpath('*/a[@class="blog-name"][1]')
     if post_li:
         post_li = post_li[0].getparent()
         post_title = post_li.xpath('a[@class="comment-path-topic"]')[0].text
@@ -3827,45 +3838,69 @@ def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
 
     # Достаём информацию о родительском комментарии
     if parent_id is None:
-        parent_id = info.xpath('li[@class="goto goto-comment-parent"]')
+        # Новый Табун
+        parent_id = info.xpath('a[@class="goto goto-comment-parent"]')
+        if not parent_id:
+            # Старый Табун
+            parent_id = info.xpath('li[@class="goto goto-comment-parent"]/a')
         if parent_id:
-            parent_id = parent_id[0].find("a")
+            parent_id = parent_id[0]
             if parent_id.get('onclick'):
+                # Парсим onclick="ls.comments.goToParentComment(id,parent_id); return false;"
                 parent_id = int(parent_id.get('onclick').rsplit(",", 1)[-1].split(")", 1)[0])
             elif '/comments/' in parent_id.get('href', ''):
+                # Парсим /comments/parent_id
                 parent_id = int(parent_id.get('href').rsplit('/', 1)[-1])
             elif '#comment' in parent_id.get('href', ''):
+                # Парсим #commentparent_id
                 parent_id = int(parent_id.get('href').rsplit('#comment', 1)[-1])
             else:
                 utils.logger.warning('Comment %s has invalid parent link! Please report to andreymal.', comment_id)
                 parent_id = None
 
     # Достаём информацию о редактировании
+    # (li для старого Табуна)
     context['can_edit'] = bool(info.xpath('li[@class="comment-edit-bw"]'))
+
+    if not context['can_edit']:
+        # Новый Табун
+        edit_btn = info.xpath('*[contains(@class, "comment-edit-bw")]')
+        if edit_btn:
+            edit_btn = edit_btn[0]
+            edit_classes = edit_btn.get('class', '').split()
+
+            if 'edit-timeout' in edit_classes:
+                context['can_edit'] = False
+            else:
+                context['can_edit'] = True
+
     if not context['can_edit'] and not is_full_comment:
         # Для коммента из ленты отсутствие кнопки ничего не значит
         context['can_edit'] = None
 
-    vote = 0
+    vote_total = None  # На новом Табуне для анонимов голоса скрыты
     context['can_vote'] = None
     context['vote_value'] = None
 
     # Достаём информаию о рейтинге
     if vote_area:
-        vote = vote_area[0].xpath('span[@class="vote-count"]/text()[1]')
-        vote = int(vote[0].replace("+", ""))
+        vote_node = vote_area[0].xpath('span[@class="vote-count"]/text()[1]')
+        vote_total = int(vote_node[0].replace("+", ""))
         if is_full_comment:  # проверка, что пост не из ленты (в ней классы полупустые)
             votecls = vote_area[0].get('class', '').split()
             # vote-expired стоит также у своих комментов, осторожно
+            # TODO: у нового Табуна классы другие, переделать
             context['can_vote'] = 'voted' not in votecls and 'vote-expired' not in votecls
             if 'voted-up' in votecls:
                 context['vote_value'] = 1
             elif 'voted-down' in votecls:
                 context['vote_value'] = -1
+    elif is_full_comment:
+        context['can_vote'] = False
 
     # Достаём информацию об избранном
     favourited = False
-    favourite = info.xpath('li[@class="comment-favourite"]')
+    favourite = info.xpath('*[@class="comment-favourite"]')
     if not favourite:
         favourite = None
     else:
@@ -3879,7 +3914,7 @@ def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
     context['favourited'] = favourited
 
     if body is not None:
-        return Comment(tm, blog, post_id, comment_id, nick, body if raw_body is None else None, vote, parent_id,
+        return Comment(tm, blog, post_id, comment_id, nick, body if raw_body is None else None, vote_total, parent_id,
                        post_title, unread, deleted, favourite, None, utctime, raw_body, context=context)
 
 

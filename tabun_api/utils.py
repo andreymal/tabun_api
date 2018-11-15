@@ -1093,11 +1093,15 @@ def escape_comment_contents(data):
         # Блок редактирования (в отключенном плагине)
         f2 = data.rfind(b'<div id="info_edit_', f1, sect_end)
 
-        # Путь к посту на странице /comments/
+        # Путь к посту на странице /comments/ (старый Табун)
         if f2 < 0:
             f2 = data.rfind(b'<div class="comment-path', f1, sect_end)
 
-        # Информация о комменте в самом посте
+        # Информация о комменте в самом посте (новый Табун)
+        if f2 < 0:
+            f2 = data.rfind(b'<div class="comment-info', f1, sect_end)
+
+        # Информация о комменте в самом посте (старый Табун)
         if f2 < 0:
             f2 = data.rfind(b'<ul class="comment-info', f1, sect_end)
 
