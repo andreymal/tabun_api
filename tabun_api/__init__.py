@@ -1876,37 +1876,6 @@ class User(object):
 
         return self.ajax("/" + (typ if typ in ("blog", "talk") else "blog") + "/ajaxaddcomment/", fields)['sCommentId']
 
-    def get_recommendations(self, raw_data):
-        """Возвращает со страницы список постов, которые советует Дискорд.
-        После обновления Табуна не работает.
-        """
-
-        if isinstance(raw_data, binary):
-            raw_data = raw_data.decode("utf-8", "replace")
-        elif not isinstance(raw_data, text):
-            raw_data = text(raw_data)
-
-        section = raw_data.find('<section class="block block-type-stream">')
-        if section < 0:
-            return []
-        section2 = raw_data.find('<section class="block block-type-stream">', section + 1)
-        if section2 < raw_data.find('Дискорд советует', section):
-            section = section2
-        del section2
-
-        section = raw_data[section:raw_data.find('</section>', section + 1) + 10]
-        section = utils.replace_cloudflare_emails(section)
-        section = utils.parse_html_fragment(section)
-        if not section:
-            return []
-        section = section[0]
-
-        posts = []
-        for li in section.xpath('div[@class="block-content"]/ul/li'):
-            posts.append(parse_discord(li))
-
-        return posts
-
     def get_pagination(self, raw_data):
         """Возвращает со страницы номер текущей страницы и список с номерами страниц
         и текстами ссылок (кортеж из номера и строки), которые содержатся в элементе
@@ -3725,22 +3694,6 @@ def parse_poll(poll):
             item[0] = li.xpath('label/text()[1]')[0].strip()
             items.append(item)
         return Poll(-1, -1, items)
-
-
-def parse_discord(li):
-    body = '<div class="topic-content text">'
-    body += li.get('title', '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-    body += '</div>'
-    body = utils.parse_html_fragment(body)[0]
-    p = li.find('p')
-    author = p.find('a').text.strip()
-    tm = time.strptime(p.find('time').get('datetime')[:-6], "%Y-%m-%dT%H:%M:%S")
-    blog_name, title = li.findall('a')[:2]
-    blog_name = blog_name.text.strip()
-    blog, post_id = parse_post_url(title.get('href'))
-    title = title.text.strip()
-    comments_count = int(li.find('span').text_content().strip())
-    return Post(tm, blog, post_id, author, title, False, None, None, body, [], comments_count)
 
 
 def parse_rss_post(item):
