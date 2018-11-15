@@ -550,6 +550,13 @@ class UserInfo(object):
     def __unicode__(self):
         return self.__repr__().decode('utf-8', 'replace')
 
+    @property
+    def url(self):
+        host = self.context.get('http_host')
+        if not host:
+            raise ValueError('http_host is not available')
+        return host + '/profile/' + self.username + '/'
+
 
 class Poll(object):
     """Опрос. Список items содержит кортежи (название ответа, процент проголосовавших, число проголосовавших)."""
