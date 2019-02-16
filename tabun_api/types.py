@@ -336,7 +336,7 @@ class Blog(object):
         self.name = text(name)
         self.creator = text(creator)
         self.readers = int(readers)
-        self.rating = int(rating)
+        self.rating = float(rating)
         self.status = int(status)
         self.admins = admins
         self.moderators = moderators

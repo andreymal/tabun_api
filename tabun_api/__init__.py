@@ -1577,14 +1577,19 @@ class User(object):
         else:
             blog_status = Blog.CLOSED
 
-        vote_item = blog_top.xpath('div/div[@class="vote-item vote-count"]')[0]
-        vote_count = int(vote_item.get("title", "0").rsplit(" ", 1)[-1])
-        blog_id = int(vote_item.find("span").get("id").rsplit("_", 1)[-1])
-        vote_total = vote_item.find("span").text
-        if vote_total[0] == "+":
-            vote_total = float(vote_total[1:])
+        vote_item = blog_top.xpath('.//span[@class="vote-count"]')
+        if vote_item:
+            # Новый Табун
+            vote_item = vote_item[0]
+            vote_count = int(vote_item.get("title", "0").rsplit(" ", 1)[-1])
+            blog_id = int(vote_item.get('id').rsplit('_', 1)[-1])
+            vote_total = float(vote_item.text_content().strip().replace('+', ''))
         else:
-            vote_total = float(vote_total)
+            # Старый Табун
+            vote_item = blog_top.xpath('div/div[@class="vote-item vote-count"]')[0]
+            vote_count = int(vote_item.get("title", "0").rsplit(" ", 1)[-1])
+            blog_id = int(vote_item.find("span").get("id").rsplit("_", 1)[-1])
+            vote_total = float(vote_item.find("span").text_content().strip().replace('+', ''))
 
         avatar = blog_inner.xpath("header/img")[0].get("src")
 
@@ -1911,7 +1916,7 @@ class User(object):
         vote_area = profile.xpath('div[@class="vote-profile"]/div[1]')[0]
         user_id = int(vote_area.get("id").rsplit("_")[-1])
 
-        rating = float(vote_area.findall('div')[1].find('span').text.strip().replace('+', ''))
+        rating = float(profile.xpath('.//span[@id="vote_total_user_{}"]/text()'.format(user_id))[0].strip().replace('+', ''))
         rating_vote_count = profile.xpath('div[@class="vote-profile"]/div[@class="vote-label"]')[0]
         rating_vote_count = int(rating_vote_count.text.strip().rsplit(': ', 1)[-1])
 
