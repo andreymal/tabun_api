@@ -472,7 +472,7 @@ class User(object):
             data = None
             if exc.getcode() == 404:
                 data = self._netwrap(exc.read, 8192)
-                if b'//projects.everypony.ru/error/main.css' in data:
+                if b'/__errors__/main.css' in data or b'//projects.everypony.ru/error/main.css' in data:
                     raise TabunError('Static 404', TabunError.STATIC_404, data=data)
             raise TabunError(code=exc.getcode(), exc=exc, data=data)
         except urequest.URLError as exc:
