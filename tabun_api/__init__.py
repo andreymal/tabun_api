@@ -262,17 +262,13 @@ class User(object):
 
         # Если просят пропускать проверку SSL-сертификата сервера
         if ssl_params.get('verify_mode') in ('skip_all', 'skip_current_host'):
-            try:
-                ctx_sv = ssl.create_default_context()
-            except AttributeError:
-                utils.logger.warning('Cannot call ssl.create_default_context()! Looks like you use Python<=3.3. SSL params will be ignored.')
-            else:
-                ctx_sv.check_hostname = False
-                ctx_sv.verify_mode = ssl.CERT_NONE
-                h_sv = urequest.HTTPSHandler(context=ctx_sv)
+            ctx_sv = ssl.create_default_context()
+            ctx_sv.check_hostname = False
+            ctx_sv.verify_mode = ssl.CERT_NONE
+            h_sv = urequest.HTTPSHandler(context=ctx_sv)
 
-                self.opener_nossl = urequest.build_opener(*handlers + [h_sv])
-                self.noredir_nossl = urequest.build_opener(*handlers + [h_sv, NoRedirect])
+            self.opener_nossl = urequest.build_opener(*handlers + [h_sv])
+            self.noredir_nossl = urequest.build_opener(*handlers + [h_sv, NoRedirect])
         self.ssl_params = ssl_params
 
     def update_security_ls_key(self, raw_data):

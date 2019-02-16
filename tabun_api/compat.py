@@ -21,12 +21,7 @@ if PY2:
     html_unescape = HTMLParser().unescape
     del HTMLParser
 else:
-    try:
-        from html import unescape as html_unescape  # py>=3.4
-    except ImportError:
-        from html.parser import HTMLParser
-        html_unescape = HTMLParser().unescape  # py<=3.3
-        del HTMLParser
+    from html import unescape as html_unescape
 
 if PY2:
     text_types = (basestring,)

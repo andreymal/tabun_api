@@ -10,4 +10,4 @@
 * ``urequest``: ``urllib2`` для Python 2 или ``urllib.request``;
 * ``HTTPException`` из ``httplib`` для Python 2 или ``http.client``;
 * ``BaseCookie`` из ``Cookie`` для Python 2 или ``http.cookies``;
-* ``html_unescape``: ``HTMLParser.HTMLParser().unescape`` для Python 2, ``html.parser.HTMLParser().unescape`` для Python <= 3.3 или ``html.unescape`` для Python >= 3.4.
+* ``html_unescape``: ``HTMLParser.HTMLParser().unescape`` для Python 2 или ``html.unescape`` для Python >= 3.4.
