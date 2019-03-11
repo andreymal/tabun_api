@@ -26,7 +26,7 @@ import sphinx_rtd_theme
 # -- Project information -----------------------------------------------------
 
 project = 'tabun_api'
-copyright = '2018, andreymal'
+copyright = '2019, andreymal'
 author = 'andreymal'
 
 # The short X.Y version

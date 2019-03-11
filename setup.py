@@ -28,7 +28,7 @@ setup(
     author_email='andriyano-31@mail.ru',
     license='MIT',
     url='https://github.com/andreymal/tabun_api',
-    platforms='any',
+    platforms=['any'],
     packages=['tabun_api'],
     zip_safe=False,
     install_requires=['lxml>=3.3', 'iso8601>=0.1.10'],
