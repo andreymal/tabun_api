@@ -292,3 +292,27 @@ def test_is_module_available_submodule_notfound():
     rndmod = ''.join(random.choice(string.ascii_letters) for _ in range(random.randrange(8, 24)))
     rndmod = 'json.' + rndmod
     assert utils.is_module_available(rndmod) is False
+
+
+def test_build_proxy_params_simple():
+    import socks
+    assert utils.build_proxy_params('socks4://example.com') == {
+        'proxytype': socks.PROXY_TYPE_SOCKS4,
+        'proxyaddr': 'example.com',
+        'proxyport': None,
+        # 'rdns': default,
+        'username': None,
+        'password': None,
+    }
+
+
+def test_build_proxy_params_complex():
+    import socks
+    assert utils.build_proxy_params('socks5://admin:123456@example.com:1081/') == {
+        'proxytype': socks.PROXY_TYPE_SOCKS5,
+        'proxyaddr': 'example.com',
+        'proxyport': 1081,
+        # 'rdns': default,
+        'username': 'admin',
+        'password': '123456',
+    }
