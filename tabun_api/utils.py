@@ -1302,3 +1302,43 @@ def is_module_available(name):
         # >= 3.4
         import importlib.util
         return importlib.util.find_spec(name) is not None
+
+
+def build_proxy_params(proxy=None):
+    """Парсит URL с параметрами прокси-сервера и возвращает словарь
+    с аргументами для конструктора SocksiPyHandler. Если прокси пустой,
+    возвращает просто None.
+
+    :param str proxy: URL с параметрами прокси
+    :rtype: dict или None
+    """
+
+    if not proxy:
+        return None
+
+    import socks
+
+    if PY2:
+        from urlparse import urlparse
+    else:
+        from urllib.parse import urlparse
+
+    proxy_info = urlparse(proxy)
+    proxy_args = {
+        'proxyaddr': proxy_info.hostname,
+        'proxyport': proxy_info.port,
+        # 'rdns': default,
+        'username': proxy_info.username,
+        'password': proxy_info.password,
+    }
+
+    if proxy_info.scheme == 'socks4':
+        proxy_args['proxytype'] = socks.PROXY_TYPE_SOCKS4
+    elif proxy_info.scheme == 'socks5':
+        proxy_args['proxytype'] = socks.PROXY_TYPE_SOCKS5
+    elif proxy_info.scheme == 'http':
+        proxy_args['proxytype'] = socks.PROXY_TYPE_HTTP
+    else:
+        raise ValueError('Unknown proxy protocol: {!r}'.format(proxy_info.scheme))
+
+    return proxy_args

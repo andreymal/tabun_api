@@ -83,10 +83,15 @@ class User(object):
     А можно, например, не авторизоваться по логину и паролю, а выдрать из браузера печеньку
     TABUNSESSIONID, скормить в аргумент session_id и авторизоваться через неё.
 
-    Конструктор также принимает кортеж proxy из трёх элементов ``(тип, хост, порт)`` для задания
-    прокси-сервера. Сейчас поддерживаются только типы socks4 и socks5.
+    С помощью аргумента ``proxy`` можно задать используемый прокси-сервер. Это URL вида
+    ``proto://username:password@hostname:port``. Поддерживаются протоколы socks4, socks5
+    и http. Имя пользователя и пароль не обязательны, порт для SOCKS-прокси по умолчанию
+    1080, так что адрес можно записать в кратком виде например так: ``socks5://myserver.com``
+
     Вместо передачи параметра можно установить переменную окружения
-    ``TABUN_API_PROXY=тип,хост,порт`` — конструктор её подхватит.
+    ``TABUN_API_PROXY=socks5://myserver.com`` — конструктор её подхватит.
+    Если нужно наоборот проигнорировать установленный ``TABUN_API_PROXY``,
+    пропишите в аргументе ``proxy`` пустую строку (не None).
 
     По умолчанию все запросы направляются по адресу ``https://tabun.everypony.ru``. Если нужно
     парсить какой-то другой сайт (например, транк или локально запущенную копию Табуна),
@@ -235,26 +240,28 @@ class User(object):
 
     def configure_opener(self, proxy=None, ssl_params=None):
         ssl_params = ssl_params or {}
-
         handlers = []
 
-        if proxy is None and os.getenv('TABUN_API_PROXY') and os.getenv('TABUN_API_PROXY').count(',') == 2:
-            proxy = os.getenv('TABUN_API_PROXY').split(',')[:3]
-        elif proxy:
-            proxy = proxy.split(',') if isinstance(proxy, text_types) else list(proxy)[:3]
+        if proxy is None:
+            proxy = os.getenv('TABUN_API_PROXY')
+
+        if proxy and (not isinstance(proxy, (text, binary)) or proxy.count(',') == 2):
+            # legacy
+            warnings.warn('Comma-separated proxy value is deprecated; use "protocol://host:port" instead', FutureWarning, stacklevel=2)
+            if isinstance(proxy, (text, binary)):
+                proxy = text(proxy).split(',')
+            proxy = '{0}://{1}:{2}'.format(*proxy)
 
         if proxy:
             # FIXME: а тут настройки SSL игнорируются
             # https://github.com/Anorov/PySocks/issues/36
-            if proxy[0] not in ('socks4', 'socks5'):
-                raise NotImplementedError('I can use only socks proxies now')
-            proxy[2] = int(proxy[2])
             import socks
             from sockshandler import SocksiPyHandler
-            if proxy[0] == 'socks5':
-                handlers.append(SocksiPyHandler(socks.PROXY_TYPE_SOCKS5, proxy[1], proxy[2]))
-            elif proxy[0] == 'socks4':
-                handlers.append(SocksiPyHandler(socks.PROXY_TYPE_SOCKS4, proxy[1], proxy[2]))
+
+            if ssl_params:
+                raise NotImplementedError('Proxy cannot be used with ssl_params (not implemented yet)')
+
+            handlers.append(SocksiPyHandler(**utils.build_proxy_params(proxy)))
             self.proxy = proxy
 
         self.opener = urequest.build_opener(*handlers)
