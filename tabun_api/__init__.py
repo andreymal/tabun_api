@@ -734,7 +734,7 @@ class User(object):
         fields['security_ls_key'] = self.security_ls_key
         data = self.send_form_and_read(url, fields or {}, files, headers=headers)
 
-        if data.startswith(b'<textarea>{'):
+        if data.lstrip().startswith(b'<textarea>{'):
             # Вроде это какой-то костыль для старых браузеров
             data = utils.find_substring(data, b'>', b'</', extend=True, with_start=False, with_end=False)
             data = html_unescape(data.decode('utf-8'))
