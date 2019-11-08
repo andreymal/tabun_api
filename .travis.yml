@@ -10,6 +10,7 @@ python:
   - "3.5"
   - "3.6"
 install:
+  - '[ $TRAVIS_PYTHON_VERSION == "3.4" ] && pip install lxml==4.3.5 || true'
   - pip install -r requirements.txt
   - pip install -r optional-requirements.txt
   - pip install -r dev-requirements.txt
