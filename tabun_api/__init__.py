@@ -1432,7 +1432,8 @@ class User(object):
             comments_info_node = utils.parse_html_fragment(raw_data[comments_pos:comments_header_end + 9])[0]
             post.comments_count = int(comments_info_node.xpath('.//*[@id="count-comments"][1]/text()[1]')[0].strip())
             post.context['unread_comments_count'] = 0
-            post.context['subscribed_to_comments'] = comments_info_node.xpath('.//input[@id="comment_subscribe"][1]')[0].get("checked") == 'checked'
+            subscribe_input = comments_info_node.xpath('.//input[@id="comment_subscribe"][1]')
+            post.context['subscribed_to_comments'] = bool(subscribe_input and subscribe_input[0].get("checked") == 'checked')
         else:
             post.comments_count = None
 
