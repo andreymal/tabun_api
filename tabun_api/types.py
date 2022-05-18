@@ -189,7 +189,9 @@ class Download(object):
 
 
 class Comment(object):
-    """Коммент. Возможно, удалённый, поэтому следите, чтобы значения не были None!
+    """
+    Коммент. Возможно, удалённый или скрытый, поэтому следите, чтобы значения
+    не были None!
 
     Поле ``favourited`` устарело; используйте ``comment.context.get('favourited')`` вместо него.
 
@@ -204,7 +206,7 @@ class Comment(object):
 
     def __init__(self, time, blog, post_id, comment_id, author, body, vote_total, parent_id=None,
                  post_title=None, unread=False, deleted=False, favourite=None, favourited=None,
-                 utctime=None, raw_body=None, context=None, vote=None):
+                 utctime=None, raw_body=None, hidden=False, context=None, vote=None):
         self._time = time
         self.blog = text(blog) if blog else None
         self.post_id = int(post_id) if post_id is not None else None
@@ -221,6 +223,7 @@ class Comment(object):
         else:
             self.post_title = None
         self.deleted = bool(deleted)
+        self.hidden = bool(hidden)
         self.favourite = int(favourite) if favourite is not None else None
         self.utctime = utctime
         self.context = context or {}

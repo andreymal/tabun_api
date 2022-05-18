@@ -21,14 +21,14 @@ from .types import Post, Download, Comment, Blog, StreamItem, UserInfo, Poll, Ta
 from .compat import PY2, BaseCookie, urequest, text_types, text, binary, html_unescape
 
 
-__version__ = '0.7.7'
+__version__ = '0.7.8'
 
 #: Адрес Табуна. Именно на указанный здесь адрес направляются запросы.
 http_host = "https://tabun.everypony.ru"
 
 #: Список полузакрытых блогов.
 halfclosed = (
-    "shipping", "RPG", "borderline", "gak", "ponymanie", "erpg", "tearsfromthemoon",
+    "shipping", "RPG", "borderline", "ponymanie", "erpg", "tearsfromthemoon",
     "abode_Clan", "knifemanes", "zootopia",
 )
 
@@ -1368,7 +1368,7 @@ class User(object):
             raise TabunError("No post")
 
         can_be_short = not url.split('?', 1)[0].endswith('.html')
-        escaped_data = utils.escape_comment_contents(utils.escape_topic_contents(data, can_be_short))
+        escaped_data = utils.escape_topic_contents(data, can_be_short)
         # items = filter(lambda x: not isinstance(x, text_types) and x.tag == "article", utils.parse_html_fragment(escaped_data))
         items = [x for x in utils.parse_html_fragment(escaped_data) if not isinstance(x, text_types) and x.tag == "article"]
         items.reverse()
@@ -1416,17 +1416,27 @@ class User(object):
             raise TabunError('Many posts on page {}'.format(repr(url)))
         post = posts[0]
 
-        comments_count = utils.find_substring(raw_data, b'<div class="comments" id="comments"', b'</h3>')
-        if comments_count:
-            comments_count = utils.find_substring(raw_data, b'<span id="count-comments">', b'</span>', with_start=False, with_end=False)
-            post.comments_count = int(comments_count.strip())
+        # Вытаскиваем базовую информацию о комментариях
+        # (манипулируем строками вместо парсинга через lxml, чтобы не тратиться
+        # на парсинг ненужных нам элементов)
+        comments_pos = raw_data.find(b'<div class="comments')
+        if comments_pos < 0:
+            comments_pos = raw_data.find(b'<div id="comments"')
+
+        comments_header_end = -1
+        if comments_pos > 0:
+            comments_header_end = raw_data.find(b'</header>', comments_pos, comments_pos + 5000)
+
+        if comments_header_end >= 0:
+            # А вот уже теперь парсим только нужные элементы
+            comments_info_node = utils.parse_html_fragment(raw_data[comments_pos:comments_header_end + 9])[0]
+            post.comments_count = int(comments_info_node.xpath('.//*[@id="count-comments"][1]/text()[1]')[0].strip())
             post.context['unread_comments_count'] = 0
+            post.context['subscribed_to_comments'] = comments_info_node.xpath('.//input[@id="comment_subscribe"][1]')[0].get("checked") == 'checked'
+        else:
+            post.comments_count = None
 
         post.context['can_comment'] = b'<h4 class="reply-header" id="comment_id_0">' in raw_data
-
-        f = raw_data.find(b'<div class="comments" id="comments">')
-        if f >= 0:
-            post.context['subscribed_to_comments'] = raw_data.find(b'<input checked="checked" type="checkbox" id="comment_subscribe"', f, f + 1000) >= 0
 
         return post
 
@@ -1479,16 +1489,19 @@ class User(object):
 
         for sect in raw_comms:
             c = parse_comment(sect, post_id, blog, context=context)
-            if c:
+            if c is not None:
+                # Нормальный комментарий
                 comms[c.comment_id] = c
             else:
+                # Удалённый или скрытый комментарий
                 if sect.get("id", "").find("comment_id_") == 0:
                     c = parse_deleted_comment(sect, post_id, blog, context=context)
-                    if c:
+                    if c is not None:
                         comms[c.comment_id] = c
                     else:
                         utils.logger.warning('Cannot parse deleted comment %s (url: %s)', sect.get('id'), url)
                 else:
+                    # TODO: нужно ли на новом Табуне?
                     tmp = sect.xpath('.//ul[@class="comment-info"]/li[starts-with(@id, "vote_area_comment")]')
                     if tmp:
                         utils.logger.warning('Unknown comment format %s, it can be comment from deleted blog; skipped (url: %s)', tmp[0].get('id'), url)
@@ -2628,25 +2641,34 @@ class User(object):
             return
 
         data = utils.replace_cloudflare_emails(data)
-        item = utils.parse_html_fragment(data)[0]
-        title = item.find("header").find("h1").text
+        item = utils.parse_html_fragment(utils.escape_topic_contents(data, False))[0]
+
+        header = item.find("header")
+        title = header.find("h1").text
+        author = header.xpath('.//a[@rel="author"]/text()[1]')[0].strip()
+
         body = item.xpath('div[@class="topic-content text"]')
         if len(body) == 0:
             return
         body = body[0]
 
+        if body.get('data-escaped') == '1':
+            # всё экранировано в utils.escape_topic_contents
+            raw_body = body.text
+        else:
+            raw_body = None
+
         recipients = []
         recipients_inactive = []
-        for x in item.xpath('div[@class="talk-search talk-recipients"]/header/a[@class!="link-dotted"]'):
+        for x in item.xpath('div[@class="talk-search talk-recipients"]//a[contains(@class, "username")]'):
             recipients.append(x.text.strip())
             if 'inactive' in x.get('class', ''):
                 recipients_inactive.append(x.text.strip())
 
         footer = item.find("footer")
-        author = footer.xpath('ul/li[@class="topic-info-author"]/a[2]/text()')[0].strip()
-        date = footer.xpath('ul/li[@class="topic-info-date"]/time')[0]
-        utctime = utils.parse_datetime(date.get("datetime"))
-        date = time.strptime(date.get("datetime")[:-6], "%Y-%m-%dT%H:%M:%S")
+        date_node = footer.xpath('ul/li[@class="topic-info-date"]/time')[0]
+        utctime = utils.parse_datetime(date_node.get("datetime"))
+        date = time.strptime(date_node.get("datetime")[:-6], "%Y-%m-%dT%H:%M:%S")  # legacy
 
         comments = self.get_comments(url, raw_data=raw_data)
 
@@ -2657,9 +2679,10 @@ class User(object):
 
         return TalkItem(
             talk_id, recipients, False, title, date,
-            body, author, comments, utctime,
+            body if raw_body is None else None, author, comments, utctime,
             recipients_inactive=recipients_inactive, comments_count=len(comments),
             context=context,
+            raw_body=raw_body,
         )
 
     def delete_talk(self, talk_id):
@@ -2910,6 +2933,7 @@ def parse_post(item, context=None):
         raw_body = None
 
         # чистим от topic-actions, а также сносим мусорные отступы
+        # TODO: перепроверить, актуально ли для нового Табуна
         post_header = body.xpath('header[@class="topic-header"]')
         if post_header:
             post_header = post_header[0]
@@ -2954,16 +2978,17 @@ def parse_post(item, context=None):
 
     draft = bool(header.xpath('h1/i[@class="icon-synio-topic-draft"]'))
 
-    rateelem = header.xpath('div[@class="topic-info"]/div[@class="topic-info-vote"]/div/div[@class="vote-item vote-count"]')
+    rateelem = header.xpath('div[@class="topic-info"]//*[@class="vote-item vote-count"][1]')
     if rateelem:
         rateelem = rateelem[0]
 
         vote_count = int(rateelem.get("title").rsplit(" ", 1)[-1])
-        vote_total = rateelem.getchildren()[0]
-        if not vote_total.getchildren():
-            vote_total = int(vote_total.text.replace("+", ""))
-        else:
+
+        try:
+            vote_total = int((rateelem.text or "").strip().lstrip("+"))
+        except ValueError:
             vote_total = None
+
     else:
         vote_count = -1
         vote_total = 0
@@ -3171,56 +3196,44 @@ def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
     classes = frozenset(node.get('class', '').split())
 
     # Вытаскиваем элемент с информацией
-    info = node.xpath('*[@class="comment-info"]')
-    if not info:
-        # В списках комментов он расположен немного по-другому
-        # (актуально только для старого Табуна, в новом обёртка убрана)
-        info = node.xpath('div[@class="comment-path"]/*[@class="comment-info"]')
-    if not info:
-        if 'comment-deleted' not in classes and 'comment-bad' not in classes:
-            utils.logger.warning('Comment in post %s (id=%s) has no info! Please report to andreymal.', post_id, node.get('id', 'N/A'))
-        return
-    info = info[0]
+    info = node.xpath('.//*[@class="comment-info"][1]')
+    comment_id = int(node.get('data-id') or info.get('data-id'))
 
-    # Вытаскиваем id коммента
-    # Новый Табун
-    comment_link = info.xpath('a[starts-with(@class, "comment-link")]')
-    if not comment_link:
-        # Старый Табун
-        comment_link = info.xpath('li[starts-with(@class, "comment-link")]/a')
+    nick_node = None
+    if info:
+        info = info[0]
+        nick_node = info.xpath('.//a[starts-with(@class, "comment-author")][1]')
 
-    if not comment_link:
-        utils.logger.warning('Comment in post %s (id=%s) has no link! Please report to andreymal.', post_id, node.get('id', 'N/A'))
-    comment_link = comment_link[0].get('href')
-
-    if '#comment' in comment_link:
-        comment_id = int(comment_link.rsplit('#comment', 1)[-1])
-    elif '/comments/' in comment_link:
-        comment_id = int(comment_link.rstrip('/').rsplit('/', 1)[-1])
-    else:
-        utils.logger.warning('Comment in post %s (id=%s) has invalid link %s! Please report to andreymal.', post_id, node.get('id', 'N/A'), comment_link)
-        return
+    if not nick_node:
+        # Если комментарий удалён или скрыт, его comment-info пустой
+        if 'comment-deleted' not in classes and 'comment-hidden' not in classes:
+            utils.logger.warning(
+                'Comment %s in post %s has no comment-info! Please report to andreymal.',
+                comment_id,
+                post_id,
+            )
+        return None
 
     # Определяем, коммент из поста или из ленты (в ленте не все данные есть)
-    vote_area = info.xpath('*[starts-with(@id, "vote_area_comment")][1]')
-    is_full_comment = bool(vote_area and vote_area[0].xpath('div[contains(@class, "vote-up")]'))
+    vote_area = info.xpath('.//*[starts-with(@id, "vote_area_comment")][1]')
+    is_full_comment = bool(vote_area and vote_area[0].xpath('.//div[contains(@class, "vote-up")]'))
 
     # Вытаскиваем всякую мелочёвку
     unread = "comment-new" in classes
-    deleted = "comment-deleted" in classes
 
-    nick = info.xpath('*[starts-with(@class, "comment-author")]')[0]
-    if not nick.get('href'):
-        # Старый Табун
-        nick = nick.findall('a')[-1]
-    nick = nick.text
+    # Администратор может видеть удалённые и скрытые комментарии,
+    # поэтому эти классы вполне могут здесь присутствовать
+    deleted = "comment-deleted" in classes
+    hidden = "comment-hidden" in classes
+
+    nick = nick_node[0].text
 
     tm = info.xpath('.//time[1]')[0].get('datetime')
     utctime = utils.parse_datetime(tm)
     tm = time.strptime(tm[:-6], "%Y-%m-%dT%H:%M:%S")  # legacy
 
     # Вытаскиваем текст сообщения (с учётом utils.escape_comment_contents)
-    body = node.xpath('div[@class="comment-content"][1]/div')[0]
+    body = node.xpath('div[@class="comment-content"][1]/div[1]')[0]
     raw_body = None
     if body is not None:
         if body.get('data-escaped') == '1':
@@ -3235,7 +3248,7 @@ def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
                 body.text = body.text.rstrip()
 
     # Если коммент из списка комментов, мы можем вытащить заголовок поста
-    post_li = info.xpath('*/a[@class="blog-name"][1]')
+    post_li = info.xpath('.//a[@class="blog-name"][1]')
     if post_li:
         post_li = post_li[0].getparent()
         post_title = post_li.xpath('a[@class="comment-path-topic"]')[0].text
@@ -3248,45 +3261,40 @@ def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
 
     # Достаём информацию о родительском комментарии
     if parent_id is None:
-        # Новый Табун
-        parent_id = info.xpath('a[@class="goto goto-comment-parent"]')
-        if not parent_id:
-            # Старый Табун
-            parent_id = info.xpath('li[@class="goto goto-comment-parent"]/a')
-        if parent_id:
-            parent_id = parent_id[0]
-            if parent_id.get('onclick'):
-                # Парсим onclick="ls.comments.goToParentComment(id,parent_id); return false;"
-                parent_id = int(parent_id.get('onclick').rsplit(",", 1)[-1].split(")", 1)[0])
-            elif '/comments/' in parent_id.get('href', ''):
+        parent_link = info.xpath('.//a[@class="goto goto-comment-parent"][1]')
+        if parent_link:
+            parent_link = parent_link[0]
+            parent_href = parent_link.get('href', '')
+            if '/comments/' in parent_href:
                 # Парсим /comments/parent_id
-                parent_id = int(parent_id.get('href').rsplit('/', 1)[-1])
-            elif '#comment' in parent_id.get('href', ''):
+                parent_id = int(parent_href.strip('/').rsplit('/', 1)[-1])
+            elif '#comment' in parent_href:
                 # Парсим #commentparent_id
-                parent_id = int(parent_id.get('href').rsplit('#comment', 1)[-1])
+                parent_id = int(parent_href.rsplit('#comment', 1)[-1])
             else:
                 utils.logger.warning('Comment %s has invalid parent link! Please report to andreymal.', comment_id)
                 parent_id = None
 
-    # Достаём информацию о редактировании
-    # (li для старого Табуна)
-    context['can_edit'] = bool(info.xpath('li[@class="comment-edit-bw"]'))
+    # Проверяем возможность редактирования
+    edit_btn = info.xpath('.//*[contains(@class, "comment-edit-bw")][1]')
+    if edit_btn:
+        edit_btn = edit_btn[0]
+        edit_classes = edit_btn.get('class', '').split()
 
-    if not context['can_edit']:
-        # Новый Табун
-        edit_btn = info.xpath('*[contains(@class, "comment-edit-bw")]')
-        if edit_btn:
-            edit_btn = edit_btn[0]
-            edit_classes = edit_btn.get('class', '').split()
+        if 'edit-timeout' in edit_classes:
+            # TODO: если у поста есть класс is-moder или is-admin,
+            # то редактировать на самом деле всё равно можно
+            context['can_edit'] = False
+        else:
+            context['can_edit'] = True
 
-            if 'edit-timeout' in edit_classes:
-                context['can_edit'] = False
-            else:
-                context['can_edit'] = True
-
-    if not context['can_edit'] and not is_full_comment:
-        # Для коммента из ленты отсутствие кнопки ничего не значит
+        if not context['can_edit'] and not is_full_comment:
+            # Для коммента из ленты отсутствие кнопки ничего не значит
+            context['can_edit'] = None
+    else:
         context['can_edit'] = None
+
+    # TODO: проверить возможность удаления
 
     vote_total = None  # На новом Табуне для анонимов голоса скрыты
     context['can_vote'] = None
@@ -3294,13 +3302,11 @@ def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
 
     # Достаём информаию о рейтинге
     if vote_area:
-        vote_node = vote_area[0].xpath('span[@class="vote-count"]/text()[1]')
+        vote_node = vote_area[0].xpath('.//span[@class="vote-count"]/text()[1]')
         vote_total = int(vote_node[0].replace("+", ""))
         if is_full_comment:  # проверка, что пост не из ленты (в ней классы полупустые)
             votecls = vote_area[0].get('class', '').split()
-            # vote-expired стоит также у своих комментов, осторожно
-            # TODO: у нового Табуна классы другие, переделать
-            context['can_vote'] = 'voted' not in votecls and 'vote-expired' not in votecls
+            context['can_vote'] = 'vote-enabled' in votecls
             if 'voted-up' in votecls:
                 context['vote_value'] = 1
             elif 'voted-down' in votecls:
@@ -3310,47 +3316,56 @@ def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
 
     # Достаём информацию об избранном
     favourited = False
-    favourite = info.xpath('*[@class="comment-favourite"]')
-    if not favourite:
-        favourite = None
-    else:
-        favourited = favourite[0].find('div')
-        favourited = favourited is not None and 'active' in favourited.get('class', '')
-        favourite = favourite[0].find('span').text
+    favourite_node = info.xpath('.//*[@class="comment-favourite"][1]')
+    if favourite_node:
+        favourited = favourite_node[0].find('div')
+        context['favourited'] = favourited is not None and 'active' in favourited.get('class', '')
+        favourite_str = favourite_node[0].find('span').text
         try:
-            favourite = int(favourite) if favourite else 0
-        except:
+            favourite = int(favourite_str) if favourite_str else 0
+        except ValueError:
             favourite = None
-    context['favourited'] = favourited
+    else:
+        favourite = None
+        context['favourited'] = False
 
     if body is not None:
         return Comment(tm, blog, post_id, comment_id, nick, body if raw_body is None else None, vote_total, parent_id,
-                       post_title, unread, deleted, favourite, None, utctime, raw_body, context=context)
+                       post_title, unread, deleted, favourite, None, utctime, raw_body, hidden=hidden, context=context)
 
 
 def parse_deleted_comment(node, post_id, blog=None, parent_id=None, context=None):
     # И это тоже парсинг коммента! Но не простого, а удалённого.
     try:
-        comment_id = int(node.get("id").rsplit("_", 1)[-1])
-    except:
+        comment_id = int(node.get('data-id'))
+    except ValueError:
         return None
+
     context = dict(context) if context else {}
-    unread = "comment-new" in node.get("class", "")
-    deleted = "comment-deleted" in node.get("class", "")
-    bad = "comment-bad" in node.get("class", "")  # вроде обещалось, что это временно, поэтому пусть пока тут
-    if not deleted and not bad:
+
+    classes = frozenset(node.get('class', '').split())
+    unread = "comment-new" in classes
+    deleted = "comment-deleted" in classes
+    hidden = "comment-hidden" in classes
+    if not deleted and not hidden:
         utils.logger.warning('Deleted comment %s is not deleted! Please report to andreymal.', comment_id)
+
     body = None
     nick = None
     tm = None
     post_title = None
     vote = None
-    parent_wrapper = node.getparent().getparent()
-    if parent_wrapper is not None and parent_wrapper.tag == "div" and parent_wrapper.get("id", "").startswith("comment_wrapper_id_"):
-        parent_id = int(parent_wrapper.get("id").rsplit("_", 1)[-1])
-    else:
-        parent_id = None
-    return Comment(tm, blog, post_id, comment_id, nick, body, vote, parent_id, post_title, unread, deleted or bad, context=context)
+
+    if parent_id is None:
+        parent_wrapper = node.getparent().getparent()
+        if (
+            parent_wrapper is not None
+            and parent_wrapper.tag == "div"
+            and parent_wrapper.get("id", "").startswith("comment_wrapper_id_")
+        ):
+            parent_id = int(parent_wrapper.get("id").rsplit("_", 1)[-1])
+
+    return Comment(tm, blog, post_id, comment_id, nick, body, vote, parent_id, post_title, unread, deleted, hidden=hidden, context=context)
 
 
 def parse_talk_item(node, context=None):

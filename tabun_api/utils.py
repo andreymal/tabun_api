@@ -751,13 +751,15 @@ def download(url, maxmem=20 * 1024 * 1024, timeout=5, waitout=15, headers=None):
 
     # TODO: non-ASCII URL
 
+    from tabun_api import http_headers
+
     url = text(url)
     if url.startswith('//'):
         url = 'http:' + url
 
     req = urequest.Request(url.encode("utf-8") if PY2 else url)
 
-    request_headers = {}
+    request_headers = http_headers.copy()
     if headers:
         request_headers.update({k.title(): v for k, v in headers.items()})
     for header, value in request_headers.items():
@@ -982,7 +984,10 @@ def html_escape(s, single_quote=False):
 
 
 def escape_topic_contents(data, may_be_short=False):
-    """Экранирует содержимое постов для защиты от поехавшей вёрстки и багов lxml."""
+    """
+    Экранирует содержимое постов и личных сообщений для защиты от поехавшей
+    вёрстки и багов lxml.
+    """
     if not isinstance(data, binary):
         # '\xa0'.strip() => ''
         # b'\xa0'.strip() => b'\xa0' — придерживаюсь этого варианта
@@ -992,13 +997,17 @@ def escape_topic_contents(data, may_be_short=False):
     last_end = 0
     buf = []
     while True:
-        # определяем границы тела очередного поста
+        # определяем границы тела очередного поста/сообщения
         f1 = data.find(b'<div class="topic-content text">', last_end)
         if f1 < 0:
             break
         f2 = data.find(b'<footer', f1)
         if f2 < 0:
             break
+        # В личном сообщении перед footer ещё идёт список участников
+        f3 = data.find(b'<div class="talk-search', f1, f2)
+        if f3 > -1:
+            f2 = f3
         f2 = data.rfind(b'</div>', f1, f2)
         if f2 < 0:
             break
@@ -1027,6 +1036,7 @@ def escape_topic_contents(data, may_be_short=False):
                     body = body[:body.rfind(b'<', 0, fa)].rstrip()
 
         # выпиливаем header при его наличии
+        # TODO: перепроверить, встречается ли такое на новом Табуне
         if body.startswith(b'<header'):
             body = body[body.find(b'</header>') + 9:].lstrip()
 
@@ -1075,44 +1085,31 @@ def escape_comment_contents(data):
             continue
 
         # Выделяем текст коммента
-        f1 = data.find(b'class="comment-content">', sect_start, sect_end)
+        f1 = data.find(b'class="comment-content"', sect_start, sect_end)
         if f1 >= 0:
-            f = data.find(b'<div class="text current">', f1, f1 + 150)
+            f = data.find(b'<div class="text current">', f1, f1 + 1000)
             if f < 0:
-                f = data.find(b'<div class=" text">', f1, f1 + 150)
-            if f < 0:
-                f1 = data.find(b'<div class="text">', f1, f1 + 150)
+                f1 = data.find(b'<div class="text">', f1, f1 + 1000)
             else:
                 f1 = f
             del f
         if f1 < 0:
-            # Коммент без текста (например, удалённый)
+            # Коммент без текста? (На новом Табуне таких быть вроде не должно)
             buf.append(data[prev_last_end:last_end])
             continue
 
-        # Блок редактирования (в отключенном плагине)
-        f2 = data.rfind(b'<div id="info_edit_', f1, sect_end)
+        # После текста коммента всегда идёт блок с информацией о комменте
+        # (даже для удалённых и скрытых комментариев, хотя тогда блок пустой)
+        f2 = data.rfind(b'<div class="comment-info', f1, sect_end)
 
-        # Путь к посту на странице /comments/ (старый Табун)
+        # Но если его почему-то вдруг нет, то можно ориентироваться на окончание section
         if f2 < 0:
-            f2 = data.rfind(b'<div class="comment-path', f1, sect_end)
+            f2 = sect_end
 
-        # Информация о комменте в самом посте (новый Табун)
-        if f2 < 0:
-            f2 = data.rfind(b'<div class="comment-info', f1, sect_end)
-
-        # Информация о комменте в самом посте (старый Табун)
-        if f2 < 0:
-            f2 = data.rfind(b'<ul class="comment-info', f1, sect_end)
-
-        if f2 < 0:
-            # Что-то совсем битое, вроде скрытого заминусованного коммента
-            buf.append(data[prev_last_end:last_end])
-            continue
-
-        # Обходим </div> от <div class="comment-content">
+        # Ищем </div>, который закрывает <div class="comment-content">
         f2 = data.rfind(b'</div>', f1, f2)
         if f2 >= 0:
+            # И от него ищем </div>, который закрывает <div class="text">
             f2 = data.rfind(b'</div>', f1, f2)
         if f2 < 0:
             logger.warning('Cannot find </div></div> in escape_comment_contents! Please report to andreymal.')
