@@ -2703,30 +2703,32 @@ class User(object):
             raise TabunError('Cannot delete talk', code=resp.getcode())
 
     def get_activity(self, url='/stream/all/', raw_data=None):
-        """Возвращает список последних событий."""
+        """
+        Возвращает кортеж из двух элементов: номер самого старого события
+        в списке и собственно список последних событий.
+        """
         if not raw_data:
             raw_data = self.urlread(url)
 
         raw_data = utils.find_substring(raw_data, b'<div id="content"', b'<!-- /content', with_end=False)
         if not raw_data:
-            return []
+            return -1, []
         raw_data = utils.replace_cloudflare_emails(raw_data)
         node = utils.parse_html_fragment(raw_data)
         if not node:
-            return []
+            return -1, []
         node = node[0]
 
-        last_id = node.find('span')
-        if last_id is not None and last_id.get('data-last-id'):
-            # Табун
-            last_id = int(last_id.get('data-last-id'))
+        stream_list = node.find('ul')
+        if stream_list is None:
+            # Лента активности пуста
+            return -1, []
+
+        last_id_node = node.find('span')
+        if last_id_node is not None and last_id_node.get('data-last-id'):
+            last_id = int(last_id_node.get('data-last-id'))
         else:
-            # Остальные LiveStreet
-            last_id = node.find('input')
-            if last_id is not None and last_id.get('id') == 'stream_last_id' and last_id.get('value'):
-                last_id = int(last_id.get('value'))
-            else:
-                last_id = -1
+            last_id = -1
 
         item = None
         items = []
