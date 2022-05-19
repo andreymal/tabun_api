@@ -1704,14 +1704,15 @@ class User(object):
         }
 
         comms = {}
-        # comments/pid для Табуна, aComments/idParent для остальных LiveStreet
-        # (При отсутствии комментариев в comments почему-то возвращается список вместо словаря)
-        comms_list = data['comments'].values() if data.get('comments') else data['aComments']
-        for comm in comms_list:
+
+        # (При отсутствии комментариев в comments почему-то возвращается список
+        # вместо словаря, поэтому вручную конвертируем его в словарь)
+        raw_comments_dict = dict(data['comments'])
+        for comm in raw_comments_dict.values():
             node = utils.parse_html_fragment(utils.escape_comment_contents(comm['html'].encode('utf-8')))
             sect = node[0]
             post_id = target_id if typ == 'blog' else None
-            parent_id = comm['pid'] if 'pid' in comm else comm['idParent']
+            parent_id = comm['pid']
 
             pcomm = parse_comment(sect, post_id, None, parent_id, context=context)
 
