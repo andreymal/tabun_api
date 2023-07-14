@@ -2048,11 +2048,13 @@ class User(object):
             contacts = None
 
         # Сайдбар с фотографией и количеством публикаций
-        sidebar = utils.find_substring(raw_data, b'<aside id="sidebar">', b'</aside>')
-        if sidebar:
-            sidebar = utils.parse_html_fragment(sidebar)[0]
+        sidebar_html = utils.find_substring(raw_data, b'<aside id="sidebar"', b'</aside>')
+        if sidebar_html:
+            sidebar = utils.parse_html_fragment(sidebar_html)[0]
             foto = sidebar.xpath('//img[@id="foto-img"]')
         else:
+            utils.logger.warning('get_profile: sidebar not found')
+            sidebar = None
             full = False
             foto = None
 
@@ -2074,7 +2076,7 @@ class User(object):
         current_page = None
 
         # Получаем основные счётчики (публикации, избранные, друзья)
-        for li in sidebar.xpath('section/ul[@class="nav nav-profile"]/li'):
+        for li in sidebar.xpath('section/ul[@class="nav nav-profile"]/li') if sidebar is not None else []:
             link = li.find('a').get('href', '')
             li_data = li.find('a').text.strip()
             value = utils.find_substring(li_data, ' (', ')', with_start=False, with_end=False)
@@ -2130,7 +2132,7 @@ class User(object):
                     counts['notes'] = tmp_notes
 
         # Заметка
-        note_elem = sidebar.xpath('//p[@id="usernote-note-text"]')
+        note_elem = sidebar.xpath('//p[@id="usernote-note-text"]') if sidebar is not None else None
         if note_elem:
             context['note'] = note_elem[0].text.strip() or None
             context['can_edit_note'] = True
