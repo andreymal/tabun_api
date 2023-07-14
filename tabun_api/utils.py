@@ -574,7 +574,7 @@ def find_images(body, spoiler_title=True, no_other=False):
         if not tags:
             continue
         for img in tags:
-            src = img.get("src")
+            src = img.get("src") or img.get("data-src")
             if not src:
                 src = img.get("href")
                 if not src:
