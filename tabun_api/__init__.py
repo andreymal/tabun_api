@@ -2855,11 +2855,21 @@ def parse_activity(item):
         return
 
     username = item.xpath('p[@class="info"]/a/strong/text()[1]')[0]
-    date = item.xpath('p[@class="info"]/span[@class="date"]')[0].get('title')
-    if not date:
-        return
-    date = time.strptime(utils.mon2num(date), "%d %m %Y, %H:%M")
-    return ActivityItem(typ, date, post_id, comment_id, blog, username, title, data)
+
+    date_node = item.xpath('p[@class="info"]/time')
+    if date_node:
+        # Новый Табун
+        date = date_node[0].get('datetime')
+        utctime = utils.parse_datetime(date)
+        date = time.strptime(date[:-6], "%Y-%m-%dT%H:%M:%S")
+    else:
+        # Старый Табун
+        date = item.xpath('p[@class="info"]/span[@class="date"]')[0].get('title')
+        if not date:
+            return
+        utctime = None
+        date = time.strptime(utils.mon2num(date), "%d %m %Y, %H:%M")
+    return ActivityItem(typ, date, post_id, comment_id, blog, username, title, data, utctime=utctime)
 
 
 def parse_post(item, context=None):

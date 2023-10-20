@@ -569,7 +569,7 @@ class ActivityItem(object):
     FRIEND_ADD = 4
     JOIN_BLOG = 24
 
-    def __init__(self, type, date, post_id=None, comment_id=None, blog=None, username=None, title=None, data=None, id=None):
+    def __init__(self, type, date, post_id=None, comment_id=None, blog=None, username=None, title=None, data=None, id=None, utctime=None):
         self.type = int(type)
         if self.type not in (
             self.WALL_ADD, self.POST_ADD, self.COMMENT_ADD, self.BLOG_ADD,
@@ -579,6 +579,7 @@ class ActivityItem(object):
             raise ValueError
 
         self.date = date
+        self.utctime = utctime
 
         self.post_id = int(post_id) if post_id is not None else None
         self.comment_id = int(comment_id) if comment_id is not None else None
