@@ -409,6 +409,12 @@ class UserInfo(object):
 
     full=True, только если информация получена со страницы ``/profile/username/``.
 
+    Если private_profile=True, то пользователь скрыл свой профиль настройками
+    приватности и почти вся информация недоступна.
+
+    Если private_profile=False, но private_profile_data=True, то недоступна
+    только информация из блока «Активность» и фото.
+
     Словарь ``counts`` может быть пустым или содержать None или, если доступно,
     содержать следующие значения:
 
@@ -441,7 +447,8 @@ class UserInfo(object):
     def __init__(self, user_id, username, realname, skill, rating, userpic=None, foto=None,
                  gender=None, birthday=None, registered=None, last_activity=None,
                  description=None, blogs=None, rating_vote_count=None, contacts=None,
-                 counts=None, full=False, context=None, raw_description=None):
+                 counts=None, full=False, context=None, raw_description=None,
+                 private_profile=False, private_profile_data=False):
         self.user_id = int(user_id)
         self.username = text(username)
         self.realname = text(realname) if realname else None
@@ -466,6 +473,8 @@ class UserInfo(object):
         self.counts = counts or {}
         self.full = bool(full)
         self.context = context or {}
+        self.private_profile = bool(private_profile)
+        self.private_profile_data = bool(private_profile_data)
 
     def __repr__(self):
         o = "<userinfo " + self.username + ">"

@@ -1926,12 +1926,13 @@ class User(object):
         # Блок в самом верху всех страниц профиля
         profile = node.xpath('div[@class="profile"]')[0]
 
-        username = profile.xpath('h2[@itemprop="nickname"]/text()')[0]
-        realname = profile.xpath('p[@class="user-name"]/text()')
+        userpic = node.xpath('.//img[@itemprop="photo"][1]')[0].get('src')
+        username = profile.xpath('.//h2[@itemprop="nickname"]/text()')[0]
+        realname = profile.xpath('.//p[@class="user-name"]/text()')
 
-        skill = float(profile.xpath('div[@class="strength"]/div[1]/text()')[0])
+        skill = float(profile.xpath('.//div[@class="strength"]/div[1]/text()')[0])
 
-        vote_area = profile.xpath('div[@class="vote-profile"]/div[1]')[0]
+        vote_area = profile.xpath('.//div[@class="vote-profile"]/div[1]')[0]
         user_id = int(vote_area.get("id").rsplit("_")[-1])
 
         rating = float(profile.xpath('.//span[@id="vote_total_user_{}"]/text()'.format(user_id))[0].strip().replace('+', ''))
@@ -1947,62 +1948,77 @@ class User(object):
         else:
             context['vote_value'] = None
 
-        full = True
-
         # Блок с основной информацией на странице /profile/xxx/
-        userpic = None
         description = None
         raw_description = None
+
+        profile_403 = node.xpath('div[@class="profile-403"]')
+        if profile_403:
+            profile_403 = profile_403[0]
+            profile_403_message = profile_403.xpath('.//h2/text()')[0].strip()
+        else:
+            profile_403 = None
+            profile_403_message = None
 
         about = node.xpath('div[@class="profile-info-about"]')
         if about:
             about = about[0]
-            userpic = about.xpath('a[1]/img')[0].get('src')
             description = about.xpath('div[@class="text"]')
             if description and description[0].get('data-escaped') == '1':
                 raw_description = description[0].text
         else:
+            # Информация «О себе» не заполнена или скрыта настройками приватности
             about = None
-            full = False
 
         birthday = None
         registered = None
         last_activity = None
         gender = None
+        blogs = {
+            'owner': [],
+            'admin': [],
+            'moderator': [],
+            'member': [],
+        }
+
+        # Есть ли блок «Активность» на основной странице профиля
+        # (если нет, значит он скрыт настройками приватности)
+        private_profile_data = True
 
         # Блок с чуть более подробной информацией на /profile/xxx/ (личное и активность)
         profile_left = node.xpath('div[@class="wrapper"]/div[@class="profile-left"]')
         if profile_left:
+            # Старый Табун
             profile_left = profile_left[0]
             profile_items = profile_left.xpath('ul[@class="profile-dotted-list"]/li')
-            blogs = {
-                'owner': [],
-                'admin': [],
-                'moderator': [],
-                'member': []
-            }
         else:
-            profile_items = []
-            blogs = None
-            full = False
+            # На новом Табуне информация не завёрнута в profile-left
+            profile_items = node.xpath('ul[@class="profile-dotted-list"]/li')
 
         for ul in profile_items:
             name = ul.find('span').text.strip()
             value = ul.find('strong')
+
             if name == 'Дата рождения:':
                 birthday = time.strptime(utils.mon2num(value.text), '%d %m %Y')
+
+            elif name == 'Пол:':
+                gender = 'M' if value.text.strip() == 'мужской' else 'F'
+
             elif name == 'Зарегистрирован:':
+                private_profile_data = False
                 try:
                     registered = time.strptime(utils.mon2num(value.text), '%d %m %Y, %H:%M')
                 except ValueError:
                     if username != 'guest':  # 30 ноября -0001, 00:00
                         raise
+
             elif name == 'Последний визит:':
+                private_profile_data = False
                 last_activity = time.strptime(utils.mon2num(value.text), '%d %m %Y, %H:%M')
-            elif name == 'Пол:':
-                gender = 'M' if value.text.strip() == 'мужской' else 'F'
 
             elif name in ('Создал:', 'Администрирует:', 'Модерирует:', 'Состоит в:'):
+                private_profile_data = False
                 blist = []
                 for b in value.findall('a'):
                     link = b.get('href', '')[:-1]
@@ -2018,34 +2034,37 @@ class User(object):
                 elif name == 'Состоит в:':
                     blogs['member'] = blist
 
-        if registered is None and full:
+        # Если нашёлся хотя бы один из блогов «О себе», «Активность» или сообщение о скрытом профиле —
+        # значит мы на полной странице профиля
+        full = not private_profile_data or about is not None or profile_403 is not None
+
+        # «Ой, извините!» — профиль целиком скрыт настройками приватности
+        # «Нечего показать...» — профиль в целом не скрыт, но скрыта активность и профиль оказался пуст
+        private_profile = profile_403 is not None and profile_403_message != 'Нечего показать...'
+
+        if registered is None and not private_profile_data:
             # забагованная учётка Tailsik208 со смайликом >_< (была когда-то)
             utils.logger.warning('Profile %s: registered date is None! Please report to andreymal.', username)
             registered = time.gmtime(0)
             description = []
 
         # Блок с контактами
-        profile_right = node.xpath('div[@class="wrapper"]/div[@class="profile-right"]')
+        contacts = []
+        for ul in node.xpath('.//ul[@class="profile-contact-list"]'):
+            for li in ul.findall('li'):
+                icon = li.find('i')
+                a = li.find('a')
+                label = a.text.strip() if a is not None else li.text_content().strip()
+                ctype = icon.get('title', '') if icon is not None else ''
 
-        if profile_right:
-            contacts = []
-            for ul in profile_right[0].xpath('ul[@class="profile-contact-list"]'):
-                for li in ul.findall('li'):
-                    icon = li.find('i')
-                    a = li.find('a')
-                    label = a.text.strip() if a is not None else li.text_content().strip()
-                    ctype = icon.get('title', '') if icon is not None else ''
+                if ctype not in ('phone', 'mail', 'skype', 'icq', 'www', 'twitter', 'facebook', 'vkontakte', 'odnoklassniki'):
+                    utils.logger.warning('Unknown contact type: %s', ctype)
 
-                    if ctype not in ('phone', 'mail', 'skype', 'icq', 'www', 'twitter', 'facebook', 'vkontakte', 'odnoklassniki'):
-                        utils.logger.warning('Unknown contact type: %s', ctype)
-
-                    contacts.append((
-                        ctype,
-                        a.get('href', '') if a is not None else None,
-                        label,
-                    ))
-        else:
-            contacts = None
+                contacts.append((
+                    ctype,
+                    a.get('href', '') if a is not None else None,
+                    label,
+                ))
 
         # Сайдбар с фотографией и количеством публикаций
         sidebar_html = utils.find_substring(raw_data, b'<aside id="sidebar"', b'</aside>')
@@ -2147,6 +2166,8 @@ class User(object):
             rating_vote_count=rating_vote_count, contacts=contacts,
             counts=counts, full=full, context=context,
             raw_description=raw_description,
+            private_profile=private_profile,
+            private_profile_data=private_profile_data,
         )
 
     def get_notes(self, page=1, url=None, raw_data=None):
