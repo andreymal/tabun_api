@@ -21,7 +21,7 @@ from .types import Post, Download, Comment, Blog, StreamItem, UserInfo, Poll, Ta
 from .compat import PY2, BaseCookie, urequest, text_types, text, binary, html_unescape
 
 
-__version__ = '0.7.9'
+__version__ = '0.7.10'
 
 #: Адрес Табуна. Именно на указанный здесь адрес направляются запросы.
 http_host = "https://tabun.everypony.ru"
@@ -331,16 +331,18 @@ class User(object):
         else:
             self.talk_unread = int(talk_count[0][1:])
 
-        strength = dd_user.xpath('ul[@class="dropdown-user-menu"]/li/span/text()')
+        strength = dd_user.xpath('ul/li/span[@class="strength"]/text()')
         if not strength:
+            # На новом Табуне (2024-06) сила скрыта
             self.skill = 0.0
         else:
             self.skill = float(strength[0])
 
-        if len(strength) < 2:
+        rating = dd_user.xpath('ul/li/span[starts-with(@class, "rating")]/text()')
+        if not rating:
             self.rating = 0.0
         else:
-            self.rating = float(strength[1])
+            self.rating = float(rating[0])
 
         return self.username
 
@@ -1808,7 +1810,7 @@ class User(object):
         """Загружает список пользователей со страницы ``/people/``.
 
         :param int page: страница
-        :param order_by: сортировка (``user_rating``, ``user_skill``, ``user_login`` или ``user_id``)
+        :param order_by: сортировка (``user_rating``, ``user_login`` или ``user_id``)
         :type order_by: строка
         :param order_way: сортировка по возрастанию (``asc``) или убыванию (``desc``)
         :type order_way: строка
@@ -1852,9 +1854,8 @@ class User(object):
             else:
                 realname = text(realname[0])
 
+            # На новом Табуне (2024-06) сила скрыта
             skill = tr.xpath('td[@class="cell-skill"]/text()[1]')
-            if not skill:
-                continue
 
             rating = tr.xpath('td[@class="cell-rating "]/strong/text()[1]')
             if not rating:
@@ -1883,7 +1884,7 @@ class User(object):
 
             peoples.append(UserInfo(
                 utils.parse_avatar_url(userpic[0])[0] or -1, username[0], realname,
-                skill[0], rating[0], userpic=userpic[0], full=False,
+                skill[0] if skill else 0.0, rating[0], userpic=userpic[0], full=False,
                 context=context,
             ))
 
@@ -1930,14 +1931,19 @@ class User(object):
         username = profile.xpath('.//h2[@itemprop="nickname"]/text()')[0]
         realname = profile.xpath('.//p[@class="user-name"]/text()')
 
-        skill = float(profile.xpath('.//div[@class="strength"]/div[1]/text()')[0])
+        strength_elem = profile.xpath('.//div[@class="strength"]/div[1]/text()')
+        if strength_elem:
+            skill = float(strength_elem[0])
+        else:
+            # На новом Табуне (2024-06) сила скрыта
+            skill = 0.0
 
         vote_area = profile.xpath('.//div[@class="vote-profile"]/div[1]')[0]
         user_id = int(vote_area.get("id").rsplit("_")[-1])
 
         rating = float(profile.xpath('.//span[@id="vote_total_user_{}"]/text()'.format(user_id))[0].strip().replace('+', ''))
         rating_vote_count = profile.xpath('div[@class="vote-profile"]/div[@class="vote-label"]')[0]
-        rating_vote_count = int(rating_vote_count.text.strip().rsplit(': ', 1)[-1])
+        rating_vote_count = int(rating_vote_count.text_content().strip().rsplit(':', 1)[-1].strip())
 
         classes = tuple(vote_area.get('class', '').split())
         context['can_vote'] = 'not-voted' in classes and 'vote-nobuttons' not in classes
@@ -2909,9 +2915,9 @@ def parse_post(item, context=None):
     else:
         # если ссылки нет, то костыляем: достаём блог из ссылки на него
         blog = None
-        link = header.xpath('div/a[@class="topic-blog"]')
+        link = header.xpath('div//a[@class="topic-blog"]')
         if not link:
-            link = header.xpath('div/a[@class="topic-blog private-blog"]')
+            link = header.xpath('div//a[@class="topic-blog private-blog"]')
         if link:
             link = link[0].get('href')
             if link and '/blog/' in link:
@@ -2945,14 +2951,18 @@ def parse_post(item, context=None):
     else:
         blog_name = None
 
-    post_time = item.xpath('footer/ul/li[1]/time')
-    utctime = None
+    footer = item.find("footer")
+
+    post_time = footer.xpath('*[@class="topic-info"]//time[@class="topic-info-date"]')
     if not post_time:
-        post_time = item.xpath('header/div[@class="topic-info"]/time')  # mylittlebrony.ru
+        # Старый Табун (до 2024-06)
+        post_time = footer.xpath('ul[@class="topic-info"]/li[@class="topic-info-date"]/time')
+    utctime = None
     if post_time:
         utctime = utils.parse_datetime(post_time[0].get("datetime"))
         post_time = time.strptime(post_time[0].get("datetime")[:-6], "%Y-%m-%dT%H:%M:%S")
     else:
+        utils.logger.warning("Failed to parse date in post %d, please report to andreymal", post_id)
         utctime = datetime.utcnow()
         post_time = time.localtime()
 
@@ -2997,7 +3007,6 @@ def parse_post(item, context=None):
         elif len(body) == 0 and body.text:
             body.text = body.text.rstrip()
 
-    footer = item.find("footer")
     ntags = footer.find("p")
     tags = []
     fav_tags = []
@@ -3034,7 +3043,7 @@ def parse_post(item, context=None):
     if poll:
         poll = parse_poll(poll[0])
 
-    fav = footer.xpath('ul[@class="topic-info"]/li[starts-with(@class, "topic-info-favourite")]')[0]
+    fav = footer.xpath('*[@class="topic-info"]//*[starts-with(@class, "topic-info-favourite")]')[0]
     favourited = fav.get('class').endswith(' active')
     if not favourited:
         favourited = bool(fav.xpath('*[@class="favourite active"]'))
@@ -3047,7 +3056,7 @@ def parse_post(item, context=None):
     comments_count = None
     comments_new_count = None
     download_count = None
-    for li in footer.xpath('ul[@class="topic-info"]/li[@class="topic-info-comments"]'):
+    for li in footer.xpath('*[@class="topic-info"]//*[@class="topic-info-comments"]'):
         a = li.find('a')
         if a is None:
             continue
@@ -3229,12 +3238,13 @@ def parse_wrapper(node):
 def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
     # И это тоже парсинг коммента. Не надо юзать эту функцию.
 
+    comment_id = int(node.get('data-id'))
+
     context = dict(context) if context else {}
     classes = frozenset(node.get('class', '').split())
 
     # Вытаскиваем элемент с информацией
     info = node.xpath('.//*[@class="comment-info"][1]')
-    comment_id = int(node.get('data-id') or info.get('data-id'))
 
     nick_node = None
     if info:
@@ -3263,7 +3273,7 @@ def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
     deleted = "comment-deleted" in classes
     hidden = "comment-hidden" in classes
 
-    nick = nick_node[0].text
+    nick = nick_node[0].text_content().strip()
 
     tm = info.xpath('.//time[1]')[0].get('datetime')
     utctime = utils.parse_datetime(tm)
@@ -3333,7 +3343,7 @@ def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
 
     # TODO: проверить возможность удаления
 
-    vote_total = None  # На новом Табуне для анонимов голоса скрыты
+    vote_total = None
     context['can_vote'] = None
     context['vote_value'] = None
 

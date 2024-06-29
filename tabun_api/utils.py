@@ -1087,14 +1087,14 @@ def escape_comment_contents(data):
         # Выделяем текст коммента
         f1 = data.find(b'class="comment-content"', sect_start, sect_end)
         if f1 >= 0:
-            f = data.find(b'<div class="text current">', f1, f1 + 1000)
+            f = data.find(b'<div class="text current">', f1, min(sect_end, f1 + 1000))
             if f < 0:
-                f1 = data.find(b'<div class="text">', f1, f1 + 1000)
+                f1 = data.find(b'<div class="text">', f1, min(sect_end, f1 + 1000))
             else:
                 f1 = f
             del f
         if f1 < 0:
-            # Коммент без текста? (На новом Табуне таких быть вроде не должно)
+            # Коммент без текста? (Возможно, удалённый или скрытый)
             buf.append(data[prev_last_end:last_end])
             continue
 
