@@ -21,7 +21,7 @@ from .types import Post, Download, Comment, Blog, StreamItem, UserInfo, Poll, Ta
 from .compat import PY2, BaseCookie, urequest, text_types, text, binary, html_unescape
 
 
-__version__ = '0.7.10'
+__version__ = '0.7.11'
 
 #: Адрес Табуна. Именно на указанный здесь адрес направляются запросы.
 http_host = "https://tabun.everypony.ru"
@@ -182,7 +182,7 @@ class User(object):
 
         # init
         self.last_query_time = 0
-        self.talk_count = 0
+        self.talk_unread = 0
 
         if session_id:
             self.session_id = text(session_id).split(";", 1)[0]
@@ -217,7 +217,7 @@ class User(object):
 
         # reset after urlopen
         self.last_query_time = 0
-        self.talk_count = 0
+        self.talk_unread = 0
 
     @property
     def phpsessid(self):
@@ -228,6 +228,17 @@ class User(object):
     def phpsessid(self, value):
         warnings.warn('phpsessid is deprecated; use session_id instead of it', FutureWarning, stacklevel=2)
         self.session_id = value
+
+    @property
+    def talk_count(self):
+        # Ещё в 2014 году напутал названия переменных, пусть тогда уж повисит для совместимости
+        warnings.warn('talk_count is deprecated; use talk_unread instead', FutureWarning, stacklevel=2)
+        return self.talk_unread
+
+    @talk_count.setter
+    def talk_count(self, value):
+        warnings.warn('talk_count is deprecated; use talk_unread instead', FutureWarning, stacklevel=2)
+        self.talk_unread = value
 
     def __repr__(self):
         result = '<tabun_api.User http_host={!r} username={!r}>'.format(
@@ -293,12 +304,12 @@ class User(object):
         """
         self.update_security_ls_key(raw_data)
 
-        userinfo = utils.find_substring(raw_data, b'<div class="dropdown-user"', b"<nav", with_end=False)
+        userinfo = utils.find_substring(raw_data, b'<div class="dropdown-user"', b"</header>", with_end=False)
         if not userinfo:
-            auth_panel = utils.find_substring(raw_data, b'<ul class="auth"', b'<nav', with_end=False)
+            auth_panel = utils.find_substring(raw_data, b'<ul class="auth"', b'</header>', with_end=False)
             if auth_panel and 'Войти'.encode('utf-8') in auth_panel:
                 self.username = None
-                self.talk_count = 0
+                self.talk_unread = 0
                 self.skill = None
                 self.rating = None
             else:
@@ -309,36 +320,36 @@ class User(object):
         dd_user = node.xpath('//*[@id="dropdown-user"]')
         if not dd_user:
             self.username = None
-            self.talk_count = 0
+            self.talk_unread = 0
             self.skill = None
             self.rating = None
             return None
         dd_user = dd_user[0]
 
-        username = dd_user.xpath('a[2]/text()[1]')
+        username = dd_user.xpath('a[@class="username"][1]/text()')
         if username and username[0]:
             self.username = username[0]
         else:
             self.username = None
-            self.talk_count = 0
+            self.talk_unread = 0
             self.skill = None
             self.rating = None
             return None
 
-        talk_count = dd_user.xpath('ul/li[@class="item-messages"]/a[@class="new-messages"]/text()')
+        talk_count = dd_user.xpath('.//*[@class="item-messages"]/*[@class="new-messages"]/text()')
         if not talk_count:
             self.talk_unread = 0
         else:
-            self.talk_unread = int(talk_count[0][1:])
+            self.talk_unread = int(talk_count[0].strip().lstrip("+"))
 
-        strength = dd_user.xpath('ul/li/span[@class="strength"]/text()')
+        strength = dd_user.xpath('.//*[@class="strength"]/text()')
         if not strength:
             # На новом Табуне (2024-06) сила скрыта
             self.skill = 0.0
         else:
             self.skill = float(strength[0])
 
-        rating = dd_user.xpath('ul/li/span[starts-with(@class, "rating")]/text()')
+        rating = dd_user.xpath('.//*[starts-with(@class, "rating")]/text()')
         if not rating:
             self.rating = 0.0
         else:
@@ -405,14 +416,14 @@ class User(object):
             'username': None,
         }
 
-        userinfo = utils.find_substring(raw_data, b'<div class="dropdown-user"', b"<nav", with_end=False)
+        userinfo = utils.find_substring(raw_data, b'<div class="dropdown-user"', b"</header>", with_end=False)
         if userinfo:
             f = userinfo.find(b'class="username">')
             if f >= 0:
                 username = userinfo[userinfo.find(b'>', f) + 1:userinfo.find(b'</', f)]
                 context['username'] = username.decode('utf-8').strip()
         else:
-            auth_panel = utils.find_substring(raw_data, b'<ul class="auth"', b'<nav', with_end=False)
+            auth_panel = utils.find_substring(raw_data, b'<ul class="auth"', b'</header>', with_end=False)
             if not auth_panel or 'Войти'.encode('utf-8') not in auth_panel:
                 utils.logger.warning('get_main_context received unknown userinfo')
 
@@ -1915,11 +1926,11 @@ class User(object):
 
         data = utils.find_substring(raw_data, b'<div id="content"', b'<!-- /content ', extend=True, with_end=False)
         if not data:
-            return
+            return None
         data = utils.replace_cloudflare_emails(data)
         node = utils.parse_html_fragment(data)
         if not node:
-            return
+            return None
         node = node[0]
 
         context = self.get_main_context(raw_data, url=url)
@@ -1938,15 +1949,18 @@ class User(object):
             # На новом Табуне (2024-06) сила скрыта
             skill = 0.0
 
-        vote_area = profile.xpath('.//div[@class="vote-profile"]/div[1]')[0]
+        vote_area = profile.xpath('.//*[@class="vote-profile"]//*[starts-with(@id, "vote_area_user_")]')[0]
         user_id = int(vote_area.get("id").rsplit("_")[-1])
 
-        rating = float(profile.xpath('.//span[@id="vote_total_user_{}"]/text()'.format(user_id))[0].strip().replace('+', ''))
-        rating_vote_count = profile.xpath('div[@class="vote-profile"]/div[@class="vote-label"]')[0]
-        rating_vote_count = int(rating_vote_count.text_content().strip().rsplit(':', 1)[-1].strip())
+        rating = float(profile.xpath('.//*[@id="vote_total_user_{}"]/text()'.format(user_id))[0].strip().replace('+', ''))
+        rating_vote_count_str = profile.xpath('.//*[@class="vote-profile"]//*[@class="vote-label"]')[0].text_content().strip()
+
+        # Вытаскиваем число из строки «Рейтинг (голосов: 777)»
+        rating_vote_count_str = rating_vote_count_str.rsplit(":", 1)[-1].rstrip(")")
+        rating_vote_count = int(rating_vote_count_str)
 
         classes = tuple(vote_area.get('class', '').split())
-        context['can_vote'] = 'not-voted' in classes and 'vote-nobuttons' not in classes
+        context['can_vote'] = 'vote-enabled' in classes
         if 'voted-up' in classes:
             context['vote_value'] = 1
         elif 'voted-down' in classes:
@@ -2108,9 +2122,16 @@ class User(object):
             value = int(value) if value and value.isdigit() else 0
 
             if link.endswith('/created/topics/'):
+                # На новом Табуне (2024-08) это количество только постов
+                # На старом Табуне это количество постов и комментариев в сумме
                 counts['publications'] = value
                 if li.get('class') == 'active':
                     current_page = 'publications'
+
+            elif link.endswith('/created/comments/'):
+                counts['comments'] = value
+                if li.get('class') == 'active':
+                    current_page = 'comments'
 
             elif link.endswith('/favourites/topics/'):
                 counts['favourites'] = value
@@ -2122,11 +2143,21 @@ class User(object):
                 if li.get('class') == 'active':
                     current_page = 'friends'
 
+            elif link.endswith('/notes/') and not link.endswith('/profile/notes/'):
+                counts['notes'] = value
+                if li.get('class') == 'active':
+                    current_page = 'notes'
+
             elif li_data == 'Информация' and li.get('class') == 'active':
                 current_page = 'profile'
 
+        # Если мы получили число комментариев, значит это новый Табун (2024-08)
+        if counts['comments'] is not None and counts['publications'] is not None:
+            counts['posts'] = counts['publications']
+            counts['publications'] += counts['comments']
+
         # Получаем более детальные счётчики, если страница позволяет
-        if current_page in ('publications', 'favourites'):
+        if current_page == 'favourites' or (counts['comments'] is None and current_page == 'publications'):
             nav_profile = utils.find_substring(raw_data, b'<ul class="nav nav-pills nav-pills-profile">', b'</ul>')
             if nav_profile:
                 nav_profile = utils.parse_html_fragment(nav_profile)[0]
@@ -2154,7 +2185,8 @@ class User(object):
                 else:
                     counts['posts'] = tmp_posts
                     counts['comments'] = tmp_comments
-                    counts['notes'] = tmp_notes
+                    if counts['notes'] is None:  # Старый Табун
+                        counts['notes'] = tmp_notes
 
         # Заметка
         note_elem = sidebar.xpath('//p[@id="usernote-note-text"]') if sidebar is not None else None
@@ -2273,7 +2305,21 @@ class User(object):
             "idAnswer": answer
         }
 
-        data = self.ajax('/ajax/vote/question/', fields)
+        data = self.ajax('/ajax/topic-question/vote/', fields)
+        poll = utils.parse_html_fragment('<div id="topic_question_area_' + text(post_id) + '" class="poll">' + data['sText'] + '</div>')
+        return parse_poll(poll[0])
+
+    def poll_toggle_closed(self, post_id):
+        """Закрывает опрос (а также открывает, если есть права администратора).
+
+        :param int post_id: ID поста с опросом, в котором голосуем
+        :return: обновлённые данные опроса
+        :rtype: :class:`~tabun_api.Poll`
+        """
+
+        fields = {"idTopic": post_id}
+
+        data = self.ajax('/ajax/topic-question/toggle-closed-state/', fields)
         poll = utils.parse_html_fragment('<div id="topic_question_area_' + text(post_id) + '" class="poll">' + data['sText'] + '</div>')
         return parse_poll(poll[0])
 
@@ -2902,54 +2948,49 @@ def parse_activity(item):
 def parse_post(item, context=None):
     # Парсинг поста. Не надо юзать эту функцию.
     header = item.find("header")
+    if header is None:
+        return None
     title = header.find("h1")
     if title is None:
-        return
+        return None
 
     context = dict(context) if context else {}
 
-    link = title.find("a")
-    if link is not None:
-        # есть ссылка на сам пост, парсим её
-        blog, post_id = parse_post_url(link.get("href"))
+    draft = bool(title.xpath('i[@class="icon-synio-topic-draft"]'))
+
+    # Достаём информацию о блоге из ссылки на блог
+    blog_url = None
+    blog_name = None
+    private = False
+
+    blog_elem = header.xpath('.//a[@class="topic-blog"]')
+    if not blog_elem:
+        blog_elem = header.xpath('.//a[@class="topic-blog private-blog"]')
+        private = True
+    if not blog_elem:
+        utils.logger.warning("Failed to parse blog in post %d, please report to andreymal", post_id)
+        return None
+
+    blog_link = blog_elem[0].get('href')
+    if blog_link and '/blog/' in blog_link:
+        blog_url = blog_link[:-1]
+        blog_url = blog_url[blog_url.rfind('/', 1) + 1:]
+    blog_name = blog_elem[0].text
+
+    # Достаём id поста из блока с рейтингом
+    vote_elem = header.xpath('.//*[@class="topic-info-vote"]//*[starts-with(@id, "vote_area_topic_")][1]')
+    if vote_elem:
+        post_id = int(vote_elem[0].get('id').rsplit('_', 1)[-1])
     else:
-        # если ссылки нет, то костыляем: достаём блог из ссылки на него
-        blog = None
-        link = header.xpath('div//a[@class="topic-blog"]')
-        if not link:
-            link = header.xpath('div//a[@class="topic-blog private-blog"]')
-        if link:
-            link = link[0].get('href')
-            if link and '/blog/' in link:
-                blog = link[:-1]
-                blog = blog[blog.rfind('/', 1) + 1:]
-        else:
-            raise ValueError('Cannot get blog from post "%s"' % title.text_content())
+        post_id = -1
 
-        # достаём номер поста из блока с рейтингом
-        vote_elem = header.xpath('div/div[@class="topic-info-vote"]/div')
-        if vote_elem and vote_elem[0].get('id'):
-            post_id = int(vote_elem[0].get('id').rsplit('_', 1)[-1])
-        else:
-            post_id = -1
-        del vote_elem
-    del link
+    author_elem = header.xpath('.//a[@rel="author"][1]')
+    if not author_elem:
+        utils.logger.warning("Failed to parse author in post %d, please report to andreymal", post_id)
+        return None
+    author = author_elem[0].text
 
-    author = header.xpath('div/a[@rel="author"]/text()[1]')
-    if len(author) == 0:
-        return
-    author = author[0]
-
-    title = title.text_content().strip()
-    private = bool(header.xpath('div/a[@class="topic-blog private-blog"]'))
-
-    blog_name = header.xpath('div/a[@class="topic-blog"]/text()[1]')
-    if not blog_name:
-        blog_name = header.xpath('div/a[@class="topic-blog private-blog"]/text()[1]')
-    if len(blog_name) > 0:
-        blog_name = text(blog_name[0])
-    else:
-        blog_name = None
+    title = title.text_content()
 
     footer = item.find("footer")
 
@@ -2968,7 +3009,8 @@ def parse_post(item, context=None):
 
     body = item.xpath('div[@class="topic-content text"]')
     if len(body) == 0:
-        return
+        utils.logger.warning("Failed to parse body in post %d, please report to andreymal", post_id)
+        return None
     body = body[0]
 
     if body.get('data-escaped') == '1':
@@ -3020,11 +3062,13 @@ def parse_post(item, context=None):
                 fav_tags.append({'url': fav_ntag.get('href'), 'tag': fav_ntag.text})
 
     tags_btn = ntags.xpath('span[starts-with(@class, "topic-tags-edit")]')
-    can_save_favourite_tags = tags_btn and 'display:none' not in tags_btn[0].get('style', '') and 'display: none' not in tags_btn[0].get('style', '')
+    can_save_favourite_tags = (
+        bool(tags_btn)
+        and 'display:none' not in tags_btn[0].get('style', '')
+        and 'display: none' not in tags_btn[0].get('style', '')
+    )
 
-    draft = bool(header.xpath('h1/i[@class="icon-synio-topic-draft"]'))
-
-    rateelem = header.xpath('div[@class="topic-info"]//*[@class="vote-item vote-count"][1]')
+    rateelem = header.xpath('.//*[@class="topic-info-vote"]//*[@class="vote-item vote-count"][1]')
     if rateelem:
         rateelem = rateelem[0]
 
@@ -3046,7 +3090,7 @@ def parse_post(item, context=None):
     fav = footer.xpath('*[@class="topic-info"]//*[starts-with(@class, "topic-info-favourite")]')[0]
     favourited = fav.get('class').endswith(' active')
     if not favourited:
-        favourited = bool(fav.xpath('*[@class="favourite active"]'))
+        favourited = bool(fav.xpath('*[@class="favourite link-dotted active"]'))
     favourite = fav.xpath('span[@class="favourite-count"]/text()')
     try:
         favourite = int(favourite[0]) if favourite and favourite[0] else 0
@@ -3106,10 +3150,10 @@ def parse_post(item, context=None):
             post_link = post_link[0].text.strip()
             download = Download("link", post_id, post_link, link_count, None)
 
-    votecls = header.xpath('div[@class="topic-info"]/div/div')
+    votecls = header.xpath('.//*[@class="topic-info-vote"]/div')
     if votecls:
         votecls = votecls[0].get('class', '').split()
-        context['can_vote'] = 'not-voted' in votecls and 'vote-not-expired' in votecls and 'vote-nobuttons' not in votecls
+        context['can_vote'] = 'vote-enabled' in votecls
         if 'voted-up' in votecls:
             context['vote_value'] = 1
         elif 'voted-down' in votecls:
@@ -3123,8 +3167,8 @@ def parse_post(item, context=None):
         context['can_vote'] = None
         context['vote_value'] = None
 
-    context['can_edit'] = bool(header.xpath('div[@class="topic-info"]//a[@class="actions-edit"]'))
-    context['can_delete'] = bool(header.xpath('div[@class="topic-info"]//a[@class="actions-delete"]'))
+    context['can_edit'] = bool(header.xpath('.//*[@class="topic-info"]//a[@class="actions-edit"]'))
+    context['can_delete'] = bool(header.xpath('.//*[@class="topic-info"]//a[starts-with(@class, "actions-delete")]'))
     context['can_comment'] = None  # из <article/> не выяснить никак
     context['subscribed_to_comments'] = None
 
@@ -3134,7 +3178,7 @@ def parse_post(item, context=None):
     context['can_save_favourite_tags'] = can_save_favourite_tags
 
     return Post(
-        post_time, blog, post_id, author, title, draft,
+        post_time, blog_url, post_id, author, title, draft,
         vote_count, vote_total, body if raw_body is None else None, tags,
         comments_count, None, is_short, private, blog_name,
         poll, favourite, None, download, utctime, raw_body,
@@ -3144,29 +3188,57 @@ def parse_post(item, context=None):
 
 def parse_poll(poll):
     # Парсинг опроса. Не надо юзать эту функцию.
+
+    total = -1
+    notvoted = -1
+    items = []
+    closed = False
+    can_vote = True
+    can_toggle_closed = bool(poll.xpath('.//*[@class="button poll-submit-close"]'))
+
     ul = poll.find('ul[@class="poll-result"]')
     if ul is not None:
-        items = []
+        # Результаты опроса (пользователь проголосовал или опрос завершён)
+        can_vote = False
+
         for li in ul.findall('li'):
             item = [None, 0.0, 0]
             item[0] = li.xpath('dl/dd/text()[1]')[0].strip()
             item[1] = float(li.xpath('dl/dt/strong/text()[1]')[0][:-1])
             item[2] = int(li.xpath('dl/dt/span/text()[1]')[0][1:-1])
             items.append(item)
-        poll_total = poll.xpath('div[@class="poll-total"]/text()')[-2:]
-        total = int(poll_total[-2].rsplit(" ", 1)[-1])
-        notvoted = int(poll_total[-1].rsplit(" ", 1)[-1])
-        return Poll(total, notvoted, items)
+
+        poll_total_counts = poll.xpath('.//*[@class="poll-total-counts"]/text()')
+        if not poll_total_counts:
+            # Старый Табун (до 2024-08)
+            poll_total_counts = poll.xpath('div[@class="poll-total"]/text()')
+        total = int(poll_total_counts[-2].rsplit(" ", 1)[-1])
+        notvoted = int(poll_total_counts[-1].rsplit(" ", 1)[-1])
+
+        closed = bool(poll.xpath('.//*[@class="poll-total-isclosed"]'))
+        if not can_toggle_closed:
+            can_toggle_closed = bool(poll.xpath('.//*[@class="button poll-submit-reopen"]'))
+
     else:
+        # Опрос, за который можно проголосовать (результаты не показываются)
         ul = poll.find('ul[@class="poll-vote"]')
         if ul is None:
-            return
+            return None
+
         items = []
         for li in ul.findall('li'):
             item = [None, -1.0, -1]
             item[0] = li.xpath('label/text()[1]')[0].strip()
             items.append(item)
-        return Poll(-1, -1, items)
+
+    return Poll(
+        total,
+        notvoted,
+        items,
+        closed=closed,
+        can_vote=can_vote,
+        can_toggle_closed=can_toggle_closed,
+    )
 
 
 def parse_rss_post(item, context=None):

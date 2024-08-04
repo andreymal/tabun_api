@@ -496,12 +496,18 @@ class UserInfo(object):
 
 class Poll(object):
     """Опрос. Список items содержит кортежи (название ответа, процент проголосовавших, число проголосовавших)."""
-    def __init__(self, total, notvoted, items):
+    def __init__(self, total, notvoted, items, closed=False, can_vote=None, can_toggle_closed=False):
         self.total = int(total)
         self.notvoted = int(notvoted)
         self.items = []
         for x in items:
             self.items.append((text(x[0]), float(x[1]), int(x[2])))
+        self.closed = closed
+        if can_vote is not None:
+            self.can_vote = bool(can_vote)
+        else:
+            self.can_vote = self.total < 0 or self.notvoted < 0
+        self.can_toggle_closed = can_toggle_closed
 
 
 class TalkItem(object):
