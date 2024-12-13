@@ -17,11 +17,11 @@ from json import JSONDecoder
 
 from . import errors, types, utils, compat
 from .errors import TabunError, TabunResultError
-from .types import Post, Download, Comment, Blog, StreamItem, UserInfo, Poll, TalkItem, ActivityItem
+from .types import Post, Download, Comment, Blog, StreamItem, UserInfo, Poll, TalkItem, ActivityItem, EditablePost, EditableBlog
 from .compat import PY2, BaseCookie, urequest, text_types, text, binary, html_unescape
 
 
-__version__ = '0.7.11'
+__version__ = '0.7.12'
 
 #: Адрес Табуна. Именно на указанный здесь адрес направляются запросы.
 http_host = "https://tabun.everypony.ru"
@@ -114,10 +114,10 @@ class User(object):
     или :func:`~tabun_api.User.urlread`.
 
     В ``ssl_params`` можно передать дополнительный параметр с настройками SSL. На данный момент
-    параметр всего один — ``verify_mode``:
+    параметр всего один — ``verify_mode``:
 
-    * ``skip_all`` — не проверять SSL-сертификаты серверов вообще
-    * ``skip_current_host`` — не проверять SSL-сертификат только того сервера, который прописан
+    * ``skip_all`` — не проверять SSL-сертификаты серверов вообще
+    * ``skip_current_host`` — не проверять SSL-сертификат только того сервера, который прописан
       в ``http_host``
     * любое другое значение — проверять все SSL-сертификаты
 
@@ -488,7 +488,11 @@ class User(object):
             data = None
             if exc.getcode() == 404:
                 data = self._netwrap(exc.read, 8192)
-                if b'/__errors__/main.css' in data or b'//projects.everypony.ru/error/main.css' in data:
+                if (
+                    b'/__errors__/main.css' in data
+                    or b'//projects.everypony.ru/error/main.css' in data
+                    or b'<html><head><title>404 Not Found</title></head><body><center><h1>404 Not Found</h1></center>' in data
+                ):
                     raise TabunError('Static 404', TabunError.STATIC_404, data=data)
             raise TabunError(code=exc.getcode(), exc=exc, data=data)
         except urequest.URLError as exc:
@@ -1076,7 +1080,7 @@ class User(object):
             link = link[:-1]
         return link[link.rfind('/') + 1:]
 
-    def edit_blog(self, blog_id, title, description, rating_limit=0, status=0, closed=False):
+    def edit_blog(self, blog_id, title, description, rating_limit=0, status=0, closed=None):
         """Редактирует блог и возвращает его url-имя или None в случае неудачи.
 
         :param int blog_id: ID блога, который редактируется
@@ -1123,7 +1127,7 @@ class User(object):
     def delete_blog(self, blog_id):
         """Удаляет блог.
 
-        :param int blog_id: ID удалямого блога
+        :param int blog_id: ID удаляемого блога
         """
 
         self.check_login()
@@ -1135,8 +1139,11 @@ class User(object):
         if resp.getcode() // 100 != 3:
             raise TabunError('Cannot delete blog', code=resp.getcode())
 
-    def preview_post(self, blog_id, title, body, tags):
-        """Возвращает HTML-код предпросмотра поста (сам пост плюс мусор типа заголовка «Предпросмотр»).
+    def preview_post(self, blog_id, title, body, tags, clean=False):
+        """Возвращает HTML-код предпросмотра поста.
+
+        По умолчанию возвращает результат как есть с мусором типа заголовка «Предпросмотр»,
+        но опция ``clean=True`` позволяет оставить только сам пост (тег ``article``).
 
         :param int blog_id: ID блога, в который добавляется пост
         :param title: заголовок создаваемого поста
@@ -1145,6 +1152,7 @@ class User(object):
         :type body: строка
         :param tags: теги поста
         :type tags: строка или коллекция строк
+        :param bool clean: очистка от мусора (оставить только заголовок, тело и теги поста)
         :rtype: строка
         """
 
@@ -1170,7 +1178,10 @@ class User(object):
         result = self.jd.decode(data)
         if result['bStateError']:
             raise TabunResultError(result['sMsg'])
-        return result['sText']
+        preview = result['sText']
+        if clean:
+            preview = utils.find_substring(preview, "<article", "</article>", extend=True)
+        return preview
 
     def delete_post(self, post_id):
         """Удаляет пост.
@@ -1250,7 +1261,7 @@ class User(object):
         :param body: текст комментария
         :type body: строка
         :param int reply: ID комментария, на который отправляется ответ (0 — не является ответом)
-        :param typ: ``blog`` — пост, ``talk`` — личное сообщение
+        :param typ: ``blog`` — пост, ``talk`` — личное сообщение
         :type typ: строка
         :return: ID созданного комментария
         :rtype: int
@@ -1276,7 +1287,7 @@ class User(object):
         """Возвращает со страницы номер текущей страницы и список с номерами страниц
         и текстами ссылок (кортеж из номера и строки), которые содержатся в элементе
         с пагинацией (``<div class="pagination">``).
-        Соответственно, первый элемент списка — номер первой страницы, последний —
+        Соответственно, первый элемент списка — номер первой страницы, последний —
         последней страницы. Номера могут повторяться, если так в коде страницы.
         Если пагинаций ноль или больше одного, возвращается ``(None, None)``.
 
@@ -1443,7 +1454,13 @@ class User(object):
         if comments_header_end >= 0:
             # А вот уже теперь парсим только нужные элементы
             comments_info_node = utils.parse_html_fragment(raw_data[comments_pos:comments_header_end + 9])[0]
-            post.comments_count = int(comments_info_node.xpath('.//*[@id="count-comments"][1]/text()[1]')[0].strip())
+
+            count_comments_str = comments_info_node.xpath('.//*[@id="count-comments"]')[0].text_content().split()[0]
+            if count_comments_str.isdigit():
+                post.comments_count = int(count_comments_str)
+            else:
+                post.comments_count = 0
+
             post.context['unread_comments_count'] = 0
             subscribe_input = comments_info_node.xpath('.//input[@id="comment_subscribe"][1]')
             post.context['subscribed_to_comments'] = bool(subscribe_input and subscribe_input[0].get("checked") == 'checked')
@@ -1683,7 +1700,7 @@ class User(object):
 
         :param int target_id: ID поста или личного сообщения, с которого загружать комментарии
         :param int comment_id: ID комментария, начиная с которого (но не включая его самого) запросить комментарии
-        :param typ: ``blog`` — пост, ``talk`` — личное сообщение
+        :param typ: ``blog`` — пост, ``talk`` — личное сообщение
         :rtype: dict {id: :class:`~tabun_api.Comment`, ...}
         """
 
@@ -1773,7 +1790,14 @@ class User(object):
                 blog = blog_a.get('href', '')[:-1].rsplit("/", 1)[-1]
             blog_title = blog_a.text_content()
 
-            comment_id = int(item.find("a").get('href', '').rsplit("/", 1)[-1])
+            comment_link = item.find("a").get('href', '')
+            if '#comment' in comment_link:
+                # Новый Табун
+                comment_id = int(comment_link.rsplit('#comment', 1)[-1])
+            else:
+                # Старый Табун
+                comment_id = comment_link.rsplit("/", 1)[-1]
+
             title = item.find("a").text_content()
 
             comments_count = int(item.find("span").text_content())
@@ -1797,16 +1821,23 @@ class User(object):
         for item in node.findall("li"):
             p = item.find("p")
             a = p.find("a")
+            blog_a = item.findall("a")[0]
             topic_a = item.findall("a")[1]
+
+            post_time_node = p.find("time")
+            utctime = utils.parse_datetime(post_time_node.get("datetime"))
+            post_time = time.strptime(post_time_node.get("datetime")[:-6], "%Y-%m-%dT%H:%M:%S")
 
             author = a.text_content()
             title = topic_a.text_content().strip()
             blog, post_id = parse_post_url(topic_a.get('href', ''))
+            blog_name = blog_a.text or ''
             comments_count = int(item.find("span").text_content())
 
             items.append(Post(
-                time=None, blog=blog, post_id=post_id, author=author, title=title, draft=False,
+                time=post_time, blog=blog, post_id=post_id, author=author, title=title, draft=False,
                 vote_count=None, vote_total=None, body=None, tags=[], comments_count=comments_count,
+                blog_name=blog_name, utctime=utctime,
                 context={'http_host': self.http_host, 'url': url, 'username': self.username}
             ))
 
@@ -2209,7 +2240,7 @@ class User(object):
         )
 
     def get_notes(self, page=1, url=None, raw_data=None):
-        """Получает заметки, установленные текущим пользователем — список
+        """Получает заметки, установленные текущим пользователем — список
         из словарей с ключами ``username``, ``note`` и ``date``.
 
         :param int page: страница
@@ -2389,7 +2420,7 @@ class User(object):
 
     def save_favourite_tags(self, target_id, tags, target_type='topic'):
         """Редактирует теги избранного поста и возвращает
-        новый их список (элементы — словари с ключами tag и url).
+        новый их список (элементы — словари с ключами tag и url).
 
         :param int target_id: ID поста
         :param tags: новые теги (старые будут удалены)
@@ -2435,12 +2466,21 @@ class User(object):
         )
 
     def get_editable_post(self, post_id, raw_data=None):
+        """Функция оставлена только для совместимости со старым кодом;
+        вместо неё используйте :func:`~tabun_api.User.get_editable_post_ext`.
+        """
+
+        warnings.warn('get_editable_post() is deprecated; use get_editable_post_ext() instead', FutureWarning, stacklevel=2)
+        e = self.get_editable_post_ext(post_id, raw_data)
+        return e.blog_id, e.title, e.body, e.tags, e.forbid_comment
+
+    def get_editable_post_ext(self, post_id, raw_data=None):
         """Возвращает blog_id, заголовок, исходный код поста, список тегов
         и галочку закрытия комментариев (True/False).
 
         :param int post_id: ID поста (должен быть доступ на редактирование)
         :param bytes raw_data: код страницы (чтобы не скачивать его)
-        :rtype: (int, строка, строка, список строк, bool)
+        :rtype: :class:`~tabun_api.types.EditablePost`
         """
 
         if not raw_data:
@@ -2449,7 +2489,7 @@ class User(object):
         raw_data = utils.find_substring(
             raw_data,
             b'<form action="" method="POST" enctype="multipart/form-data" id="form-topic-add"',
-            b'<div class="topic-preview"',
+            b'<div class="topic-preview',
             extend=True, with_end=False
         )
 
@@ -2473,15 +2513,28 @@ class User(object):
         body = form.xpath("textarea")[0].text
         tags = form.xpath('p/input[@id="topic_tags"]')[0].get("value", "").split(",")
         forbid_comment = bool(form.xpath('p/label/input[@id="topic_forbid_comment"]')[0].get("checked"))
-        return blog_id, title, body, tags, forbid_comment
+
+        submit_btn = form.xpath('.//button[@id="fake_save"]') or form.xpath('.//button[@id="submit_topic_save"]')
+        is_published = submit_btn[0].text == 'Перенести в черновики'
+
+        return EditablePost(blog_id, title, body, tags, forbid_comment, is_published)
 
     def get_editable_blog(self, blog_id, raw_data=None):
-        """Возвращает заголовок блога, URL, тип (True - закрытый, False - открытый),
+        """Функция оставлена только для совместимости со старым кодом;
+        вместо неё используйте :func:`~tabun_api.User.get_editable_blog_ext`.
+        """
+
+        warnings.warn('get_editable_blog() is deprecated; use get_editable_blog_ext() instead', FutureWarning, stacklevel=2)
+        e = self.get_editable_blog_ext(blog_id, raw_data)
+        return e.title, e.url, e.type == "close", e.description, e.limit_rating_topic
+
+    def get_editable_blog_ext(self, blog_id, raw_data=None):
+        """Возвращает заголовок блога, URL, тип (открытый или закрытый),
         описание и ограничение рейтинга.
 
         :param int blog_id: ID блога (должен быть доступ на редактирование)
         :param bytes raw_data: код страницы (чтобы не скачивать его)
-        :rtype: (строка, строка, bool, строка, float)
+        :rtype: :class:`~tabun_api.types.EditableBlog`
         """
 
         if not raw_data:
@@ -2507,7 +2560,13 @@ class User(object):
         blog_description = form.xpath('p/textarea[@id="blog_description"]/text()[1]')[0].replace('\r\n', '\n')
         blog_limit_rating_topic = float(form.xpath('p/input[@id="blog_limit_rating_topic"]')[0].get('value'))
 
-        return blog_title, blog_url, blog_type == "close", blog_description, blog_limit_rating_topic
+        return EditableBlog(
+            blog_title,
+            blog_url,
+            blog_type,
+            blog_description,
+            blog_limit_rating_topic,
+        )
 
     def edit_post(self, post_id, blog_id, title, body, tags, forbid_comment=False, draft=False, check_if_error=False):
         """Редактирует пост и возвращает его блог и номер. Может кидаться
@@ -2972,10 +3031,19 @@ def parse_post(item, context=None):
         return None
 
     blog_link = blog_elem[0].get('href')
-    if blog_link and '/blog/' in blog_link:
+    if not blog_link:
+        utils.logger.warning("Failed to get blog link in post %d, please report to andreymal", post_id)
+        return None
+
+    if '/blog/' in blog_link:
         blog_url = blog_link[:-1]
         blog_url = blog_url[blog_url.rfind('/', 1) + 1:]
     blog_name = blog_elem[0].text
+
+    if not blog_url and private:
+        # Пользователь может скрыть список своих постов в настройках приватности,
+        # но сами посты из личного блога не становятся закрытыми от этого
+        private = False
 
     # Достаём id поста из блока с рейтингом
     vote_elem = header.xpath('.//*[@class="topic-info-vote"]//*[starts-with(@id, "vote_area_topic_")][1]')
@@ -3016,6 +3084,7 @@ def parse_post(item, context=None):
     if body.get('data-escaped') == '1':
         # всё почищено в utils
         raw_body = body.text
+        # На новом Табуне это больше не нужно, так как кнопка ката вынесена за пределы текста поста
         is_short = body.get('data-short') == '1'
         cut_text = body.get('data-short-text') or None
     else:
@@ -3048,6 +3117,11 @@ def parse_post(item, context=None):
             body[-1].tail = body[-1].tail.rstrip()
         elif len(body) == 0 and body.text:
             body.text = body.text.rstrip()
+
+    topic_cut_link = item.xpath('.//a[@class="topic-cut-link"]')
+    if topic_cut_link:
+        is_short = True
+        cut_text = (topic_cut_link[0].text or '').strip()
 
     ntags = footer.find("p")
     tags = []
@@ -3099,7 +3173,7 @@ def parse_post(item, context=None):
 
     comments_count = None
     comments_new_count = None
-    download_count = None
+
     for li in footer.xpath('*[@class="topic-info"]//*[@class="topic-info-comments"]'):
         a = li.find('a')
         if a is None:
@@ -3118,37 +3192,47 @@ def parse_post(item, context=None):
             download_count = int(a.find('span').text.strip())
 
     download = None
-    if download_count is not None:
-        dname = None
-        dsize = None
 
-        dlink = item.xpath('div[@class="download"]')
-        if dlink:
-            dlink = dlink[0].find('a')
+    # Старые топики-файлы
+    topic_file = item.xpath('.//*[@class="topic-file-file"]/a')
+    if topic_file:
+        filelink = topic_file[0].get('href')
+        filename_node = topic_file[0].xpath('.//*[@class="topic-file-title"]')
+        filename = filename_node[0].text.strip() if filename_node else None
+        filesize_node = topic_file[0].xpath('.//*[@class="topic-file-size"]')
+        if filesize_node:
+            filesize_str, filesize_suffix = filesize_node[0].text.replace('&nbsp;', ' ').split()
+            filesize = float(filesize_str)
+            for suffix in ['Б', 'КиБ', 'МиБ', 'ГиБ', 'ТиБ', 'ПиБ', 'ЕиБ', 'ЗиБ', 'ЙиБ']:
+                if filesize_suffix == suffix:
+                    break
+                filesize *= 1024.0
         else:
-            dlink = None
+            filesize = None
+        download = Download(
+            "file",
+            post_id,
+            filename,
+            0,
+            int(filesize) if filesize is not None else None,
+            filelink,
+        )
 
-        if dlink is not None and dlink.get('href'):
-            m = post_file_regex.match(dlink.text.strip())
-            dlink = dlink.get('href')
-            if '/file/go/' in dlink and m:
-                m = m.groups()
-                dname = m[0]
-                dsize = float(m[1])
-                if m[3] == 'Кб':
-                    dsize *= 1024
-                elif m[3] == 'Мб':
-                    dsize *= 1024 * 1024
-
-        download = Download("file", post_id, dname, download_count, dsize)
-        del dlink
-
+    # Старые топики-ссылки
     if not download:
-        post_link = item.xpath('div[@class="topic-url"]/a')
+        post_link = item.xpath('.//*[@class="topic-link-link"]/a')
         if post_link:
-            link_count = int(post_link[0].get("title", "0").rsplit(" ", 1)[-1])
-            post_link = post_link[0].text.strip()
+            link_count = 0
+            post_link = post_link[0].get('href')
             download = Download("link", post_id, post_link, link_count, None)
+
+    # Старые топики-галереи
+    photoset_count = None
+    topic_photoset = item.xpath('.//*[@class="topic-photoset-photoset"]')
+    if topic_photoset:
+        topic_photoset_count_str = topic_photoset[0].xpath('.//*[@class="topic-photoset-count"]')[0].text_content().split()[-1]
+        if topic_photoset_count_str.isdigit():
+            photoset_count = int(topic_photoset_count_str)
 
     votecls = header.xpath('.//*[@class="topic-info-vote"]/div')
     if votecls:
@@ -3182,7 +3266,7 @@ def parse_post(item, context=None):
         vote_count, vote_total, body if raw_body is None else None, tags,
         comments_count, None, is_short, private, blog_name,
         poll, favourite, None, download, utctime, raw_body,
-        cut_text, context=context
+        cut_text, context=context, photoset_count=photoset_count,
     )
 
 
@@ -3410,6 +3494,8 @@ def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
         if not context['can_edit'] and not is_full_comment:
             # Для коммента из ленты отсутствие кнопки ничего не значит
             context['can_edit'] = None
+    elif is_full_comment:
+        context['can_edit'] = False
     else:
         context['can_edit'] = None
 
@@ -3519,7 +3605,7 @@ def parse_talk_item(node, context=None):
         context['last_is_incoming'] = bool(cell_title.xpath('i[@class="icon-synio-arrow-left"]'))
 
     else:
-        # Список избранного — совсем другая вёрстка
+        # Список избранного — совсем другая вёрстка
 
         date = time.strptime(utils.mon2num(info.text.strip()), '%d %m %Y, %H:%M')
 

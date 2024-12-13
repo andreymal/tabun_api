@@ -14,7 +14,7 @@ from .compat import PY2, text
 
 __all__ = [
     'Post', 'Download', 'Comment', 'Blog', 'StreamItem', 'UserInfo',
-    'Poll', 'TalkItem', 'ActivityItem',
+    'Poll', 'TalkItem', 'ActivityItem', 'EditablePost', 'EditableBlog',
 ]
 
 
@@ -34,13 +34,13 @@ class Post(object):
     * ``unread_comments_count`` (int) — число новых комментариев (для постов из списка постов, иначе ноль)
     * ``favourited`` (True/False) — добавлен ли пост в избранное
     * ``favourite_tags`` (list) — теги избранного поста
-    * ``can_save_favourite_tags`` (True/False) — можно ли редактировать теги избранного поста (обычно совпадает с ``favourited``)
+    * ``can_save_favourite_tags`` (True/False) — можно ли редактировать теги избранного поста (обычно совпадает с ``favourited``)
     """
 
     def __init__(self, time, blog, post_id, author, title, draft,
                  vote_count, vote_total, body, tags, comments_count=None, comments_new_count=None,
                  short=False, private=False, blog_name=None, poll=None, favourite=0, favourited=None,
-                 download=None, utctime=None, raw_body=None, cut_text=None, context=None):
+                 download=None, utctime=None, raw_body=None, cut_text=None, context=None, photoset_count=None):
         self._time = time
         self.blog = text(blog) if blog else None
         self.post_id = int(post_id)
@@ -62,6 +62,7 @@ class Post(object):
         self.utctime = utctime
         self.cut_text = text(cut_text) if cut_text else None
         self.context = context or {}
+        self.photoset_count = int(photoset_count) if photoset_count is not None else None
 
         self.body, self.raw_body = utils.normalize_body(body, raw_body, cls='topic-content text')
 
@@ -177,8 +178,17 @@ class Post(object):
 
 
 class Download(object):
-    """Прикрепленный к посту файл (в новом Табуне) или ссылка (в старом Табуне)."""
-    def __init__(self, type, post_id, filename, count, filesize=None):
+    """
+    Прикрепленный к посту файл или ссылка.
+
+    Наличие этого объекта означает, что файл или ссылка в принципе есть, но
+    ``filename`` и ``filesize`` могут быть пустыми, если запрос поста был
+    отправлен незарегистрированным пользователем, который не имеет доступа.
+
+    ``count`` на новом Табуне всегда ``0``.
+    """
+
+    def __init__(self, type, post_id, filename, count, filesize=None, filelink=None):
         self.type = text(type)
         if self.type not in ("file", "link"):
             raise ValueError
@@ -186,6 +196,7 @@ class Download(object):
         self.filename = text(filename) if filename else None  # или ссылка
         self.filesize = int(filesize) if filesize is not None else None  # в байтах
         self.count = int(count)
+        self.filelink = text(filelink) if filelink else None
 
 
 class Comment(object):
@@ -626,3 +637,26 @@ class ActivityItem(object):
 
     def __ne__(self, other):
         return not self.__eq__(other)
+
+
+class EditablePost(object):
+    """Информация из формы редактирования поста."""
+
+    def __init__(self, blog_id, title, body, tags, forbid_comment, is_published):
+        self.blog_id = int(blog_id)
+        self.title = text(title)
+        self.body = text(body)
+        self.tags = [text(x) for x in tags]
+        self.forbid_comment = bool(forbid_comment)
+        self.is_published = is_published
+
+
+class EditableBlog(object):
+    """Информация из формы редактирования блога."""
+
+    def __init__(self, blog_title, blog_url, blog_type, blog_description, blog_limit_rating_topic):
+        self.title = text(blog_title)
+        self.url = text(blog_url)
+        self.type = text(blog_type)
+        self.description = text(blog_description)
+        self.limit_rating_topic = float(blog_limit_rating_topic)

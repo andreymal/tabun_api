@@ -1012,19 +1012,20 @@ def escape_topic_contents(data, may_be_short=False):
         if f2 < 0:
             break
 
-        # старые топики-ссылки
-        if data.rfind(b'<div class="topic-url"', f1, f2) > 0:
-            f2 = data.rfind(b'</div>', f1, data.rfind(b'<div class="topic-url"', f1, f2))
-            if f2 < 0:
+        # Убираем всякое, что может быть между topic-content и footer
+        for div in (
+            b'<div class="topic-link-link',  # Старые топики-ссылки
+            b'<div class="topic-file-file',  # Старые топики-файлы
+            b'<div class="topic-photoset-photoset',  # Старые топики-галереи
+        ):
+            if data.rfind(div, f1, f2) > 0:
+                f2 = data.rfind(b'</div>', f1, data.rfind(div, f1, f2))
                 break
-
-        # топики-файлы
-        if data.rfind(b'<div class="download"', f1, f2) > 0:
-            f2 = data.rfind(b'</div>', f1, data.rfind(b'<div class="download"', f1, f2))
-            if f2 < 0:
-                break
+        if f2 < 0:
+            break
 
         # выясняем, есть кат или нет
+        # (на новом Табуне он уже не в теле поста и этот код ничего не делает)
         body = data[data.find(b'>', f1) + 1:f2].strip()
         short = None
         if may_be_short:

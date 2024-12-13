@@ -58,3 +58,9 @@
 
 .. autoclass:: tabun_api.types.ActivityItem
    :members:
+
+.. autoclass:: tabun_api.types.EditablePost
+   :members:
+
+.. autoclass:: tabun_api.types.EditableBlog
+   :members:
