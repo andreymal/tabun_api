@@ -152,10 +152,20 @@ class User(object):
     noredir_nossl = None
 
     def __init__(
-        self, login=None, passwd=None, session_id=None, security_ls_key=None, key=None,
-        proxy=None, http_host=None, session_cookie_name='TABUNSESSIONID', avoid_cf=None,
+        self,
+        login=None,
+        passwd=None,
+        session_id=None,
+        security_ls_key=None,
+        key=None,
+        proxy=None,
+        http_host=None,
+        session_cookie_name='TABUNSESSIONID',
+        avoid_cf=None,
         ssl_params=None,
-        phpsessid=None
+        override_headers=None,
+        extra_cookies=None,
+        phpsessid=None,
     ):
         if phpsessid is not None:
             warnings.warn('phpsessid is deprecated; use session_id instead of it', FutureWarning, stacklevel=2)
@@ -164,7 +174,11 @@ class User(object):
         self.http_host = text(http_host or globals()['http_host']).rstrip('/')
         self.session_cookie_name = text(session_cookie_name)
 
-        self.extra_cookies = {}
+        if override_headers is not None:
+            self.override_headers = override_headers
+        else:
+            self.override_headers = dict(User.override_headers)
+        self.extra_cookies = extra_cookies if extra_cookies is not None else {}
 
         if avoid_cf is None:
             # None — опциональный обход CF, только если установлен js2py
