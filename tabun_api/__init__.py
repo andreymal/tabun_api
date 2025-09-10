@@ -21,7 +21,7 @@ from .types import Post, Download, Comment, Blog, StreamItem, UserInfo, Poll, Ta
 from .compat import PY2, BaseCookie, urequest, text_types, text, binary, html_unescape
 
 
-__version__ = '0.7.12'
+__version__ = '0.7.13'
 
 #: Адрес Табуна. Именно на указанный здесь адрес направляются запросы.
 http_host = "https://tabun.everypony.ru"
@@ -1310,49 +1310,83 @@ class User(object):
         """
 
         assert isinstance(raw_data, binary)
-        f = raw_data.find(b'<div class="pagination">')
-        if f < 0:
+        f1 = raw_data.find(b'<div class="pagination">')
+        if f1 < 0:
             return None, None
 
-        f2 = raw_data.find(b'<div class="pagination">', f + 2)
+        f2 = raw_data.find(b'<div class="pagination">', f1 + 2)
         if f2 >= 0:
             utils.logger.warning('Multiple paginations on page! If it is not tabun bug, please report to andreymal.')
             return None, None
 
-        f = raw_data.find(b'<ul>', f + 2, f + 1500)
-        f = raw_data.find(b'<ul>', f + 2, f + 1500)  # Выдираем второй список
-        f2 = raw_data.find(b'</ul>', f + 2, f + 1500)
-
-        ul = utils.parse_html_fragment(raw_data[f:f2 + 5])[0]
-
         pages = []
         current_page = None
 
-        for li in ul.findall('li'):
-            a = li.find('a')
-            txt = li.text_content().strip()
+        f = raw_data.find(b'<ul>', f1 + 2, f1 + 1500)
+        if f < 0:
+            # Новый Табун (2025-09)
+            f2 = raw_data.find(b'</div>', f1 + 2, f1 + 1500)
 
-            href = a.get('href', '') if a is not None else None
-            if href and '?' in href:
-                href = href[:href.find('?')]
-            elif href and '#' in href:
-                href = href[:href.find('#')]
+            ul = utils.parse_html_fragment(raw_data[f1:f2 + 6])[0]
+            for x in ul.iterchildren():
+                txt = x.text_content().strip() or x.get('title') or ''
 
-            if href:
-                page = href.rstrip('/').rsplit('/page', 1)[-1]
-                if page.isdigit():
-                    page = int(page)
+                if x.tag != 'a':
+                    if x.get('class', '') == 'page active':
+                        current_page = int(txt)
+                        pages.append((current_page, txt))
+                    continue
+
+                href = x.get('href', '')
+                if href and '?' in href:
+                    href = href[:href.find('?')]
+                elif href and '#' in href:
+                    href = href[:href.find('#')]
+
+                if href:
+                    page = href.rstrip('/').rsplit('/page', 1)[-1]
+                    if page.isdigit():
+                        page = int(page)
+                    else:
+                        assert txt == 'Первая'
+                        page = 1
                 else:
-                    assert txt == 'первая'
-                    page = 1
-            else:
-                page = int(txt)
+                    page = int(txt)
 
-            pages.append((page, txt))
+                pages.append((page, txt))
 
-            if li.get('class', '') == 'active':
-                assert current_page is None
-                current_page = page
+        else:
+            # Старый Табун
+            f = raw_data.find(b'<ul>', f + 2, f + 1500)  # Выдираем второй список
+            f2 = raw_data.find(b'</ul>', f + 2, f + 1500)
+
+            ul = utils.parse_html_fragment(raw_data[f:f2 + 5])[0]
+
+            for li in ul.findall('li'):
+                a = li.find('a')
+                txt = li.text_content().strip()
+
+                href = a.get('href', '') if a is not None else None
+                if href and '?' in href:
+                    href = href[:href.find('?')]
+                elif href and '#' in href:
+                    href = href[:href.find('#')]
+
+                if href:
+                    page = href.rstrip('/').rsplit('/page', 1)[-1]
+                    if page.isdigit():
+                        page = int(page)
+                    else:
+                        assert txt == 'первая'
+                        page = 1
+                else:
+                    page = int(txt)
+
+                pages.append((page, txt))
+
+                if li.get('class', '') == 'active':
+                    assert current_page is None
+                    current_page = page
 
         assert current_page is not None
         return current_page, pages
@@ -2025,10 +2059,13 @@ class User(object):
             profile_403 = None
             profile_403_message = None
 
-        about = node.xpath('div[@class="profile-info-about"]')
+        about = node.xpath('.//div[contains(@class, "profile-info-about")]')
         if about:
-            about = about[0]
-            description = about.xpath('div[@class="text"]')
+            if about[0].get('class').endswith(' text'):
+                # Новый Табун (2025-09)
+                description = about
+            else:
+                description = about[0].xpath('div[@class="text"]')
             if description and description[0].get('data-escaped') == '1':
                 raw_description = description[0].text
         else:
@@ -2058,7 +2095,7 @@ class User(object):
             profile_items = profile_left.xpath('ul[@class="profile-dotted-list"]/li')
         else:
             # На новом Табуне информация не завёрнута в profile-left
-            profile_items = node.xpath('ul[@class="profile-dotted-list"]/li')
+            profile_items = node.xpath('.//ul[@class="profile-dotted-list"]/li')
 
         for ul in profile_items:
             name = ul.find('span').text.strip()
@@ -2420,7 +2457,7 @@ class User(object):
             "type": "1" if type else "0"
         }
 
-        return self.ajax('/ajax/favourite/comment/', fields)['iCount']
+        return self.ajax('/ajax/favourite/comment/', fields).get('iCount', 0)
 
     def favourite_talk(self, talk_id, type=True):
         """Добавляет (type=True) личное сообщение в избранное или убирает (type=False) оттуда.
@@ -3179,31 +3216,42 @@ def parse_post(item, context=None):
     favourited = fav.get('class').endswith(' active')
     if not favourited:
         favourited = bool(fav.xpath('*[@class="favourite link-dotted active"]'))
-    favourite = fav.xpath('span[@class="favourite-count"]/text()')
     try:
-        favourite = int(favourite[0]) if favourite and favourite[0] else 0
+        # Новый Табун (2025-09)
+        favourite = int(fav.text.strip() or 0) if fav.text else 0
     except ValueError:
-        favourite = 0
+        favourite = fav.xpath('span[@class="favourite-count"]/text()')
+        try:
+            favourite = int(favourite[0]) if favourite and favourite[0] else 0
+        except ValueError:
+            favourite = 0
 
     comments_count = None
     comments_new_count = None
 
-    for li in footer.xpath('*[@class="topic-info"]//*[@class="topic-info-comments"]'):
-        a = li.find('a')
-        if a is None:
-            continue
-        icon = a.find('i')
-        if icon is None:
-            continue
-        if icon.get('class') in ('icon-synio-comments-green-filled', 'icon-synio-comments-blue'):
-            span = a.findall('span')
-            comments_count = int(span[0].text.strip())
-            if len(span) > 1:
-                comments_new_count = int(span[1].text.strip()[1:])
-            else:
-                comments_new_count = 0
-        elif icon.get('class') == 'icon-download-alt':
-            download_count = int(a.find('span').text.strip())
+    comments_link = footer.xpath('*[@class="topic-info"]//a[starts-with(@class, "topic-info-comments")]')
+    if comments_link:
+        # Новый Табун (2025-09)
+        comments_count = int(comments_link[0].text.strip())
+        comments_new_count = int(comments_link[0].get('data-new-comments-count') or 0)
+    else:
+        # Старый Табун
+        for li in footer.xpath('*[@class="topic-info"]//*[@class="topic-info-comments"]'):
+            a = li.find('a')
+            if a is None:
+                continue
+            icon = a.find('i')
+            if icon is None:
+                continue
+            if icon.get('class') in ('icon-synio-comments-green-filled', 'icon-synio-comments-blue'):
+                span = a.findall('span')
+                comments_count = int(span[0].text.strip())
+                if len(span) > 1:
+                    comments_new_count = int(span[1].text.strip()[1:])
+                else:
+                    comments_new_count = 0
+            elif icon.get('class') == 'icon-download-alt':
+                download_count = int(a.find('span').text.strip())
 
     download = None
 
@@ -3534,19 +3582,24 @@ def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
         context['can_vote'] = False
 
     # Достаём информацию об избранном
-    favourited = False
-    favourite_node = info.xpath('.//*[@class="comment-favourite"][1]')
+    favourite_node = info.xpath('.//*[starts-with(@class, "comment-favourite favorite")]')
     if favourite_node:
-        favourited = favourite_node[0].find('div')
-        context['favourited'] = favourited is not None and 'active' in favourited.get('class', '')
-        favourite_str = favourite_node[0].find('span').text
-        try:
-            favourite = int(favourite_str) if favourite_str else 0
-        except ValueError:
-            favourite = None
+        # Новый табун (2025-09)
+        context['favourited'] = favourite_node[0].get('class').endswith(' active')
+        favourite = int(favourite_node[0].text.strip() or 0) if favourite_node[0].text else 0
     else:
-        favourite = None
-        context['favourited'] = False
+        # Старый Табун
+        favourite_node = info.xpath('.//*[@class="comment-favourite"][1]')
+        if favourite_node:
+            favourited_node = favourite_node[0].find('div')
+            context['favourited'] = favourited_node is not None and 'active' in favourited_node.get('class', '')
+            favourite_str = favourite_node[0].find('span').text
+            try:
+                favourite = int(favourite_str) if favourite_str else 0
+            except ValueError:
+                favourite = None
+        else:
+            favourite = None
 
     if body is not None:
         return Comment(tm, blog, post_id, comment_id, nick, body if raw_body is None else None, vote_total, parent_id,
@@ -3561,6 +3614,10 @@ def parse_deleted_comment(node, post_id, blog=None, parent_id=None, context=None
         return None
 
     context = dict(context) if context else {}
+    context['can_edit'] = False
+    context['can_vote'] = False
+    context['favourited'] = bool(node.xpath('.//*[@class="comment-favourite favorite active"]'))
+    context['vote_value'] = None
 
     classes = frozenset(node.get('class', '').split())
     unread = "comment-new" in classes

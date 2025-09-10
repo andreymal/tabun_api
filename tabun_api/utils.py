@@ -1177,12 +1177,21 @@ def escape_profile_content(data):
     f2 = 0
 
     # Ищем начало блока «О себе»
-    div_begin = b'<div class="text">'
-    f1 = data.find(b'<div class="profile-info-about">')
+    text_cls = b'profile-info-block profile-info-about text'
+    div_begin = b'<div class="' + text_cls + b'">'
+    f1 = data.find(div_begin)
     if f1 >= 0:
-        f1 = data.find('<h3>О себе</h3>'.encode('utf-8'), f1, f1 + 1500)
-    if f1 >= 0:
-        f1 = data.find(div_begin, f1, f1 + 200)
+        # Новый Табун (2025-09)
+        pass
+    else:
+        # Старый Табун
+        text_cls = b'text'
+        div_begin = b'<div class="' + text_cls + b'">'
+        f1 = data.find(b'<div class="profile-info-about">')
+        if f1 >= 0:
+            f1 = data.find('<h3>О себе</h3>'.encode('utf-8'), f1, f1 + 1500)
+        if f1 >= 0:
+            f1 = data.find(div_begin, f1, f1 + 200)
 
     # Ищем конец
     if f1 >= 0:
@@ -1197,7 +1206,9 @@ def escape_profile_content(data):
 
     result = (
         data[:f1],
-        b'<div class="text" data-escaped="1">',
+        b'<div class="',
+        text_cls,
+        b'" data-escaped="1">',
         body,
         data[f2:]
     )
