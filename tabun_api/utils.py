@@ -1228,6 +1228,12 @@ def parse_datetime(s, utc=True):
     return (tm - tm.utcoffset()).replace(tzinfo=None)
 
 
+def parse_fancy_float(s):
+    """Парсит строку, содержащую число с красивостями вроде плюсиков и пробелов."""
+    s = s.replace(' ', '').replace('\xa0', '').strip().lstrip('+').lstrip()
+    return float(s)
+
+
 def gen_user_agent():
     """Генерирует кусочек юзерагента с информацией о системе."""
 

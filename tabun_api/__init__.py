@@ -21,7 +21,7 @@ from .types import Post, Download, Comment, Blog, StreamItem, UserInfo, Poll, Ta
 from .compat import PY2, BaseCookie, urequest, text_types, text, binary, html_unescape
 
 
-__version__ = '0.7.13'
+__version__ = '0.7.14'
 
 #: Адрес Табуна. Именно на указанный здесь адрес направляются запросы.
 http_host = "https://tabun.everypony.ru"
@@ -361,13 +361,19 @@ class User(object):
             # На новом Табуне (2024-06) сила скрыта
             self.skill = 0.0
         else:
-            self.skill = float(strength[0])
+            self.skill = utils.parse_fancy_float(strength[0])
 
-        rating = dd_user.xpath('.//*[starts-with(@class, "rating")]/text()')
-        if not rating:
-            self.rating = 0.0
+        rating_vote_count = dd_user.xpath('.//*[@class="vote-count"]/text()')
+        if rating_vote_count:
+            # Новый Табун (2025-10)
+            self.rating = utils.parse_fancy_float(rating_vote_count[0])
         else:
-            self.rating = float(rating[0])
+            # Старый Табун
+            rating = dd_user.xpath('.//*[starts-with(@class, "rating")]/text()')
+            if not rating:
+                self.rating = 0.0
+            else:
+                self.rating = utils.parse_fancy_float(rating[0])
 
         return self.username
 
@@ -1934,15 +1940,39 @@ class User(object):
         for tr in node.findall("tr"):
             context = base_context.copy()
 
-            username = tr.xpath('td[@class="cell-name"]/div/p[1]/a/text()[1]')
-            if not username:
+            cell_name = tr.xpath('td[@class="cell-name"]')
+            if not cell_name:
                 continue
+            cell_name = cell_name[0]
 
-            realname = tr.xpath('td[@class="cell-name"]/div/p[2]/text()[1]')
-            if not realname:
-                realname = None
+            user_with_avatar = tr.xpath('.//*[starts-with(@class, "user-with-avatar")]')
+            if user_with_avatar:
+                # Новый Табун (2025-10)
+                user_with_avatar = user_with_avatar[0]
+                username = user_with_avatar.xpath('.//*[starts-with(@class, "nickname")]/text()')[0].strip()
+                userpic = user_with_avatar.xpath('.//img[@class="avatar"]/@src')
+                status = user_with_avatar.xpath('.//*[@class="status"]/text()')
+                if status:
+                    realname = status[0].strip()
+                else:
+                    realname = None
+
             else:
-                realname = text(realname[0])
+                # Старый Табун
+                username = tr.xpath('td[@class="cell-name"]/div/p[1]/a/text()[1]')
+                if not username:
+                    continue
+                username = username[0]
+
+                realname = tr.xpath('td[@class="cell-name"]/div/p[2]/text()[1]')
+                if not realname:
+                    realname = None
+                else:
+                    realname = text(realname[0])
+
+                userpic = tr.xpath('td[@class="cell-name"]/a/img/@src')
+                if not userpic:
+                    continue
 
             # На новом Табуне (2024-06) сила скрыта
             skill = tr.xpath('td[@class="cell-skill"]/text()[1]')
@@ -1951,10 +1981,6 @@ class User(object):
             if not rating:
                 rating = tr.xpath('td[@class="cell-rating negative"]/strong/text()[1]')
             if not rating:
-                continue
-
-            userpic = tr.xpath('td[@class="cell-name"]/a/img/@src')
-            if not userpic:
                 continue
 
             btns = tr.xpath('td/button')
@@ -1973,8 +1999,10 @@ class User(object):
             context['can_edit_note'] = None
 
             peoples.append(UserInfo(
-                utils.parse_avatar_url(userpic[0])[0] or -1, username[0], realname,
-                skill[0] if skill else 0.0, rating[0], userpic=userpic[0], full=False,
+                utils.parse_avatar_url(userpic[0])[0] or -1, username, realname,
+                utils.parse_fancy_float(skill[0]) if skill else 0.0,
+                utils.parse_fancy_float(rating[0]),
+                userpic=userpic[0], full=False,
                 context=context,
             ))
 
@@ -2023,7 +2051,7 @@ class User(object):
 
         strength_elem = profile.xpath('.//div[@class="strength"]/div[1]/text()')
         if strength_elem:
-            skill = float(strength_elem[0])
+            skill = utils.parse_fancy_float(strength_elem[0])
         else:
             # На новом Табуне (2024-06) сила скрыта
             skill = 0.0
@@ -2031,7 +2059,7 @@ class User(object):
         vote_area = profile.xpath('.//*[@class="vote-profile"]//*[starts-with(@id, "vote_area_user_")]')[0]
         user_id = int(vote_area.get("id").rsplit("_")[-1])
 
-        rating = float(profile.xpath('.//*[@id="vote_total_user_{}"]/text()'.format(user_id))[0].strip().replace('+', ''))
+        rating = utils.parse_fancy_float(profile.xpath('.//*[@id="vote_total_user_{}"]/text()'.format(user_id))[0])
         rating_vote_count_str = profile.xpath('.//*[@class="vote-profile"]//*[@class="vote-label"]')[0].text_content().strip()
 
         # Вытаскиваем число из строки «Рейтинг (голосов: 777)»
@@ -2853,7 +2881,7 @@ class User(object):
                 recipients_inactive.append(x.text.strip())
 
         footer = item.find("footer")
-        date_node = footer.xpath('ul/li[@class="topic-info-date"]/time')[0]
+        date_node = footer.xpath('.//*[@class="topic-info-date"]/time')[0]
         utctime = utils.parse_datetime(date_node.get("datetime"))
         date = time.strptime(date_node.get("datetime")[:-6], "%Y-%m-%dT%H:%M:%S")  # legacy
 
@@ -3060,26 +3088,31 @@ def parse_post(item, context=None):
     header = item.find("header")
     if header is None:
         return None
-    title = header.find("h1")
-    if title is None:
+    title_elem = header.find(".//h1")
+    if title_elem is None:
         return None
+
+    # Достаём id поста из блока с рейтингом
+    vote_elem = header.xpath('.//*[@class="topic-info-vote"]//*[starts-with(@id, "vote_area_topic_")][1]')
+    if vote_elem:
+        post_id = int(vote_elem[0].get('id').rsplit('_', 1)[-1])
+    else:
+        post_id = -1
 
     context = dict(context) if context else {}
 
-    draft = bool(title.xpath('i[@class="icon-synio-topic-draft"]'))
+    draft = bool(header.xpath('.//*[@class="topic-draft"]')) or bool(title_elem.xpath('i[@class="icon-synio-topic-draft"]'))
 
     # Достаём информацию о блоге из ссылки на блог
     blog_url = None
     blog_name = None
     private = False
 
-    blog_elem = header.xpath('.//a[@class="topic-blog"]')
-    if not blog_elem:
-        blog_elem = header.xpath('.//a[@class="topic-blog private-blog"]')
-        private = True
+    blog_elem = header.xpath('.//a[contains(@class, "topic-blog")]')
     if not blog_elem:
         utils.logger.warning("Failed to parse blog in post %d, please report to andreymal", post_id)
         return None
+    private = 'private-blog' in blog_elem[0].get('class', '')
 
     blog_link = blog_elem[0].get('href')
     if not blog_link:
@@ -3096,20 +3129,13 @@ def parse_post(item, context=None):
         # но сами посты из личного блога не становятся закрытыми от этого
         private = False
 
-    # Достаём id поста из блока с рейтингом
-    vote_elem = header.xpath('.//*[@class="topic-info-vote"]//*[starts-with(@id, "vote_area_topic_")][1]')
-    if vote_elem:
-        post_id = int(vote_elem[0].get('id').rsplit('_', 1)[-1])
-    else:
-        post_id = -1
-
     author_elem = header.xpath('.//a[@rel="author"][1]')
     if not author_elem:
         utils.logger.warning("Failed to parse author in post %d, please report to andreymal", post_id)
         return None
     author = author_elem[0].text
 
-    title = title.text_content()
+    title = title_elem.text_content()
 
     footer = item.find("footer")
 
@@ -3313,8 +3339,9 @@ def parse_post(item, context=None):
         context['can_vote'] = None
         context['vote_value'] = None
 
-    context['can_edit'] = bool(header.xpath('.//*[@class="topic-info"]//a[@class="actions-edit"]'))
-    context['can_delete'] = bool(header.xpath('.//*[@class="topic-info"]//a[starts-with(@class, "actions-delete")]'))
+    context['is_read'] = 'is-read' in title_elem.get('class', '')
+    context['can_edit'] = bool(header.xpath('.//*[@class="actions-edit"]')) or bool(header.xpath('.//*[@class="topic-info"]//a[@class="actions-edit"]'))
+    context['can_delete'] = bool(header.xpath('.//*[@class="actions-delete"]')) or bool(header.xpath('.//*[@class="topic-info"]//a[starts-with(@class, "actions-delete")]'))
     context['can_comment'] = None  # из <article/> не выяснить никак
     context['subscribed_to_comments'] = None
 
@@ -3463,21 +3490,35 @@ def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
 
     # Вытаскиваем элемент с информацией
     info = node.xpath('.//*[@class="comment-info"][1]')
+    if not info:
+        utils.logger.warning(
+            'Comment %s in post %s has no comment-info! Please report to andreymal.',
+            comment_id,
+            post_id,
+        )
+        return None
+    info = info[0]
 
-    nick_node = None
-    if info:
-        info = info[0]
+    user_with_avatar = info.xpath('.//*[starts-with(@class, "user-with-avatar")]')
+    if user_with_avatar:
+        # Новый Табун (2025-10)
+        user_with_avatar = user_with_avatar[0]
+        nick = user_with_avatar.xpath('.//*[starts-with(@class, "nickname")]/text()')[0].strip()
+    else:
+        # Старый Табун
         nick_node = info.xpath('.//a[starts-with(@class, "comment-author")][1]')
 
-    if not nick_node:
-        # Если комментарий удалён или скрыт, его comment-info пустой
-        if 'comment-deleted' not in classes and 'comment-hidden' not in classes:
-            utils.logger.warning(
-                'Comment %s in post %s has no comment-info! Please report to andreymal.',
-                comment_id,
-                post_id,
-            )
-        return None
+        if not nick_node:
+            # Если комментарий удалён или скрыт, его comment-info пустой
+            if 'comment-deleted' not in classes and 'comment-hidden' not in classes:
+                utils.logger.warning(
+                    'Comment %s in post %s is not deleted but has empty comment-info! Please report to andreymal.',
+                    comment_id,
+                    post_id,
+                )
+            return None
+
+        nick = nick_node[0].text_content().strip()
 
     # Определяем, коммент из поста или из ленты (в ленте не все данные есть)
     vote_area = info.xpath('.//*[starts-with(@id, "vote_area_comment")][1]')
@@ -3490,8 +3531,6 @@ def parse_comment(node, post_id, blog=None, parent_id=None, context=None):
     # поэтому эти классы вполне могут здесь присутствовать
     deleted = "comment-deleted" in classes
     hidden = "comment-hidden" in classes
-
-    nick = nick_node[0].text_content().strip()
 
     tm = info.xpath('.//time[1]')[0].get('datetime')
     utctime = utils.parse_datetime(tm)
