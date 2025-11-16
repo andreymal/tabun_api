@@ -21,7 +21,7 @@ from .types import Post, Download, Comment, Blog, StreamItem, UserInfo, Poll, Ta
 from .compat import PY2, BaseCookie, urequest, text_types, text, binary, html_unescape
 
 
-__version__ = '0.7.14'
+__version__ = '0.7.15'
 
 #: Адрес Табуна. Именно на указанный здесь адрес направляются запросы.
 http_host = "https://tabun.everypony.ru"
@@ -1951,7 +1951,7 @@ class User(object):
                 user_with_avatar = user_with_avatar[0]
                 username = user_with_avatar.xpath('.//*[starts-with(@class, "nickname")]/text()')[0].strip()
                 userpic = user_with_avatar.xpath('.//img[@class="avatar"]/@src')
-                status = user_with_avatar.xpath('.//*[@class="status"]/text()')
+                status = user_with_avatar.xpath('.//*[contains(@class, "status")]/text()')
                 if status:
                     realname = status[0].strip()
                 else:
@@ -3129,11 +3129,17 @@ def parse_post(item, context=None):
         # но сами посты из личного блога не становятся закрытыми от этого
         private = False
 
-    author_elem = header.xpath('.//a[@rel="author"][1]')
-    if not author_elem:
-        utils.logger.warning("Failed to parse author in post %d, please report to andreymal", post_id)
-        return None
-    author = author_elem[0].text
+    author_elem = header.xpath('.//*[starts-with(@class, "user-with-avatar")]//*[starts-with(@class, "nickname")][1]')
+    if author_elem:
+        # Новый Табун (2025-11)
+        author = author_elem[0].text
+    else:
+        # Старый Табун
+        author_elem = header.xpath('.//a[@rel="author"][1]')
+        if not author_elem:
+            utils.logger.warning("Failed to parse author in post %d, please report to andreymal", post_id)
+            return None
+        author = author_elem[0].text
 
     title = title_elem.text_content()
 
@@ -3286,7 +3292,7 @@ def parse_post(item, context=None):
     if topic_file:
         filelink = topic_file[0].get('href')
         filename_node = topic_file[0].xpath('.//*[@class="topic-file-title"]')
-        filename = filename_node[0].text.strip() if filename_node else None
+        filename = (filename_node[0].text or '').strip() if filename_node else None
         filesize_node = topic_file[0].xpath('.//*[@class="topic-file-size"]')
         if filesize_node:
             filesize_str, filesize_suffix = filesize_node[0].text.replace('&nbsp;', ' ').split()
