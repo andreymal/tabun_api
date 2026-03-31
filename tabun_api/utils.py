@@ -1137,18 +1137,17 @@ def escape_blog_content(data):
     """Экранирует описание блога."""
     if not isinstance(data, binary):
         raise ValueError('data should be bytes')
-    f1 = 0
-    f2 = 0
+    f2 = -1
 
     # Ищем начало блока
-    div_begin = b'<div class="blog-description">'
-    f1 = data.find(b'<div class="blog-content text">')
+    div_begin = b'<div class="blog-description text">'
+    f1 = data.find(div_begin)
     if f1 >= 0:
-        f1 = data.find(div_begin, f1, f1 + 200)
-
-    # Ищем конец
-    if f1 >= 0:
-        f2 = data.find(b'<ul class="blog-info">', f1 + 1)
+        # Ищем конец
+        f2 = data.find(b'<div class="blog-info-wrapper">', f1 + 1)
+        if f2 < 0:
+            # Старый Табун
+            f2 = data.find(b'<ul class="blog-info">', f1 + 1)
         if f2 >= 0:
             f2 = data.rfind(b'</div>', f1 + 1, f2)
 
@@ -1161,7 +1160,7 @@ def escape_blog_content(data):
 
     result = (
         data[:f1],
-        b'<div class="blog-content text" data-escaped="1">',
+        b'<div class="blog-description text" data-escaped="1">',
         body,
         data[f2:]
     )

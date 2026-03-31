@@ -21,7 +21,7 @@ from .types import Post, Download, Comment, Blog, StreamItem, UserInfo, Poll, Ta
 from .compat import PY2, BaseCookie, urequest, text_types, text, binary, html_unescape
 
 
-__version__ = '0.7.15'
+__version__ = '0.7.16'
 
 #: Адрес Табуна. Именно на указанный здесь адрес направляются запросы.
 http_host = "https://tabun.everypony.ru"
@@ -1597,6 +1597,18 @@ class User(object):
 
     def get_blogs_list(self, page=1, order_by="blog_rating", order_way="desc", url=None):
         """Возвращает список объектов Blog."""
+
+        # Новый Табун (2026-03) изменил ключи сортировки,
+        # преобразуем старые ключи в новые для сохранения совместимости
+        if order_by == "blog_rating":
+            order_by = "rating"
+        elif order_by == "blog_title":
+            order_by = "title"
+        elif order_by == "blog_count_topic":
+            order_by = "topics"
+        elif order_by == "blog_count_user":
+            order_by = "members"
+
         if not url:
             url = "/blogs/" + (("page" + text(page) + "/") if page > 1 else "")
             url += "?order=" + text(order_by)
@@ -1616,28 +1628,66 @@ class User(object):
         blogs = []
 
         for tr in node.findall("tr"):
-            p = tr.xpath('td[@class="cell-name"]/p')
-            if len(p) == 0:
-                continue
-            p = p[0]
-            a = p.find("a")
+            blog_name_node = tr.xpath('td[@class="cell-name"]/span[starts-with(@class, "blog-link-with-avatar")]')
+            if blog_name_node:
+                # Новый Табун (2026-03)
+                avatar_node = blog_name_node[0].xpath('./a[@class="avatar"]/img')
+                if avatar_node:
+                    avatar = avatar_node[0].get('src')
+                else:
+                    avatar = None
 
-            link = a.get('href')
-            if not link:
-                continue
+                a = blog_name_node[0].xpath('.//a[starts-with(@class, "blog-title-wrapper")]')
+                link = a[0].get('href')
 
-            blog = link[:link.rfind('/')]
-            blog = blog[blog.rfind('/') + 1:]
+                blog = link[:link.rfind('/')]
+                blog = blog[blog.rfind('/') + 1:]
 
-            name = text(a.text)
-            closed = bool(p.xpath('i[@class="icon-synio-topic-private"]'))
+                name = a[0].find('span').text or ''
+                closed = bool(a[0].xpath('span[contains(@class, "blog-type-closed")]'))
+
+                creator_node = blog_name_node[0].xpath('.//span[@class="nickname"]')
+                if creator_node:
+                    creator = creator_node[0].text
+                else:
+                    creator = None
+
+                cell_topics = tr.xpath('td[@class="cell-topics"]')[0]
+                posts_count = int((cell_topics.text or '-1').strip())
+
+            else:
+                # Старый Табун
+                avatar = None
+
+                p = tr.xpath('td[@class="cell-name"]/p')
+                if len(p) == 0:
+                    continue
+                p = p[0]
+                a = p.find("a")
+
+                link = a.get('href')
+                if not link:
+                    continue
+
+                blog = link[:link.rfind('/')]
+                blog = blog[blog.rfind('/') + 1:]
+
+                name = text(a.text)
+                closed = bool(p.xpath('i[@class="icon-synio-topic-private"]'))
+
+                creator = tr.xpath('td[@class="cell-name"]/span[@class="user-avatar"]/a')[-1].text
+
+                posts_count = -1
 
             cell_readers = tr.xpath('td[@class="cell-readers"]')[0]
-            readers = int(cell_readers.text)
+            readers_vague = (cell_readers.text or '').strip()
+            if readers_vague.isdigit():
+                readers = int(readers_vague)
+                readers_vague = None
+            else:
+                readers = 0
             blog_id = int(cell_readers.get('id').rsplit("_", 1)[-1])
-            rating = float(tr.findall("td")[-1].text)
-
-            creator = tr.xpath('td[@class="cell-name"]/span[@class="user-avatar"]/a')[-1].text
+            rating = utils.parse_fancy_float(tr.findall("td")[-1].text)
 
             if not closed:
                 blog_status = Blog.OPEN
@@ -1646,7 +1696,13 @@ class User(object):
             else:
                 blog_status = Blog.CLOSED
 
-            blogs.append(Blog(blog_id, blog, name, creator, readers, rating, blog_status, context=dict(context)))
+            blogs.append(
+                Blog(
+                    blog_id, blog, name, creator, readers, rating, blog_status,
+                    avatar=avatar, posts_count=posts_count,
+                    readers_vague=readers_vague, context=dict(context),
+                )
+            )
 
         return blogs
 
@@ -1656,27 +1712,55 @@ class User(object):
         url = "/blog/" + text(blog) + "/"
         if not raw_data:
             raw_data = self.urlread(url)
-        raw_data = utils.escape_blog_content(raw_data)
-        data = utils.find_substring(raw_data, b'<div class="blog-top">', b'<div class="nav-menu-wrapper">', with_end=False)
-        data = utils.replace_cloudflare_emails(data)
 
+        for blog_top_end in (
+            b'<div class="nav-menu-wrapper">',
+            b'<div class="notice-block',
+        ):
+            data = utils.find_substring(raw_data, b'<div class="blog-top">', blog_top_end, with_end=False)
+            if data:
+                break
+        if not data:
+            return
+        data = utils.replace_cloudflare_emails(data)
+        data = utils.escape_blog_content(data)
         node = utils.parse_html_fragment(b'<div>' + data + b'</div>')
         if not node:
             return
 
-        blog_top = node[0].xpath('div[@class="blog-top"]')[0]
-        blog_inner = node[0].xpath('div[@id="blog"]/div[@class="blog-inner"]')[0]
-        blog_footer = node[0].xpath('div[@id="blog"]/footer[@class="blog-footer"]')[0]
+        blog_top = node[0].xpath('.//div[@class="blog-top"]')[0]
+        blog_inner = node[0].xpath('.//div[@id="blog"]/div[@class="blog-inner"]')[0]
+        blog_footer = node[0].xpath('.//div[@id="blog"]/footer[@class="blog-footer"]')[0]
 
-        name = blog_top.xpath('h2/text()[1]')[0].rstrip()
-
-        closed = len(blog_top.xpath('h2/i[@class="icon-synio-topic-private"]')) > 0
-        if not closed:
-            blog_status = Blog.OPEN
-        elif blog in halfclosed:
-            blog_status = Blog.HALFCLOSED
+        name_node = blog_top.xpath('.//span[@class="blog-title"]')
+        if name_node:
+            # Новый Табун (2026-03)
+            name = name_node[0].text or ''
         else:
+            # Старый Табун
+            name = blog_top.xpath('h2/text()[1]')[0].rstrip()
+
+        closed = bool(blog_top.xpath('.//span[contains(@class, "blog-type-closed")]'))
+        if closed:
             blog_status = Blog.CLOSED
+            sub_button = blog_footer.xpath('.//button')
+            if sub_button:
+                # function toggleJoin(obj, idBlog, isTypeClose, changeButtonAppearance, noLeaveButton)
+                m = re.search(
+                    r'ls.blog.toggleJoin\(this,[0-9]+,(true|false),(true|false),(true|false)\)',
+                    sub_button[0].get('onclick') or '',
+                )
+                if m is not None and m.group(1) == 'false':
+                    blog_status = Blog.HALFCLOSED
+
+        else:
+            closed = bool(blog_top.xpath('h2/i[@class="icon-synio-topic-private"]'))
+            if not closed:
+                blog_status = Blog.OPEN
+            elif blog in halfclosed:
+                blog_status = Blog.HALFCLOSED
+            else:
+                blog_status = Blog.CLOSED
 
         vote_item = blog_top.xpath('.//span[@class="vote-count"]')
         if vote_item:
@@ -1684,44 +1768,86 @@ class User(object):
             vote_item = vote_item[0]
             vote_count = int(vote_item.get("title", "0").rsplit(" ", 1)[-1])
             blog_id = int(vote_item.get('id').rsplit('_', 1)[-1])
-            vote_total = float(vote_item.text_content().strip().replace('+', ''))
+            vote_total = utils.parse_fancy_float(vote_item.text_content())
         else:
             # Старый Табун
             vote_item = blog_top.xpath('div/div[@class="vote-item vote-count"]')[0]
             vote_count = int(vote_item.get("title", "0").rsplit(" ", 1)[-1])
             blog_id = int(vote_item.find("span").get("id").rsplit("_", 1)[-1])
-            vote_total = float(vote_item.find("span").text_content().strip().replace('+', ''))
+            vote_total = utils.parse_fancy_float(vote_item.find("span").text_content())
 
-        avatar = blog_inner.xpath("header/img")[0].get("src")
+        avatar_node = blog_top.xpath('.//img')
+        if not avatar_node:
+            avatar_node = blog_inner.xpath('header/img')
+        avatar = avatar_node[0].get('src')
 
-        content = blog_inner.find("div")
-        info = content.find("ul")
+        content = blog_inner.xpath('.//div[@class="blog-content"]')[0]
+        info = content.xpath('.//ul[@class="blog-info"]')[0]
 
         description = content.find("div")
         if description is not None and description.get('data-escaped') == '1':
             raw_description = description.text
         else:
             raw_description = None
-        created = time.strptime(utils.mon2num(info.xpath('li[1]/strong/text()')[0]), "%d %m %Y")
-        posts_count = int(info.xpath('li[2]/strong/text()')[0])
-        readers = int(info.xpath('li[3]/strong/text()')[0])
+
+        created = None
+        posts_count = -1
+        readers = 0
+        readers_vague = None
+
+        for info_item in info.findall('li'):
+            info_key = info_item.find('span')
+            info_value = info_item.find('strong')
+            if info_key is None or info_value is None:
+                continue
+            info_key_str = info_key.text_content().strip()
+            if info_key_str == 'Создан':
+                created = time.strptime(utils.mon2num(info_value.text_content().strip()), "%d %m %Y")
+            elif info_key_str == 'Постов':
+                posts_count = int(info_value.text_content().strip())
+            elif info_key_str == 'Подписчиков':
+                readers_vague = info_value.text_content().strip()
+                if readers_vague.isdigit():
+                    readers = int(readers_vague)
+                    readers_vague = None
+
+        creator = None
         admins = []
         moderators = []
 
-        arr = admins
-        for user in content.xpath('span[@class="user-avatar"]'):
-            t = user.getprevious().getprevious().text
-            if t and "Модераторы" in t:
-                arr = moderators
-            arr.append(user.text_content().strip())
+        staff_blocks = content.xpath('.//div[@class="blog-staff"]')
+        for staff_block in staff_blocks:
+            # Новый Табун (2026-03)
+            staff_name = staff_block.find('strong').text or ''
+            staff_users = staff_block.xpath('.//span[@class="nickname"]/text()')
+            if staff_name == 'Владелец':
+                creator = staff_users[0]
+            elif staff_name.startswith('Администратор'):
+                admins = staff_users
+            elif staff_name.startswith('Модератор'):
+                moderators = staff_users
+            else:
+                utils.logger.warning('Blog %s: unknown staff block %s! Please report to andreymal.', blog, staff_name)
 
-        creator = blog_footer.xpath("div/a[2]/text()[1]")[0]
+        if not staff_blocks:
+            # Старый Табун
+            arr = admins
+            for user in content.xpath('span[@class="user-avatar"]'):
+                t = user.getprevious().getprevious().text
+                if t and "Модераторы" in t:
+                    arr = moderators
+                arr.append(user.text_content().strip())
+
+            creator_node = blog_footer.xpath("div/a[2]")
+            if creator_node:
+                creator = creator_node[0].text
 
         return Blog(
             blog_id, blog, name, creator, readers, vote_total, blog_status,
             description if description is not None and raw_description is None else None,
             admins, moderators, vote_count, posts_count, created,
             avatar=avatar, raw_description=raw_description,
+            readers_vague=readers_vague,
             context=self.get_main_context(raw_data, url=url),
         )
 
@@ -1865,14 +1991,42 @@ class User(object):
         """Возвращает список последних постов (без самого содержимого постов, только автор, дата, заголовки и число комментариев)."""
         url = self.http_host + '/ajax/stream/topic/'
         data = self.ajax(url)
-        node = utils.parse_html_fragment(data['sText'])
+        node = utils.parse_html_fragment('<div>' + data['sText'] + '</div>')
         if not node:
             return []
         node = node[0]
 
         items = []
 
-        for item in node.findall("li"):
+        # Новый Табун (2026-03)
+        for item in node.xpath('.//div[@class="small-list-topic-entry"]'):
+            blog_a = item.xpath('.//a[contains(@class, "blog-title-wrapper")]')
+            topic_a = item.xpath('.//a[contains(@class, "topic-entry-title")]')[0]
+            comments_node = item.xpath('.//a[contains(@class, "topic-comments-counter")]')[0]
+            user_with_avatar = item.xpath('.//*[starts-with(@class, "user-with-avatar")]')[0]
+
+            post_time_node = item.xpath('.//time[@class="topic-entry-date"]')[0]
+            utctime = utils.parse_datetime(post_time_node.get("datetime"))
+            post_time = time.strptime(post_time_node.get("datetime")[:-6], "%Y-%m-%dT%H:%M:%S")
+
+            author = user_with_avatar.xpath('.//*[starts-with(@class, "nickname")]/text()')[0].strip()
+            title = topic_a.text_content().strip()
+            blog, post_id = parse_post_url(topic_a.get('href', ''))
+            blog_name = blog_a[0].text_content() if blog_a else ''
+            private = bool(blog_a[0].xpath('.//span[contains(@class, "blog-type-closed")]')) if blog_a else False
+            comments_count = int(comments_node.text_content())
+            unread_comments_count = int((comments_node.get('data-new-comments-count') or '0').lstrip('+'))
+
+            items.append(Post(
+                time=post_time, blog=blog, post_id=post_id, author=author, title=title, draft=False,
+                vote_count=None, vote_total=None, body=None, tags=[], comments_count=comments_count,
+                private=private,
+                blog_name=blog_name, utctime=utctime,
+                context={'http_host': self.http_host, 'url': url, 'username': self.username, 'unread_comments_count': unread_comments_count}
+            ))
+
+        # Старый Табун
+        for item in node.xpath('./ul[@class="latest-list"]/li'):
             p = item.find("p")
             a = p.find("a")
             blog_a = item.findall("a")[0]
@@ -3103,32 +3257,6 @@ def parse_post(item, context=None):
 
     draft = bool(header.xpath('.//*[@class="topic-draft"]')) or bool(title_elem.xpath('i[@class="icon-synio-topic-draft"]'))
 
-    # Достаём информацию о блоге из ссылки на блог
-    blog_url = None
-    blog_name = None
-    private = False
-
-    blog_elem = header.xpath('.//a[contains(@class, "topic-blog")]')
-    if not blog_elem:
-        utils.logger.warning("Failed to parse blog in post %d, please report to andreymal", post_id)
-        return None
-    private = 'private-blog' in blog_elem[0].get('class', '')
-
-    blog_link = blog_elem[0].get('href')
-    if not blog_link:
-        utils.logger.warning("Failed to get blog link in post %d, please report to andreymal", post_id)
-        return None
-
-    if '/blog/' in blog_link:
-        blog_url = blog_link[:-1]
-        blog_url = blog_url[blog_url.rfind('/', 1) + 1:]
-    blog_name = blog_elem[0].text
-
-    if not blog_url and private:
-        # Пользователь может скрыть список своих постов в настройках приватности,
-        # но сами посты из личного блога не становятся закрытыми от этого
-        private = False
-
     author_elem = header.xpath('.//*[starts-with(@class, "user-with-avatar")]//*[starts-with(@class, "nickname")][1]')
     if author_elem:
         # Новый Табун (2025-11)
@@ -3140,6 +3268,53 @@ def parse_post(item, context=None):
             utils.logger.warning("Failed to parse author in post %d, please report to andreymal", post_id)
             return None
         author = author_elem[0].text
+
+    # Достаём информацию о блоге из ссылки на блог
+    blog_url = None
+    blog_name = None
+    private = False
+
+    blog_elem = header.xpath('.//a[contains(@class, "blog-title-wrapper")]')
+    user_secondary = header.xpath('.//span[contains(@class, "user-with-avatar")]/span[contains(@class, "secondary-line")]')
+    user_secondary_text = user_secondary[0].text_content() if user_secondary else ''
+    if blog_elem:
+        # Новый Табун (2026-03)
+        blog_link = blog_elem[0].get('href')
+        if not blog_link:
+            utils.logger.warning("Failed to get blog link in post %d, please report to andreymal", post_id)
+            return None
+
+        if '/blog/' in blog_link:
+            blog_url = blog_link.rstrip('/')
+            blog_url = blog_url[blog_url.rfind('/', 1) + 1:]
+        blog_name = blog_elem[0].text_content()
+        private = bool(blog_elem[0].xpath('.//span[contains(@class, "blog-type-closed")]'))
+
+    elif "в личном блоге" in user_secondary_text and "в блоге" not in user_secondary_text:
+        blog_name = "Блог им. " + author
+
+    else:
+        # Старый Табун
+        blog_elem = header.xpath('.//a[contains(@class, "topic-blog")]')
+        if not blog_elem:
+            utils.logger.warning("Failed to parse blog in post %d, please report to andreymal", post_id)
+            return None
+        private = 'private-blog' in blog_elem[0].get('class', '')
+
+        blog_link = blog_elem[0].get('href')
+        if not blog_link:
+            utils.logger.warning("Failed to get blog link in post %d, please report to andreymal", post_id)
+            return None
+
+        if '/blog/' in blog_link:
+            blog_url = blog_link[:-1]
+            blog_url = blog_url[blog_url.rfind('/', 1) + 1:]
+        blog_name = blog_elem[0].text
+
+        if not blog_url and private:
+            # Пользователь может скрыть список своих постов в настройках приватности,
+            # но сами посты из личного блога не становятся закрытыми от этого
+            private = False
 
     title = title_elem.text_content()
 

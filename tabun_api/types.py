@@ -342,14 +342,16 @@ class Blog(object):
     CLOSED = 1
     HALFCLOSED = 2
 
-    def __init__(self, blog_id, blog, name, creator, readers=0, rating=0.0, status=0,
+    def __init__(self, blog_id, blog, name, creator=None, readers=0, rating=0.0, status=0,
                  description=None, admins=None, moderators=None, vote_count=-1, posts_count=-1,
-                 created=None, avatar=None, raw_description=None, context=None, closed=None):
+                 created=None, avatar=None, raw_description=None, context=None,
+                 readers_vague=None, closed=None):
         self.blog_id = int(blog_id)
         self.blog = text(blog)
         self.name = text(name)
-        self.creator = text(creator)
+        self.creator = text(creator) if creator else None
         self.readers = int(readers)
+        self.readers_vague = readers_vague
         self.rating = float(rating)
         self.status = int(status)
         self.admins = admins
