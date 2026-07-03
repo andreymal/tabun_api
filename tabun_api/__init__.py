@@ -2299,7 +2299,7 @@ class User(object):
 
             elif name == 'Последний визит:':
                 private_profile_data = False
-                last_activity = time.strptime(utils.mon2num(value.text), '%d %m %Y, %H:%M')
+                last_activity = time.strptime(utils.mon2num(value.get('title') or value.text), '%d %m %Y, %H:%M')
 
             elif name in ('Создал:', 'Администрирует:', 'Модерирует:', 'Состоит в:'):
                 private_profile_data = False
