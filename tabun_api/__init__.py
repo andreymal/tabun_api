@@ -17,11 +17,11 @@ from json import JSONDecoder
 
 from . import errors, types, utils, compat
 from .errors import TabunError, TabunResultError
-from .types import Post, Download, Comment, Blog, StreamItem, UserInfo, Poll, TalkItem, ActivityItem, EditablePost, EditableBlog
+from .types import Post, Download, Comment, Blog, StreamItem, UserInfo, Poll, TalkItem, ActivityItem, EditablePost, EditableComment, EditableBlog
 from .compat import PY2, BaseCookie, urequest, text_types, text, binary, html_unescape
 
 
-__version__ = '0.7.16'
+__version__ = '0.7.17'
 
 #: Адрес Табуна. Именно на указанный здесь адрес направляются запросы.
 http_host = "https://tabun.everypony.ru"
@@ -2671,6 +2671,16 @@ class User(object):
 
         return self.ajax('/ajax/favourite/save-tags/', fields)['aTags']
 
+    def get_editable_comment(self, comment_id):
+        """Возвращает исходный html-код комментария.
+
+        :param int comment_id: ID комментария (должен быть доступ на редактирование)
+        :rtype: :class:`~tabun_api.types.EditableComment`
+        """
+
+        data = self.ajax('/ajax/comment/get-for-edit/', {'idComment': int(comment_id)})
+        return EditableComment(data['html'])
+
     def edit_comment(self, comment_id, body, set_lock=False):
         """Редактирует комментарий и возвращает кортеж из трёх строк: новый
         (или старый, если изменений нет) html-код комментария, сообщение
@@ -3069,7 +3079,7 @@ class User(object):
         if resp.getcode() // 100 != 3:
             raise TabunError('Cannot delete talk', code=resp.getcode())
 
-    def get_activity(self, url='/stream/all/', raw_data=None):
+    def get_activity(self, url='/stream/', raw_data=None):
         """
         Возвращает кортеж из двух элементов: номер самого старого события
         в списке и собственно список последних событий.
@@ -3086,32 +3096,53 @@ class User(object):
             return -1, []
         node = node[0]
 
-        stream_list = node.find('ul')
-        if stream_list is None:
-            # Лента активности пуста
-            return -1, []
-
-        last_id_node = node.find('span')
-        if last_id_node is not None and last_id_node.get('data-last-id'):
-            last_id = int(last_id_node.get('data-last-id'))
-        else:
-            last_id = -1
-
+        last_id = -1
         item = None
         items = []
 
-        for li in node.find('ul').findall('li'):
-            if not li.get('class', '').startswith('stream-item'):
-                continue
-            item = parse_activity(li)
-            if item:
-                items.append(item)
+        stream_list = node.xpath('.//div[@id="stream-list"]')
+        if stream_list:
+            # Новый Табун (2026-07)
+            for item_node in stream_list[0].xpath('./div[@class="eventstream-entry"]'):
+                item = parse_activity(item_node)
+                if item is not None:
+                    items.append(item)
 
-        if item:
-            item.id = last_id
+            last_id_node = (
+                node.xpath('.//*[@id="stream_get_more"]')
+                or node.xpath('.//*[@id="stream_get_more_by_user"]')
+                or node.xpath('.//*[@id="admin-action-streamloadmore"]')
+            )
+            if last_id_node:
+                last_id = int(last_id_node[0].get('data-last-id') or '-1')
+
+            if item is not None and last_id != -1:
+                item.id = last_id
+
+        else:
+            # Старый Табун
+            stream_list = node.find('ul')
+            if stream_list is None:
+                # Лента активности пуста
+                return -1, []
+
+            last_id_node = node.find('span')
+            if last_id_node is not None and last_id_node.get('data-last-id'):
+                last_id = int(last_id_node.get('data-last-id'))
+
+            for li in node.find('ul').findall('li'):
+                if not li.get('class', '').startswith('stream-item'):
+                    continue
+                item = parse_activity(li)
+                if item:
+                    items.append(item)
+
+            if item:
+                item.id = last_id
+
         return last_id, items
 
-    def get_more_activity(self, last_id=0x7fffffff):
+    def get_more_activity(self, last_id=0x7fffffff, last_date=None, url='/stream/get_more/'):
         """Возвращает список событий старее данного id."""
         self.check_login()
 
@@ -3119,30 +3150,55 @@ class User(object):
             "last_id": text(int(last_id)),
             'security_ls_key': self.security_ls_key,
         }
+        if last_date:
+            fields["last_date"] = last_date
 
-        data = self.send_form_and_read("/stream/get_more_all/", fields)
+        data = self.send_form_and_read(url, fields)
         result = self.jd.decode(data.decode('utf-8'))
         if result['bStateError']:
             raise TabunResultError(result['sMsg'])
 
-        items = []
+        if 'list' in result:
+            # Новый Табун (2026-07)
+            item = None
+            items = []
 
-        last_id = int(result.get('iStreamLastId', 0))
-        item = None
-        for li in utils.parse_html_fragment(result['result']):
-            if li.tag != 'li' or not li.get('class', '').startswith('stream-item'):
-                continue
-            item = parse_activity(li)
+            for item_node in utils.parse_html_fragment(result['list']):
+                if item_node.get('class') != 'eventstream-entry':
+                    continue
+                item = parse_activity(item_node)
+                if item is not None:
+                    items.append(item)
+
+            last_id = int(result.get('lastId', '-1'))
+            if item is not None and last_id != -1:
+                item.id = last_id
+
+        else:
+            # Старый Табун
+            items = []
+
+            last_id = int(result.get('iStreamLastId', 0))
+            item = None
+            for li in utils.parse_html_fragment(result['result']):
+                if li.tag != 'li' or not li.get('class', '').startswith('stream-item'):
+                    continue
+                item = parse_activity(li)
+                if item:
+                    items.append(item)
+
             if item:
-                items.append(item)
+                item.id = last_id
 
-        if item:
-            item.id = last_id
         return last_id, items
 
 
 def parse_activity(item):
     classes = item.get('class').split()
+
+    if 'eventstream-entry' in classes:
+        # Новый Табун (2026-07)
+        return _parse_activity_new(item)
 
     post_id = None
     comment_id = None
@@ -3235,6 +3291,112 @@ def parse_activity(item):
         utctime = None
         date = time.strptime(utils.mon2num(date), "%d %m %Y, %H:%M")
     return ActivityItem(typ, date, post_id, comment_id, blog, username, title, data, utctime=utctime)
+
+
+def _parse_activity_new(item):
+    icon_node = item.xpath('./div[@class="eventstream-entry-icon"]')
+    user_node = item.xpath('./div[@class="eventstream-entry-data"]/span[contains(@class, "user-with-avatar")]')
+    desc_node = item.xpath('.//div[@class="eventstream-entry-description"]')
+    if not icon_node or not user_node or not desc_node:
+        return None
+
+    typ_str = icon_node[0].get('data-type')
+    if not typ_str:
+        return None
+
+    post_id = None
+    comment_id = None
+    blog = None
+    title = None
+    data = None
+
+    vote_str = icon_node[0].get('data-vote')
+    if vote_str == 'up':
+        vote_direction = 1
+    elif vote_str == 'down':
+        vote_direction = -1
+    else:
+        vote_direction = None
+
+    parse_topic_link = False
+    parse_blog_link = False
+    parse_user_link = False
+
+    if typ_str == 'add_topic':
+        typ = ActivityItem.POST_ADD
+        parse_topic_link = True
+
+    elif typ_str == 'add_comment':
+        typ = ActivityItem.COMMENT_ADD
+        parse_topic_link = True
+        data_node = item.xpath('.//div[@class="eventstream-entry-comment-preview"]/text()')
+        data = data_node[0] if data_node else None
+
+    elif typ_str == 'add_blog':
+        typ = ActivityItem.BLOG_ADD
+        parse_blog_link = True
+
+    elif typ_str == 'vote_topic':
+        typ = ActivityItem.POST_VOTE
+        parse_topic_link = True
+        if vote_direction is None:
+            vote_direction = 0
+
+    elif typ_str == 'vote_comment':
+        typ = ActivityItem.COMMENT_VOTE
+        parse_topic_link = True
+
+    elif typ_str == 'vote_blog':
+        typ = ActivityItem.BLOG_VOTE
+        parse_blog_link = True
+
+    elif typ_str == 'vote_user':
+        typ = ActivityItem.USER_VOTE
+        parse_user_link = True
+
+    elif typ_str == 'add_friend':
+        typ = ActivityItem.FRIEND_ADD
+        parse_user_link = True
+
+    elif typ_str == 'join_blog':
+        typ = ActivityItem.JOIN_BLOG
+        parse_blog_link = True
+
+    else:
+        utils.logger.warning('Unknown stream type %r, please report to andreymal', typ_str)
+        return None
+
+    if parse_topic_link:
+        link_node = desc_node[0].find('a')
+        href = link_node.get('href')
+        blog, post_id = parse_post_url(href)
+        title = link_node.text or ''
+        f = href.rfind('#comment')
+        if f > 0:
+            comment_id = int(href[f + 8:])
+
+    if parse_blog_link:
+        link_node = desc_node[0].find('a')
+        href = link_node.get('href').rstrip('/')
+        if href.endswith('/created/topics') and '/profile/' in href:
+            # Есть такой баг: можно оценивать личные блоги
+            blog = None
+            data = href.split('/profile/', 1)[1]
+            data = data[:data.find('/')]
+        else:
+            blog = href[href.rfind('/') + 1:]
+        title = link_node.text_content() or ''
+
+    if parse_user_link:
+        data = desc_node[0].xpath('.//span[@class="nickname"]/text()')[0].strip()
+
+    username = user_node[0].xpath('.//span[@class="nickname"]/text()')[0].strip()
+
+    date_str = item.find('time').get('datetime')
+    utctime = utils.parse_datetime(date_str)
+    date = time.strptime(date_str[:-6], '%Y-%m-%dT%H:%M:%S')
+
+    return ActivityItem(typ, date, post_id, comment_id, blog, username, title, data, utctime=utctime, vote_direction=vote_direction)
 
 
 def parse_post(item, context=None):

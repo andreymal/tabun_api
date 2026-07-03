@@ -597,7 +597,7 @@ class ActivityItem(object):
     FRIEND_ADD = 4
     JOIN_BLOG = 24
 
-    def __init__(self, type, date, post_id=None, comment_id=None, blog=None, username=None, title=None, data=None, id=None, utctime=None):
+    def __init__(self, type, date, post_id=None, comment_id=None, blog=None, username=None, title=None, data=None, id=None, utctime=None, vote_direction=None):
         self.type = int(type)
         if self.type not in (
             self.WALL_ADD, self.POST_ADD, self.COMMENT_ADD, self.BLOG_ADD,
@@ -616,6 +616,7 @@ class ActivityItem(object):
         self.title = text(title) if title is not None else None
         self.data = text(data) if data is not None else None
         self.id = int(id) if id is not None else None
+        self.vote_direction = vote_direction
 
     def __str__(self):
         return "<activity " + text(self.type) + " " + (self.username or 'N/A') + ">"
@@ -634,7 +635,8 @@ class ActivityItem(object):
             self.blog == other.blog and
             self.username == other.username and
             self.title == other.title and
-            self.data == other.data
+            self.data == other.data and
+            self.vote_direction == other.vote_direction
         )
 
     def __ne__(self, other):
@@ -651,6 +653,13 @@ class EditablePost(object):
         self.tags = [text(x) for x in tags]
         self.forbid_comment = bool(forbid_comment)
         self.is_published = is_published
+
+
+class EditableComment(object):
+    """Исходный html-код комментария."""
+
+    def __init__(self, body):
+        self.body = text(body)
 
 
 class EditableBlog(object):
