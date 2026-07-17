@@ -29,7 +29,7 @@ http_host = "https://tabun.everypony.ru"
 #: Список полузакрытых блогов.
 halfclosed = (
     "shipping", "RPG", "borderline", "ponymanie", "erpg", "tearsfromthemoon",
-    "abode_Clan", "knifemanes", "zootopia",
+    "abode_Clan", "knifemanes", "zootopia", "snowflakes",
 )
 
 #: Заголовки для HTTP-запросов. Возможно, стоит менять user-agent.
