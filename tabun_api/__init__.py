@@ -21,7 +21,7 @@ from .types import Post, Download, Comment, Blog, StreamItem, UserInfo, Poll, Ta
 from .compat import PY2, BaseCookie, urequest, text_types, text, binary, html_unescape
 
 
-__version__ = '0.7.17'
+__version__ = '0.7.18'
 
 #: Адрес Табуна. Именно на указанный здесь адрес направляются запросы.
 http_host = "https://tabun.everypony.ru"
@@ -1441,7 +1441,7 @@ class User(object):
 
         context = self.get_main_context(raw_data, url=url)
 
-        data = utils.find_substring(raw_data, b"<article ", b"</article> <!-- /.topic -->", extend=True)
+        data = utils.find_substring(raw_data, b"<article ", b"</article>", extend=True)
         if not data:
             raise TabunError("No post")
 
